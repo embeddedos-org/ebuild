@@ -1,0 +1,18 @@
+board:
+  name: nrf52
+  mcu: NRF52
+  family: nRF52
+  arch: arm
+  core: cortex-m4f
+  vendor: Nordic
+  clock_hz: 0
+  memory:
+    flash: 524288
+    ram: 0
+  peripherals:
+    - name: SPI
+      type: spi
+    - name: I2C
+      type: i2c
+    - name: BLE
+      type: ble

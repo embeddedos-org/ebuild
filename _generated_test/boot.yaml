@@ -1,0 +1,33 @@
+boot:
+  board: nrf52
+  arch: arm
+  flash_base: '0x08000000'
+  flash_size: 524288
+  layout:
+    stage0:
+      offset: '0x00000000'
+      size: 16384
+    stage1:
+      offset: '0x4000'
+      size: 65536
+    bootctl_primary:
+      offset: '0x14000'
+      size: 4096
+    bootctl_backup:
+      offset: '0x15000'
+      size: 4096
+    slot_a:
+      offset: '0x16000'
+      size: 217088
+    slot_b:
+      offset: '0x4b000'
+      size: 217088
+  policy:
+    max_boot_attempts: 3
+    watchdog_timeout_ms: 5000
+    require_signature: true
+    anti_rollback: true
+  image:
+    header_version: 1
+    hash_algo: sha256
+    sign_algo: ed25519

@@ -1,0 +1,16 @@
+project:
+  name: {{PROJECT_NAME}}
+  version: 0.1.0
+
+workspace:
+  backend: ninja
+  build_dir: .eos/build
+
+toolchain:
+  target: {{TOOLCHAIN}}
+
+system:
+  kind: baremetal
+  board: {{BOARD_NAME}}
+  entry: src/main.c
+  output: {{PROJECT_NAME}}.bin

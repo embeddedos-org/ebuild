@@ -1,0 +1,13 @@
+project:
+  name: hello_world
+  version: "1.0.0"
+
+targets:
+  - name: hello
+    type: executable
+    sources: ["src/main.c"]
+    cflags: ["-Wall", "-O2"]
+
+toolchain:
+  compiler: gcc
+  arch: x86_64

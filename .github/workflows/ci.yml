@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }} / Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: pip install pyyaml click
+      - name: Run EoS AI unit tests
+        run: python tests/test_eos_ai.py
+      - name: Run full pipeline test
+        run: python test_full_pipeline.py
+
+  build-sanity:
+    name: Build Sanity
+    runs-on: ubuntu-latest
+    needs: [test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pyyaml click
+      - name: Test EoS AI pipeline
+        run: python test_full_pipeline.py
+      - name: Test with text prompt
+        run: python test_full_pipeline.py --text "STM32F4 with UART SPI I2C CAN 1MB flash 256KB RAM 168 MHz"
+      - name: Verify generated files
+        run: |
+          test -f _generated_test/board.yaml
+          test -f _generated_test/boot.yaml
+          test -f _generated_test/eos_product_config.h
+          test -f _generated_test/eboot_flash_layout.h

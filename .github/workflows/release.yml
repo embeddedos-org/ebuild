@@ -1,0 +1,103 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"         # v1.0.0, v0.5.0-beta, v2.1.3-debug
+      - "v*.*.*-*"       # v1.0.0-rc1, v0.3.0-debug
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/ -v
+      - run: python test_full_pipeline.py
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Parse semver: major.minor.patch[-prerelease]
+          IFS='.-' read -r MAJOR MINOR PATCH PRE <<< "$VERSION"
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+          echo "minor=$MINOR" >> $GITHUB_OUTPUT
+          echo "patch=$PATCH" >> $GITHUB_OUTPUT
+          echo "prerelease=${PRE:-stable}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | head -2 | tail -1)
+          if [ -n "$PREV_TAG" ] && [ "$PREV_TAG" != "${{ steps.version.outputs.tag }}" ]; then
+            CHANGES=$(git log ${PREV_TAG}..HEAD --oneline --no-merges)
+          else
+            CHANGES=$(git log --oneline --no-merges -20)
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build package
+        run: |
+          pip install build
+          python -m build
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "ebuild ${{ steps.version.outputs.tag }}"
+          body: |
+            ## ebuild ${{ steps.version.outputs.tag }}
+
+            **Version:** ${{ steps.version.outputs.version }}
+            **Type:** ${{ steps.version.outputs.prerelease }}
+
+            ### Changes
+            ${{ steps.changelog.outputs.changes }}
+
+            ### Install
+            ```bash
+            pip install ebuild==${{ steps.version.outputs.version }}
+            ```
+
+            ### Checksums
+            See attached artifacts for SHA-256 checksums.
+          files: dist/*
+          draft: ${{ contains(steps.version.outputs.prerelease, 'debug') }}
+          prerelease: ${{ contains(steps.version.outputs.prerelease, 'rc') || contains(steps.version.outputs.prerelease, 'beta') || contains(steps.version.outputs.prerelease, 'alpha') }}
+
+      - name: Publish to PyPI
+        if: "!contains(steps.version.outputs.prerelease, 'debug')"
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install twine
+          twine upload dist/* --skip-existing || true

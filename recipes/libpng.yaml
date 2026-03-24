@@ -1,0 +1,13 @@
+package: libpng
+version: "1.6.40"
+description: "The official PNG reference library"
+license: libpng
+url: https://downloads.sourceforge.net/libpng/libpng-1.6.40.tar.gz
+checksum: sha256:8f720b363aa08a4d43f0c18b8db38b36c325a489f2461ebee5179161e6518ab0
+build: cmake
+dependencies:
+  - zlib
+configure_args:
+  - "-DPNG_SHARED=ON"
+  - "-DPNG_STATIC=ON"
+  - "-DPNG_TESTS=OFF"

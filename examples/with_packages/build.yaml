@@ -1,0 +1,22 @@
+project:
+  name: with_packages
+  version: "1.0.0"
+
+packages:
+  - name: zlib
+    version: "1.2.13"
+
+targets:
+  - name: compress_demo
+    type: executable
+    sources:
+      - "src/main.c"
+    uses:
+      - zlib
+    cflags:
+      - "-Wall"
+      - "-O2"
+
+toolchain:
+  compiler: gcc
+  arch: x86_64
