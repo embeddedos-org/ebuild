@@ -1,0 +1,25 @@
+name: eos-linux
+version: "1.0.0"
+
+toolchain:
+  compiler: gcc
+  arch: arm64
+  prefix: aarch64-linux-gnu-
+
+system:
+  hostname: eos-device
+  init: busybox
+  image_format: tar
+  image_size_mb: 256
+
+  users:
+    - name: admin
+      shell: /bin/sh
+
+  kernel:
+    source: /path/to/linux
+    defconfig: defconfig
+
+  packages:
+    - name: zlib
+    - name: libpng

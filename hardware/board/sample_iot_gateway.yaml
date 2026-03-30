@@ -1,0 +1,67 @@
+# Sample Hardware Design: IoT Gateway Board
+# MCU: STM32H743 (ARM Cortex-M7, 480MHz)
+# This file tests the entire ebuild EoS AI pipeline
+
+board_name: iot-gateway-v1
+revision: "A"
+
+mcu:
+  part: STM32H743VIT6
+  family: STM32H7
+  core: cortex-m7
+  clock: 480 MHz
+  flash: 2MB flash
+  ram: 1MB SRAM
+  voltage: 3.3V
+  features: [fpu, dsp, mpu, crypto_accelerator]
+
+peripherals:
+  - UART0: PA9/PA10 (debug console, 115200 baud)
+  - UART1: PD5/PD6 (GPS module u-blox NEO-M8N)
+  - SPI0: PA5/PA6/PA7 (W25Q128 NOR flash, 16MB)
+  - SPI1: PB13/PB14/PB15 (ILI9341 LCD display)
+  - I2C0: PB6/PB7 (BME280 temp/humidity/pressure sensor)
+  - I2C1: PB10/PB11 (LSM6DSO IMU accelerometer + gyroscope)
+  - CAN0: PD0/PD1 (industrial sensor bus)
+  - USB: PA11/PA12 (USB OTG device)
+  - ETH: RMII (LAN8742A PHY, 100Mbps Ethernet)
+  - WiFi: ESP32-C3 module via UART2 (AT commands)
+  - BLE: nRF52832 module via SPI2
+  - PWM: PE9/PE11 (motor control, 2 channels)
+  - ADC: PA0/PA1/PA2 (battery voltage, temp sensor, current sense)
+  - Watchdog: IWDG (independent watchdog, 5 second timeout)
+  - RTC: LSE 32.768kHz crystal
+  - DMA: used for SPI flash, UART, ADC
+
+memory_map:
+  flash_base: 0x08000000
+  flash_size: 0x200000    # 2MB
+  ram_base: 0x20000000
+  ram_size: 0x100000      # 1MB
+  spi_flash: 0x90000000   # memory-mapped QSPI, 16MB
+
+boot:
+  recovery_pin: PC0 (active low, pull-up)
+  led_status: PC13 (active low)
+  watchdog: 5000ms
+
+power:
+  main_supply: 5V USB or 7-24V barrel jack
+  regulators:
+    - LDO 3.3V (AMS1117-3.3)
+    - LDO 1.8V (for Ethernet PHY)
+  battery: CR2032 coin cell for RTC backup
+
+connectors:
+  - USB-C (power + data)
+  - RJ45 (Ethernet)
+  - CAN bus terminal block
+  - SMA (GPS antenna)
+  - 2.4GHz PCB antenna (WiFi + BLE)
+  - 2x20 GPIO expansion header
+
+use_case: |
+  Industrial IoT gateway that collects data from CAN bus sensors,
+  WiFi/BLE devices, and GPS. Ethernet uplink to cloud. LCD for
+  local status display. Motor control for actuator. OTA firmware
+  updates via WiFi. Secure boot with signed images.

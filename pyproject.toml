@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ebuild"
+version = "0.2.0"
+description = "Unified embedded build system — supports Make, CMake, Meson, Cargo, Buildroot, Zephyr, FreeRTOS, NuttX"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "ninja>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+ebuild = "ebuild.cli.commands:cli"
+
+[tool.setuptools.packages.find]
+include = ["ebuild*"]
