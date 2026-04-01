@@ -1,0 +1,20 @@
+# Doxyfile for EIPC — Embedded IPC
+
+PROJECT_NAME           = "EIPC"
+PROJECT_NUMBER         = 0.1.0
+PROJECT_BRIEF          = "Secure, real-time IPC framework for embedded systems"
+OUTPUT_DIRECTORY       = docs/api
+INPUT                  = core protocol security transport services cmd sdk/c/include sdk/c/src
+RECURSIVE              = YES
+FILE_PATTERNS          = *.go *.h *.c
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = html
+HAVE_DOT               = NO
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TYPEDEF_HIDES_STRUCT   = YES
+SORT_MEMBER_DOCS       = YES
+WARN_IF_UNDOCUMENTED   = NO
+QUIET                  = YES

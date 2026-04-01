@@ -1,0 +1,13 @@
+EoS Embedded Operating System
+Copyright (c) 2026 EoS Project
+
+This product includes software developed by the EoS Project.
+
+SPDX-License-Identifier: MIT
+
+Third-Party Components:
+  - llama.cpp runtime interface (MIT License)
+  - CycloneDX SBOM format (Apache-2.0)
+  - Contributor Covenant Code of Conduct (CC-BY-4.0)
+
+All source files carry SPDX license identifiers per ISO/IEC 20243.

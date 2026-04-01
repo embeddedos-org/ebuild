@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+_generated_test/
+_generated/
+*.bin
+*.elf
+*.hex
+.eos/

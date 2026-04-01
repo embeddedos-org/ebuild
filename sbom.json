@@ -1,0 +1,23 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "application",
+      "name": "eos-platform",
+      "version": "0.1.0",
+      "licenses": [{"license": {"id": "MIT"}}],
+      "supplier": {"name": "EoS Project", "url": ["https://embeddedos-org.github.io"]}
+    }
+  },
+  "components": [
+    {"type":"library","name":"eos","version":"0.1.0","description":"Embedded OS core","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#core/eos"},
+    {"type":"library","name":"eboot","version":"0.1.0","description":"Bootloader","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#core/eboot"},
+    {"type":"library","name":"eai","version":"0.1.0","description":"AI layer","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#layers/eai"},
+    {"type":"library","name":"eni","version":"0.1.0","description":"Neural interface","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#layers/eni"},
+    {"type":"library","name":"eipc","version":"0.1.0","description":"Secure IPC","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#layers/eipc"},
+    {"type":"library","name":"eosuite","version":"0.1.0","description":"Dev tools","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#layers/eosuite"},
+    {"type":"library","name":"ebuild-cli","version":"0.1.0","description":"Build system CLI","licenses":[{"license":{"id":"MIT"}}],"purl":"pkg:github/embeddedos-org/ebuild@0.1.0#ebuild"}
+  ]
+}

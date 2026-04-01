@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: EoS Embedded Operating System
+Upstream-Contact: https://github.com/embeddedos-org/ebuild
+Source: https://github.com/embeddedos-org/ebuild
+
+Files: *
+Copyright: 2026 EoS Project
+License: MIT

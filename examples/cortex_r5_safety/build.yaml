@@ -1,0 +1,21 @@
+name: cortex-r5-safety
+version: "1.0.0"
+
+toolchain:
+  compiler: gcc
+  arch: arm
+  prefix: arm-none-eabi-
+
+targets:
+  - name: r5_safety_demo
+    type: executable
+    sources: ["src/*.c"]
+    include_dirs: ["include"]
+    cflags: ["-mcpu=cortex-r5", "-mfloat-abi=hard", "-mfpu=vfpv3-d16", "-Os"]
+    ldflags: ["-T", "linker/tms570_app.ld", "-nostartfiles"]
+
+firmware:
+  board: tms570
+  core: cortex-r5f
+  tick_rate: 1000
+  watchdog_ms: 100

@@ -1,0 +1,18 @@
+# Build artifacts
+bin/
+*.exe
+*.test
+*.out
+
+# Go
+vendor/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db

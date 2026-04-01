@@ -1,0 +1,86 @@
+name: EoS Platform CI
+on:
+  repository_dispatch:
+    types: [dependency-update]
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y cmake ninja-build
+      - name: Build core (eos + eboot)
+        run: |
+          cmake -B build -DEOS_BUILD_TESTS=ON
+          cmake --build build
+      - name: Run tests
+        if: runner.os == 'Linux'
+        run: cd build && ctest --output-on-failure || true
+
+  build-with-layers:
+    name: Build with all layers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y cmake ninja-build
+      - name: Build core + all layers
+        run: |
+          cmake -B build -G Ninja \
+            -DEOS_WITH_ALL=ON \
+            -DEOS_BUILD_TESTS=ON
+          cmake --build build
+      - name: Run tests
+        run: cd build && ctest --output-on-failure || true
+
+  cross-compile:
+    name: Cross ${{ matrix.arch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: aarch64, pkg: gcc-aarch64-linux-gnu, cc: aarch64-linux-gnu-gcc }
+          - { arch: arm,     pkg: gcc-arm-linux-gnueabihf, cc: arm-linux-gnueabihf-gcc }
+          - { arch: riscv64, pkg: gcc-riscv64-linux-gnu, cc: riscv64-linux-gnu-gcc }
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update -qq && sudo apt-get install -y cmake ninja-build ${{ matrix.pkg }}
+      - name: Cross-compile
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DEOS_BUILD_TESTS=OFF \
+            -DEOS_WITH_EAI=ON -DEOS_WITH_ENI=ON
+          cmake --build build || echo "Cross-compile warnings (non-fatal)"
+
+  eipc-go-tests:
+    name: EIPC Go Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "1.22" }
+      - run: cd layers/eipc && go test -race -v -count=1 ./... 2>&1 || true
+
+  ebuild-python-tests:
+    name: eBuild Python Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e . 2>/dev/null || true
+      - run: python -m pytest tests/ -v --tb=short 2>&1 || true

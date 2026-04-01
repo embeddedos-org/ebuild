@@ -1,0 +1,39 @@
+# Build artifacts
+build/
+*.o
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+*.egg
+
+# Test
+.pytest_cache/
+test-results.xml
+htmlcov/
+.coverage
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# eTerminal specific
+tools/mingw64/
+tools/tcc/
+tools/*.7z
+tools/*.zip
+*.7z

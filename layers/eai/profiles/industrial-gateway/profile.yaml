@@ -1,0 +1,39 @@
+# EAI Profile: Industrial Gateway
+# Full-featured deployment for factory automation and industrial IoT
+
+ai:
+  variant: framework
+  mode: local-first
+
+  runtime:
+    providers:
+      - onnxruntime
+      - llama.cpp
+
+  tools:
+    - mqtt.publish
+    - device.read_sensor
+    - http.get
+
+  connectors:
+    - mqtt
+    - opcua
+    - modbus
+
+  policy:
+    cloud_fallback: false
+    max_inference_ms: 30000
+    max_memory_mb: 2048
+
+  observability: true
+
+  hardware:
+    accelerator: cpu
+    can_bus: true
+    gpio: true
+    ethernet: true
+
+  description: >
+    Industrial gateway profile for factory automation, predictive
+    maintenance, and process monitoring. Supports MQTT, OPC-UA,
+    and Modbus protocols with multi-runtime inference.
