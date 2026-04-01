@@ -1,0 +1,23 @@
+# eBootloader — Multi-platform Modular Bootloader
+# Build with: ebuild build
+# ebuild auto-detects CMakeLists.txt and uses the cmake backend.
+#
+# Native build (core libraries + tests):
+#   ebuild build
+#
+# Cross-compile for a board:
+#   ebuild build --backend cmake
+#   (with cmake.defines.EBLDR_BOARD and cmake.toolchain_file set)
+
+name: eboot
+version: "0.3.0"
+backend: cmake
+
+cmake:
+  build_type: Release
+  defines:
+    EBLDR_BUILD_TESTS: "ON"
+
+toolchain:
+  compiler: gcc
+  arch: x86_64

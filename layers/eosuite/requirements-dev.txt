@@ -1,0 +1,6 @@
+# Dev/test dependencies
+pytest>=7.0
+flake8>=6.0
+pypdf>=3.0
+Pillow>=9.0
+python-docx>=0.8

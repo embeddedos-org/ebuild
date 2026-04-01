@@ -1,0 +1,4 @@
+In file included from src\echat.c:30:
+C:/Users/spatchava/Documents/EoS/EOSUITE/tools/mingw64/x86_64-w64-mingw32/include/winsock2.h:15:2: warning: #warning Please include winsock2.h before windows.h [-Wcpp]
+   15 | #warning Please include winsock2.h before windows.h
+      |  ^~~~~~~

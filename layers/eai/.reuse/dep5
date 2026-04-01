@@ -1,0 +1,7 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: eai
+Source: https://github.com/embeddedos-org/eai
+
+Files: *
+Copyright: 2026 EoS Project
+License: MIT

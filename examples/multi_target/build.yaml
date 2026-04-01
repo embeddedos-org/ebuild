@@ -1,0 +1,21 @@
+project:
+  name: multi_target
+  version: "1.0.0"
+
+targets:
+  - name: mathlib
+    type: static_library
+    sources: ["src/mathlib.c"]
+    includes: ["include/"]
+    cflags: ["-Wall", "-O2"]
+
+  - name: myapp
+    type: executable
+    sources: ["src/main.c"]
+    includes: ["include/"]
+    depends: ["mathlib"]
+    ldflags: ["-lm"]
+
+toolchain:
+  compiler: gcc
+  arch: x86_64

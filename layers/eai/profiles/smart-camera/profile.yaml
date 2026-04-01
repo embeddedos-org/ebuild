@@ -1,0 +1,33 @@
+# EAI Profile: Smart Camera
+# Vision-focused deployment for smart cameras and video analytics
+
+ai:
+  variant: framework
+  mode: local
+
+  runtime:
+    providers:
+      - onnxruntime
+
+  tools:
+    - device.read_sensor
+    - http.get
+
+  connectors: []
+
+  policy:
+    cloud_fallback: false
+    max_inference_ms: 100
+    max_memory_mb: 1024
+
+  observability: true
+
+  hardware:
+    accelerator: npu
+    camera: true
+    gpio: false
+
+  description: >
+    Smart camera deployment profile for real-time video analytics,
+    object detection, and scene understanding on edge devices
+    with NPU acceleration.

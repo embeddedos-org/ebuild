@@ -1,0 +1,34 @@
+# EAI Profile: Mobile Edge
+# Lightweight deployment for handheld devices and field equipment
+
+ai:
+  variant: min
+  mode: hybrid
+
+  runtime:
+    provider: llama.cpp
+
+  tools:
+    - http.get
+    - device.read_sensor
+
+  connectors: []
+
+  policy:
+    cloud_fallback: true
+    max_inference_ms: 5000
+    max_memory_mb: 512
+
+  observability: false
+
+  hardware:
+    accelerator: cpu
+    battery: true
+    touchscreen: true
+    wifi: true
+    bluetooth: true
+
+  description: >
+    Mobile edge profile for handheld devices, field maintenance tools,
+    and portable diagnostic equipment. Uses hybrid mode with cloud
+    fallback for complex queries.

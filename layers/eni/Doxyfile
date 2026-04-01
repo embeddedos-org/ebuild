@@ -1,0 +1,22 @@
+# Doxyfile for ENI API documentation
+# Run: cd eni && doxygen Doxyfile
+
+PROJECT_NAME           = "ENI"
+PROJECT_BRIEF          = "Neural Interface Adapter — BCI/sensor input integration"
+PROJECT_NUMBER         = 0.1.0
+OUTPUT_DIRECTORY       = docs/api
+INPUT                  = common/include/ min/include/ framework/include/ providers/
+FILE_PATTERNS          = *.h *.c
+RECURSIVE              = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = NO
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = html
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TYPEDEF_HIDES_STRUCT   = YES
+SORT_MEMBER_DOCS       = NO
+SHOW_INCLUDE_FILES     = YES
+JAVADOC_AUTOBRIEF      = YES
+WARN_IF_UNDOCUMENTED   = YES
+WARN_NO_PARAMDOC       = YES

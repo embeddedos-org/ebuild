@@ -1,0 +1,131 @@
+# eboot Boot Config Schema — defines accepted boot configuration format
+# ebuild's LLM generates this; eboot consumes it deterministically
+
+boot:
+  board:
+    type: string
+    required: true
+    description: Target board identifier matching an eboot board port
+
+  arch:
+    type: string
+    required: true
+    enum: [arm, arm64, riscv32, riscv64, xtensa, x86_64]
+
+  flash_base:
+    type: string
+    required: true
+    description: Flash base address as hex string (e.g., "0x08000000")
+    default: "0x08000000"
+
+  flash_size:
+    type: integer
+    required: true
+    description: Total flash size in bytes
+
+  layout:
+    type: object
+    required: true
+    description: Flash region definitions
+    properties:
+      stage0:
+        type: object
+        required: true
+        properties:
+          offset: { type: string, description: Hex offset from flash base }
+          size: { type: integer, description: Size in bytes, max 16384 }
+
+      stage1:
+        type: object
+        required: true
+        properties:
+          offset: { type: string }
+          size: { type: integer, description: Size in bytes, max 65536 }
+
+      bootctl_primary:
+        type: object
+        required: true
+        properties:
+          offset: { type: string }
+          size: { type: integer, default: 4096 }
+
+      bootctl_backup:
+        type: object
+        required: true
+        properties:
+          offset: { type: string }
+          size: { type: integer, default: 4096 }
+
+      slot_a:
+        type: object
+        required: true
+        properties:
+          offset: { type: string }
+          size: { type: integer }
+
+      slot_b:
+        type: object
+        required: false
+        description: Optional — if absent, single-slot (no A/B update)
+        properties:
+          offset: { type: string }
+          size: { type: integer }
+
+  policy:
+    type: object
+    properties:
+      max_boot_attempts:
+        type: integer
+        default: 3
+        description: Max consecutive boot attempts before rollback
+
+      watchdog_timeout_ms:
+        type: integer
+        default: 5000
+        description: Watchdog timeout for boot verification
+
+      require_signature:
+        type: boolean
+        default: true
+        description: Require cryptographic signature on images
+
+      anti_rollback:
+        type: boolean
+        default: true
+        description: Prevent booting older firmware versions
+
+  image:
+    type: object
+    properties:
+      header_version:
+        type: integer
+        default: 1
+
+      hash_algo:
+        type: string
+        enum: [sha256, sha512]
+        default: sha256
+
+      sign_algo:
+        type: string
+        enum: [ed25519, rsa2048, rsa4096, ecdsa_p256]
+        default: ed25519
+
+  rtos:
+    type: object
+    required: false
+    description: RTOS-specific boot parameters
+    properties:
+      type:
+        type: string
+        enum: [freertos, zephyr, nuttx, baremetal, linux]
+      mpu_mode:
+        type: string
+        enum: [disabled, protected, isolated]
+        default: protected
+      tick_rate_hz:
+        type: integer
+        default: 1000
+      num_priorities:
+        type: integer
+        default: 8

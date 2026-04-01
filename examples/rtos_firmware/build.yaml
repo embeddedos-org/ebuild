@@ -1,0 +1,21 @@
+name: blink-rtos
+version: "1.0.0"
+
+toolchain:
+  compiler: gcc
+  arch: arm
+  prefix: arm-none-eabi-
+
+targets:
+  - name: blink
+    type: executable
+    sources: ["src/*.c"]
+    include_dirs: ["include"]
+    cflags: ["-mcpu=cortex-m4", "-mthumb", "-Os"]
+    ldflags: ["-T", "linker/stm32f4.ld", "-nostartfiles"]
+
+firmware:
+  rtos: freertos
+  board: stm32f4
+  tick_rate: 1000
+  heap_size: 16384
