@@ -102,7 +102,7 @@ int eos_core_stop(uint8_t core_id)
 {
     if (!mc_initialized || core_id >= EOS_MAX_CORES) return -1;
     if (core_id == 0) return -1; /* can't stop boot core */
-    cores[core_id].state = EOS_CORE_HALTED;
+    cores[core_id].state = EOS_CORE_OFFLINE;
     return 0;
 }
 

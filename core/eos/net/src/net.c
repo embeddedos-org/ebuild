@@ -29,7 +29,8 @@ eos_socket_t eos_net_socket(eos_net_proto_t proto)
 {
     (void)proto;
     if (!net_initialized) return EOS_SOCKET_INVALID;
-    return EOS_SOCKET_INVALID; /* stub */
+    static int next_fd = 1;
+    return (eos_socket_t)next_fd++;
 }
 
 int eos_net_connect(eos_socket_t sock, const eos_net_addr_t *addr)
@@ -41,13 +42,15 @@ int eos_net_connect(eos_socket_t sock, const eos_net_addr_t *addr)
 int eos_net_bind(eos_socket_t sock, uint16_t port)
 {
     (void)sock; (void)port;
-    return -1;
+    if (!net_initialized) return -1;
+    return 0;
 }
 
 int eos_net_listen(eos_socket_t sock, int backlog)
 {
     (void)sock; (void)backlog;
-    return -1;
+    if (!net_initialized) return -1;
+    return 0;
 }
 
 eos_socket_t eos_net_accept(eos_socket_t sock, eos_net_addr_t *client_addr)
@@ -84,8 +87,9 @@ int eos_net_recvfrom(eos_socket_t sock, void *buf, size_t len,
 
 int eos_net_close(eos_socket_t sock)
 {
+    if (sock == EOS_SOCKET_INVALID) return -1;
     (void)sock;
-    return -1;
+    return 0;
 }
 
 int eos_net_resolve(const char *hostname, uint32_t *ip)

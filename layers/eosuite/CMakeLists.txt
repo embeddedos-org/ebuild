@@ -47,7 +47,7 @@ else()
 endif()
 
 add_executable(EOSUITE ${CORE_SOURCES})
-target_include_directories(EOSUITE PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(EOSUITE PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 if(WIN32)
     target_link_libraries(EOSUITE ws2_32)
