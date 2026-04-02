@@ -18,21 +18,33 @@ import tempfile
 import shutil
 from pathlib import Path
 
+import pytest
+
 # pythonpath in pytest.ini handles this for pytest; keep for standalone mode.
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # ── Repo root discovery ──────────────────────────────────────────────
-_THIS_DIR = Path(__file__).resolve().parent
-_EBUILD_ROOT = _THIS_DIR.parent
-_EOS_ROOT = _EBUILD_ROOT.parent / "eos"
-_EBOOT_ROOT = _EBUILD_ROOT.parent / "eboot"
+_THIS_DIR = Path(__file__).resolve().parent          # tests/ebuild/
+_EBUILD_ROOT = _THIS_DIR.parent.parent               # repo root
+_EOS_ROOT = _EBUILD_ROOT.parent / "eos"              # sibling repo
+_EBOOT_ROOT = _EBUILD_ROOT.parent / "eboot"          # sibling repo
+
+_HAS_EBOOT = _EBOOT_ROOT.is_dir()
+_HAS_EOS = _EOS_ROOT.is_dir()
+
+_skip_no_eboot = pytest.mark.skipif(not _HAS_EBOOT, reason="eboot sibling repo not found")
+_skip_no_eos = pytest.mark.skipif(not _HAS_EOS, reason="eos sibling repo not found")
+_skip_no_sibling = pytest.mark.skipif(
+    not (_HAS_EBOOT and _HAS_EOS), reason="eboot and/or eos sibling repo not found"
+)
 
 
 # =====================================================================
 # Phase 1 — eboot: Cortex-R5 Board Port + Toolchain + MPU + CI
 # =====================================================================
 
+@_skip_no_eboot
 class TestEbootToolchain:
     """1.1 — eboot/toolchains/arm-none-eabi-r5.cmake"""
 
@@ -88,6 +100,7 @@ class TestEbootToolchain:
         assert "arm-none-eabi-ar" in content
 
 
+@_skip_no_eboot
 class TestEbootBoardHeader:
     """1.2 — eboot/boards/cortex_r5/board_cortex_r5.h"""
 
@@ -159,6 +172,7 @@ class TestEbootBoardHeader:
         assert "R5_RTI_BASE" in content
 
 
+@_skip_no_eboot
 class TestEbootBoardPort:
     """1.3 — eboot/boards/cortex_r5/board_cortex_r5.c"""
 
@@ -243,6 +257,7 @@ class TestEbootBoardPort:
         )
 
 
+@_skip_no_eboot
 class TestEbootLinkerScripts:
     """1.4 & 1.5 — Cortex-R5 linker scripts."""
 
@@ -292,6 +307,7 @@ class TestEbootLinkerScripts:
         assert ".bss" in content
 
 
+@_skip_no_eboot
 class TestEbootCMakeLists:
     """1.6 — eboot/CMakeLists.txt cortex_r5 integration."""
 
@@ -324,6 +340,7 @@ class TestEbootCMakeLists:
         assert "cortex_r5" in fatal_block.group(0), "cortex_r5 not in FATAL_ERROR board list"
 
 
+@_skip_no_eboot
 class TestEbootMPU:
     """1.7 — eboot/core/mpu_boot.c Cortex-R PMSAv7 support."""
 
@@ -379,6 +396,7 @@ class TestEbootMPU:
         assert "!defined(__ARM_ARCH_7R__)" in content
 
 
+@_skip_no_eboot
 class TestEbootReleaseCI:
     """4.1 — eboot/.github/workflows/release.yml Cortex-R5 matrix entry."""
 
@@ -413,6 +431,7 @@ class TestEbootReleaseCI:
 # Phase 2 — eos: Cortex-R5 Toolchain + Board + HAL
 # =====================================================================
 
+@_skip_no_eos
 class TestEosToolchainYAML:
     """2.1 — eos/toolchains/arm-none-eabi-r5.yaml"""
 
@@ -450,6 +469,7 @@ class TestEosToolchainYAML:
         assert "cc: arm-none-eabi-gcc" in content
 
 
+@_skip_no_sibling
 class TestEosToolchainCMake:
     """2.2 — eos/toolchains/arm-none-eabi-r5.cmake"""
 
@@ -471,6 +491,7 @@ class TestEosToolchainCMake:
         assert eos_flags.group(1) == eboot_flags.group(1)
 
 
+@_skip_no_eos
 class TestEosBoardYAML:
     """2.3 — eos/boards/tms570.yaml"""
 
@@ -512,6 +533,7 @@ class TestEosBoardYAML:
         assert "toolchain: arm-none-eabi-r5" in content
 
 
+@_skip_no_eos
 class TestEosToolchainC:
     """2.4 — eos/toolchains/src/toolchain.c arm-none-eabi detection."""
 
@@ -540,6 +562,7 @@ class TestEosToolchainC:
         )
 
 
+@_skip_no_eos
 class TestEosHalRTOS:
     """2.5 — eos/hal/src/hal_rtos.c updated comments."""
 
@@ -711,6 +734,7 @@ class TestEbuildProjectGenerator:
 # End-to-End: Full pipeline integration
 # =====================================================================
 
+@_skip_no_sibling
 class TestEndToEndPipeline:
     """Validates the complete cross-repo Cortex-R5 pipeline."""
 
