@@ -14,8 +14,8 @@
  * If no product is selected, all features are enabled (development build).
  */
 
-#ifndef EOS_CONFIG_H
-#define EOS_CONFIG_H
+#ifndef EOS_PRODUCT_CONFIG_H
+#define EOS_PRODUCT_CONFIG_H
 
 /* ============================================================
  * Product Profile Includes
@@ -346,4 +346,4 @@
 #   define EOS_PRODUCT_NAME "unknown"
 #endif
 
-#endif /* EOS_CONFIG_H */
+#endif /* EOS_PRODUCT_CONFIG_H */

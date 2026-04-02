@@ -49,9 +49,6 @@ jobs:
           echo "=== EoSim: ${{ matrix.platform }} ==="
           eosim simulate --platform ${{ matrix.platform }} --duration 15 --headless
         continue-on-error: true
-          name: sim-${{ matrix.platform }}
-          path: out/
-          retention-days: 7
 
   cross-platform:
     name: Cross-Platform (${{ matrix.os }})
@@ -70,10 +67,10 @@ jobs:
       - name: Validate all platforms
         run: eosim list && eosim doctor
       - name: List platforms
-        run: eosim list-platforms
+        run: eosim list
 
   sanity-gate:
-        run: eosim list
+    name: Simulation Sanity Gate
     if: always()
     needs: [simulate, cross-platform]
     runs-on: ubuntu-latest
