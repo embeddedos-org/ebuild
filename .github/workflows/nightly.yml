@@ -34,9 +34,9 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update && sudo apt-get install -y cmake ninja-build
-          cmake -B build -G Ninja -DEOS_BUILD_TESTS=ON || true
-          cmake --build build || true
-          ctest --test-dir build --output-on-failure || true
+          cmake -B build -G Ninja -DEOS_BUILD_TESTS=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure
 
   report:
     name: Nightly Report
