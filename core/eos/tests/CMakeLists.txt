@@ -111,5 +111,6 @@ add_executable(test_package test_package.c)
 target_include_directories(test_package PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
+)
 target_link_libraries(test_package PRIVATE eos_pkg eos_core)
 add_test(NAME test_package COMMAND test_package)
