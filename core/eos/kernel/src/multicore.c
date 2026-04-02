@@ -4,7 +4,7 @@
 
 /**
  * @file multicore.c
- * @brief EoS Multicore Framework — Implementation
+ * @brief EoS Multicore Framework ΓÇö Implementation
  *
  * Provides core management, spinlocks, IPI, shared memory,
  * affinity, remote processor control, and atomic operations.

@@ -4,7 +4,7 @@
 
 /**
  * @file net.c
- * @brief EoS Networking — Stub implementation
+ * @brief EoS Networking ΓÇö Stub implementation
  */
 
 #include <eos/net.h>
