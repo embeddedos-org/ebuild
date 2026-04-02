@@ -4,8 +4,6 @@ add_library(eos_pkg STATIC
 )
 
 target_include_directories(eos_pkg PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
