@@ -35,7 +35,7 @@ typedef struct {
     int (*init_fn)(void);
 } EosPackage;
 
-typedef struct {
+typedef struct EosPackageSet {
     EosPackage packages[EOS_MAX_PACKAGES];
     int count;
 } EosPackageSet;

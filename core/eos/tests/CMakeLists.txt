@@ -70,7 +70,7 @@ add_test(NAME test_service COMMAND test_service)
 # --- test_debug: GDB stub + core dump ---
 add_executable(test_debug test_debug.c)
 target_include_directories(test_debug PRIVATE
-    ${CMAKE_SOURCE_DIR}/debug/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../debug/include
 )
 target_link_libraries(test_debug PRIVATE eos_debug eos_core)
 add_test(NAME test_debug COMMAND test_debug)
@@ -98,7 +98,7 @@ add_test(NAME test_net COMMAND test_net)
 # --- test_motor_ctrl: Motor control PID ---
 add_executable(test_motor_ctrl test_motor_ctrl.c)
 target_include_directories(test_motor_ctrl PRIVATE
-    ${CMAKE_SOURCE_DIR}/services/motor/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../services/motor/include
 )
 target_link_libraries(test_motor_ctrl PRIVATE eos_motor_ctrl)
 if(UNIX AND NOT APPLE)
@@ -109,9 +109,7 @@ add_test(NAME test_motor_ctrl COMMAND test_motor_ctrl)
 # --- test_package: Package management ---
 add_executable(test_package test_package.c)
 target_include_directories(test_package PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/pkg/include
-    ${CMAKE_SOURCE_DIR}/core/include
-)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../core/include
 target_link_libraries(test_package PRIVATE eos_pkg eos_core)
 add_test(NAME test_package COMMAND test_package)
