@@ -116,9 +116,3 @@ int main(void) {
     printf("\n=== ALL %d PACKAGE TESTS PASSED ===\n", passed);
     return 0;
 }
-    test_package_register_multiple();
-    test_package_init_all();
-    test_package_build_type();
-    printf("\n=== ALL %d PACKAGE TESTS PASSED ===\n", passed);
-    return 0;
-}
