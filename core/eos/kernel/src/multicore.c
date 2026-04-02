@@ -237,17 +237,20 @@ void eos_shmem_invalidate(const eos_shmem_region_t *region)
 
 /* ---- Task Core Affinity ---- */
 
+static eos_core_mask_t task_affinities[256];
+
 int eos_task_set_affinity(uint32_t task_id, eos_core_mask_t mask)
 {
-    (void)task_id; (void)mask;
-    return 0; /* stub */
+    if (task_id >= 256) return -1;
+    task_affinities[task_id] = mask;
+    return 0;
 }
 
 int eos_task_get_affinity(uint32_t task_id, eos_core_mask_t *mask)
 {
     if (!mask) return -1;
-    (void)task_id;
-    *mask = EOS_CORE_MASK_ALL;
+    if (task_id >= 256) return -1;
+    *mask = task_affinities[task_id];
     return 0;
 }
 
