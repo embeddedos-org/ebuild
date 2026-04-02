@@ -47,7 +47,7 @@ jobs:
       - name: Simulate ${{ matrix.platform }}
         run: |
           echo "=== EoSim: ${{ matrix.platform }} ==="
-          eosim simulate --platform ${{ matrix.platform }} --duration 15 --headless
+          eosim run ${{ matrix.platform }} --headless --timeout 15
         continue-on-error: true
 
   cross-platform:
