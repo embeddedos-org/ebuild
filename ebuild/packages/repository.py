@@ -13,10 +13,9 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from ebuild.packages.registry import PackageRegistry, create_registry
-from ebuild.packages.recipe import PackageRecipe
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Dict, List, Optional
 
 from ebuild.core.graph import CycleError, DependencyGraph
-from ebuild.packages.recipe import PackageRecipe, RecipeError
+from ebuild.packages.recipe import PackageRecipe
 from ebuild.packages.registry import PackageRegistry
 
 

@@ -10,12 +10,9 @@ tar/zip extraction into the package cache directory.
 from __future__ import annotations
 
 import hashlib
-import os
-import shutil
 import tarfile
 import zipfile
 from pathlib import Path
-from typing import Optional
 from urllib.request import urlretrieve
 
 from ebuild.packages.recipe import PackageRecipe

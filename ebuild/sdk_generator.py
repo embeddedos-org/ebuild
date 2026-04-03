@@ -1,24 +1,125 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 EoS Project
 
-import os, json, sys, argparse
+import argparse
+import json
+import os
 
 TARGET_ARCH = {
-    "stm32f4":    {"arch": "arm",     "triplet": "arm-none-eabi",       "cpu": "cortex-m4",    "vendor": "ST",        "soc": "STM32F407",  "class": "mcu"},
-    "stm32h7":    {"arch": "arm",     "triplet": "arm-none-eabi",       "cpu": "cortex-m7",    "vendor": "ST",        "soc": "STM32H743",  "class": "mcu"},
-    "nrf52":      {"arch": "arm",     "triplet": "arm-none-eabi",       "cpu": "cortex-m4",    "vendor": "Nordic",    "soc": "nRF52840",   "class": "mcu"},
-    "rp2040":     {"arch": "arm",     "triplet": "arm-none-eabi",       "cpu": "cortex-m0plus","vendor": "RPi",       "soc": "RP2040",     "class": "mcu"},
-    "raspi3":     {"arch": "aarch64", "triplet": "aarch64-linux-gnu",   "cpu": "cortex-a53",   "vendor": "Broadcom",  "soc": "BCM2837",    "class": "sbc"},
-    "raspi4":     {"arch": "aarch64", "triplet": "aarch64-linux-gnu",   "cpu": "cortex-a72",   "vendor": "Broadcom",  "soc": "BCM2711",    "class": "sbc"},
-    "imx8m":      {"arch": "aarch64", "triplet": "aarch64-linux-gnu",   "cpu": "cortex-a53",   "vendor": "NXP",       "soc": "i.MX8M",     "class": "soc"},
-    "am64x":      {"arch": "aarch64", "triplet": "aarch64-linux-gnu",   "cpu": "cortex-a53",   "vendor": "TI",        "soc": "AM6442",     "class": "soc"},
-    "vexpress":   {"arch": "arm",     "triplet": "arm-linux-gnueabihf", "cpu": "cortex-a15",   "vendor": "ARM",       "soc": "VExpress",   "class": "devboard"},
-    "riscv_virt": {"arch": "riscv64", "triplet": "riscv64-linux-gnu",   "cpu": "rv64gc",       "vendor": "QEMU",      "soc": "virt",       "class": "virtual"},
-    "sifive_u":   {"arch": "riscv64", "triplet": "riscv64-linux-gnu",   "cpu": "u74",          "vendor": "SiFive",    "soc": "FU740",      "class": "sbc"},
-    "malta":      {"arch": "mipsel",  "triplet": "mipsel-linux-gnu",    "cpu": "24kf",         "vendor": "MIPS",      "soc": "Malta",      "class": "devboard"},
-    "x86_64":     {"arch": "x86_64",  "triplet": "x86_64-linux-gnu",   "cpu": "generic",      "vendor": "Generic",   "soc": "x86_64",     "class": "pc"},
-    "qemu_virt":  {"arch": "x86_64",  "triplet": "x86_64-linux-gnu",   "cpu": "generic",      "vendor": "QEMU",      "soc": "q35",        "class": "virtual"},
+    'stm32f4': {
+        'arch': 'arm',
+        'triplet': 'arm-none-eabi',
+        'cpu': 'cortex-m4',
+        'vendor': 'ST',
+        'soc': 'STM32F407',
+        'class': 'mcu',
+    },
+    'stm32h7': {
+        'arch': 'arm',
+        'triplet': 'arm-none-eabi',
+        'cpu': 'cortex-m7',
+        'vendor': 'ST',
+        'soc': 'STM32H743',
+        'class': 'mcu',
+    },
+    'nrf52': {
+        'arch': 'arm',
+        'triplet': 'arm-none-eabi',
+        'cpu': 'cortex-m4',
+        'vendor': 'Nordic',
+        'soc': 'nRF52840',
+        'class': 'mcu',
+    },
+    'rp2040': {
+        'arch': 'arm',
+        'triplet': 'arm-none-eabi',
+        'cpu': 'cortex-m0plus',
+        'vendor': 'RPi',
+        'soc': 'RP2040',
+        'class': 'mcu',
+    },
+    'raspi3': {
+        'arch': 'aarch64',
+        'triplet': 'aarch64-linux-gnu',
+        'cpu': 'cortex-a53',
+        'vendor': 'Broadcom',
+        'soc': 'BCM2837',
+        'class': 'sbc',
+    },
+    'raspi4': {
+        'arch': 'aarch64',
+        'triplet': 'aarch64-linux-gnu',
+        'cpu': 'cortex-a72',
+        'vendor': 'Broadcom',
+        'soc': 'BCM2711',
+        'class': 'sbc',
+    },
+    'imx8m': {
+        'arch': 'aarch64',
+        'triplet': 'aarch64-linux-gnu',
+        'cpu': 'cortex-a53',
+        'vendor': 'NXP',
+        'soc': 'i.MX8M',
+        'class': 'soc',
+    },
+    'am64x': {
+        'arch': 'aarch64',
+        'triplet': 'aarch64-linux-gnu',
+        'cpu': 'cortex-a53',
+        'vendor': 'TI',
+        'soc': 'AM6442',
+        'class': 'soc',
+    },
+    'vexpress': {
+        'arch': 'arm',
+        'triplet': 'arm-linux-gnueabihf',
+        'cpu': 'cortex-a15',
+        'vendor': 'ARM',
+        'soc': 'VExpress',
+        'class': 'devboard',
+    },
+    'riscv_virt': {
+        'arch': 'riscv64',
+        'triplet': 'riscv64-linux-gnu',
+        'cpu': 'rv64gc',
+        'vendor': 'QEMU',
+        'soc': 'virt',
+        'class': 'virtual',
+    },
+    'sifive_u': {
+        'arch': 'riscv64',
+        'triplet': 'riscv64-linux-gnu',
+        'cpu': 'u74',
+        'vendor': 'SiFive',
+        'soc': 'FU740',
+        'class': 'sbc',
+    },
+    'malta': {
+        'arch': 'mipsel',
+        'triplet': 'mipsel-linux-gnu',
+        'cpu': '24kf',
+        'vendor': 'MIPS',
+        'soc': 'Malta',
+        'class': 'devboard',
+    },
+    'x86_64': {
+        'arch': 'x86_64',
+        'triplet': 'x86_64-linux-gnu',
+        'cpu': 'generic',
+        'vendor': 'Generic',
+        'soc': 'x86_64',
+        'class': 'pc',
+    },
+    'qemu_virt': {
+        'arch': 'x86_64',
+        'triplet': 'x86_64-linux-gnu',
+        'cpu': 'generic',
+        'vendor': 'QEMU',
+        'soc': 'q35',
+        'class': 'virtual',
+    },
 }
+
 
 def get_target_info(target):
     return TARGET_ARCH.get(target, TARGET_ARCH["x86_64"])
@@ -42,17 +143,18 @@ EBOOT_BOARD = {
     "qemu_virt":  "x86",
 }
 
+
 def get_eboot_board(target):
     return EBOOT_BOARD.get(target, "x86")
+
+
 def generate_sdk(target, output_dir, hardware_file=None):
     info = get_target_info(target)
     sdk_dir = os.path.join(output_dir, "eos-sdk-" + target)
-    sysroot = os.path.join(sdk_dir, "sysroot")
     for d in ["sysroot/usr/include", "sysroot/usr/lib", "sysroot/usr/lib/pkgconfig"]:
         os.makedirs(os.path.join(sdk_dir, d), exist_ok=True)
     triplet = info["triplet"]
     arch = info["arch"]
-    sysroot_path = os.path.join(sdk_dir, "sysroot").replace("\\", "/")
     # toolchain.cmake — NO f-strings, use concatenation
     tc = []
     tc.append("# EoS SDK Toolchain for " + triplet)
@@ -96,9 +198,23 @@ def generate_sdk(target, output_dir, hardware_file=None):
     with open(os.path.join(sdk_dir, "sdk-info.txt"), "w") as f:
         f.write("\n".join(si) + "\n")
     # manifest.json
-    manifest = {"product": "eos-" + target, "target": {"name": target, "arch": arch, "cpu": info["cpu"],
-        "triplet": triplet, "vendor": info["vendor"], "soc": info["soc"], "class": info["class"]},
-        "network": {"default_ip": "192.168.1.100", "ebot_port": 8420}}
+    # manifest.json
+    manifest = {
+        "product": "eos-" + target,
+        "target": {
+            "name": target,
+            "arch": arch,
+            "cpu": info["cpu"],
+            "triplet": triplet,
+            "vendor": info["vendor"],
+            "soc": info["soc"],
+            "class": info["class"],
+        },
+        "network": {
+            "default_ip": "192.168.1.100",
+            "ebot_port": 8420,
+        },
+    }
     with open(os.path.join(output_dir, "manifest.json"), "w") as f:
         json.dump(manifest, f, indent=2)
     # Generate eboot board config for this target
@@ -189,13 +305,15 @@ def generate_sdk(target, output_dir, hardware_file=None):
     print("  Location: " + sdk_dir)
     return sdk_dir
 
+
 def list_targets():
     print("Supported EoS SDK targets:\n")
-    print("  %-15s %-10s %-10s %-12s %-15s %s" % ("Target","Arch","Vendor","SoC","CPU","Class"))
+    print("  %-15s %-10s %-10s %-12s %-15s %s" % ("Target", "Arch", "Vendor", "SoC", "CPU", "Class"))
     print("  " + "-"*15 + " " + "-"*10 + " " + "-"*10 + " " + "-"*12 + " " + "-"*15 + " " + "-"*10)
     for name in sorted(TARGET_ARCH.keys()):
         i = TARGET_ARCH[name]
         print("  %-15s %-10s %-10s %-12s %-15s %s" % (name, i["arch"], i["vendor"], i["soc"], i["cpu"], i["class"]))
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description="EoS SDK Generator")
