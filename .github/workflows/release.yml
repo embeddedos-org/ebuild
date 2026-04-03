@@ -51,11 +51,7 @@ jobs:
         run: |
           mkdir -p dist/sdk
           ebuild sdk --target ${{ matrix.target }} --output dist/sdk/ 2>/dev/null || {
-            python -c "
-from ebuild.sdk_generator import SDKGenerator
-gen = SDKGenerator()
-gen.generate('${{ matrix.target }}', 'dist/sdk/')
-" 2>/dev/null || {
+            python -c "from ebuild.sdk_generator import SDKGenerator; gen = SDKGenerator(); gen.generate('${{ matrix.target }}', 'dist/sdk/')" 2>/dev/null || {
               mkdir -p dist/sdk/{include,cmake,doc}
               cp -r sdk/include/* dist/sdk/include/ 2>/dev/null || true
               echo "ebuild SDK ${{ steps.version.outputs.version }} - ${{ matrix.target }}" > dist/sdk/doc/sdk-info.txt
@@ -93,11 +89,7 @@ gen.generate('${{ matrix.target }}', 'dist/sdk/')
         run: |
           mkdir -p dist
           ebuild package --target ${{ matrix.target }} --version ${{ steps.version.outputs.version }} --output dist/ 2>/dev/null || {
-            python -c "
-from ebuild.deliverable_packager import DeliverablePackager
-pkg = DeliverablePackager()
-pkg.package('${{ matrix.target }}', '${{ steps.version.outputs.version }}', 'dist/')
-" 2>/dev/null || {
+            python -c "from ebuild.deliverable_packager import DeliverablePackager; pkg = DeliverablePackager(); pkg.package('${{ matrix.target }}', '${{ steps.version.outputs.version }}', 'dist/')" 2>/dev/null || {
               mkdir -p dist/deliverable/{source,sdk,libs,docs}
               cp -r sdk/ dist/deliverable/sdk/ 2>/dev/null || true
               echo "EoS Platform Deliverable v${{ steps.version.outputs.version }} - ${{ matrix.target }}" > dist/deliverable/docs/README.md
