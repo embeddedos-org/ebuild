@@ -59,7 +59,7 @@ jobs:
           mkdir -p staging
           find build -name "*.a" -exec cp {} staging/ \; 2>/dev/null || true
           tar czf ebuild-${{ steps.version.outputs.version }}-${{ matrix.arch }}.tar.gz -C staging .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ebuild-${{ matrix.arch }}
           path: "*.tar.gz"
