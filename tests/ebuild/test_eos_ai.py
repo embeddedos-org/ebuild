@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MIT
+﻿# SPDX-License-Identifier: MIT
 # Copyright (c) 2026 EoS Project
 
 """Unit tests for ebuild EoS AI module.
@@ -23,10 +23,6 @@ if __name__ == "__main__":
 from ebuild.eos_ai.eos_hw_analyzer import (
     EosHardwareAnalyzer, HardwareProfile, PeripheralInfo, PinMapping, MemoryRegion
 )
-
-
-@pytest.mark.ebuild
-import pytest
 
 
 @pytest.mark.ebuild
@@ -138,11 +134,11 @@ class TestHardwareAnalyzer:
         profile.peripherals.append(PeripheralInfo(name="UART", peripheral_type="uart"))
         prompt = self.analyzer.generate_prompt(profile)
         assert "STM32H7" in prompt
-@pytest.mark.ebuild
         assert "cortex-m7" in prompt
         assert "uart" in prompt
 
 
+@pytest.mark.ebuild
 class TestHardwareProfile:
     """Tests for HardwareProfile dataclass."""
 
@@ -176,12 +172,12 @@ class TestHardwareProfile:
         profile = HardwareProfile()
         assert profile.mcu == ""
         assert profile.flash_size == 0
-@pytest.mark.ebuild
-@pytest.mark.integration
         assert len(profile.peripherals) == 0
         assert profile.confidence == 0.0
 
 
+@pytest.mark.ebuild
+@pytest.mark.integration
 class TestEosAIIntegration:
     """Integration tests for the full EoS AI pipeline."""
 
@@ -192,7 +188,7 @@ class TestEosAIIntegration:
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
     def test_stm32h7_full_pipeline(self):
-        """Full pipeline: text → analyze → profile → enables."""
+        """Full pipeline: text -> analyze -> profile -> enables."""
         analyzer = EosHardwareAnalyzer()
         profile = analyzer.interpret_text(
             "STM32H7 with 2MB flash, 1MB SRAM, 480 MHz, "
@@ -247,7 +243,7 @@ if __name__ == "__main__":
                     print(f"  PASS: {TestClass.__name__}.{method_name}")
                 except Exception as e:
                     failed += 1
-                    print(f"  FAIL: {TestClass.__name__}.{method_name} — {e}")
+                    print(f"  FAIL: {TestClass.__name__}.{method_name} -- {e}")
                     traceback.print_exc()
                 finally:
                     if hasattr(instance, "teardown_method"):
