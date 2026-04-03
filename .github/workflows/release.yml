@@ -106,7 +106,7 @@ jobs:
           pip install build
           python -m build
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: ebuild-*
           merge-multiple: true
