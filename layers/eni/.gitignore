@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+build_test/
+*.o
+*.a
+*.elf
+*.bin
+*.hex
+*.map
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*~
+
+# EoS integration
+.eos/
+
+# OS files
+.DS_Store
+Thumbs.db

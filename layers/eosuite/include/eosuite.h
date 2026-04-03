@@ -1,0 +1,26 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 EoS Project
+// ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
+
+#ifndef EOSUITE_H
+#define EOSUITE_H
+
+#define EOSUITE_VERSION "1.1.0"
+#define EOSUITE_NAME    "EOSUITE"
+
+#define MAX_INPUT_LEN     256
+#define MAX_PATH_LEN      512
+#define MAX_SESSIONS      64
+
+typedef enum {
+    APP_MENU = 0,
+    APP_SSH, APP_SERIAL, APP_SESSIONS,
+    APP_CALCULATOR, APP_TIMER, APP_NOTEPAD, APP_HEX_VIEWER,
+    APP_EGUARD, APP_EWEB, APP_EZIP, APP_ECLEANER,
+    APP_EVPN, APP_ECHAT, APP_EPAINT, APP_EPLAY,
+    APP_EBUFFER, APP_ECONVERTER,
+    APP_ECLOCK,
+    APP_SNAKE, APP_EXIT
+} AppModule;
+
+#endif /* EOSUITE_H */

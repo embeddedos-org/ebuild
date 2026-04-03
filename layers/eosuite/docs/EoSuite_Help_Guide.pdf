@@ -1,0 +1,521 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [5 0 R 7 0 R 9 0 R 11 0 R 13 0 R 15 0 R 17 0 R] /Count 7 >>
+endobj
+3 0 obj
+2 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>
+endobj
+endobj
+4 0 obj
+3 0 obj
+<< /Length 3837 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm (================================================================================) Tj
+1 0 0 1 40 740 Tm (                        EoSuite v1.1.0 ? Help Guide) Tj
+1 0 0 1 40 728 Tm (               Super Lightweight Terminal Suite with 23+ Tools) Tj
+1 0 0 1 40 716 Tm (================================================================================) Tj
+1 0 0 1 40 704 Tm () Tj
+1 0 0 1 40 692 Tm (TABLE OF CONTENTS) Tj
+1 0 0 1 40 680 Tm (-----------------) Tj
+1 0 0 1 40 668 Tm (  1. Getting Started) Tj
+1 0 0 1 40 656 Tm (  2. Main Window Layout) Tj
+1 0 0 1 40 644 Tm (  3. Keyboard Shortcuts) Tj
+1 0 0 1 40 632 Tm (  4. Terminal & Sessions) Tj
+1 0 0 1 40 620 Tm (  5. Tool Reference \(23 Apps\)) Tj
+1 0 0 1 40 608 Tm (  6. Theme & View Options) Tj
+1 0 0 1 40 596 Tm (  7. CI / Testing) Tj
+1 0 0 1 40 584 Tm (  8. Troubleshooting) Tj
+1 0 0 1 40 572 Tm (  9. License & Credits) Tj
+1 0 0 1 40 560 Tm () Tj
+1 0 0 1 40 548 Tm (================================================================================) Tj
+1 0 0 1 40 536 Tm (1. GETTING STARTED) Tj
+1 0 0 1 40 524 Tm (================================================================================) Tj
+1 0 0 1 40 512 Tm () Tj
+1 0 0 1 40 500 Tm (  System Requirements:) Tj
+1 0 0 1 40 488 Tm (    - Python 3.10 or higher \(with tkinter\)) Tj
+1 0 0 1 40 476 Tm (    - Windows 10/11, macOS 12+, or Linux \(Ubuntu 20.04+\)) Tj
+1 0 0 1 40 464 Tm () Tj
+1 0 0 1 40 452 Tm (  Run from Source:) Tj
+1 0 0 1 40 440 Tm (    $ git clone https://github.com/embeddedos-org/EoSuite.git) Tj
+1 0 0 1 40 428 Tm (    $ cd EoSuite) Tj
+1 0 0 1 40 416 Tm (    $ python EoSuite_GUI.py) Tj
+1 0 0 1 40 404 Tm () Tj
+1 0 0 1 40 392 Tm (  Download Binary:) Tj
+1 0 0 1 40 380 Tm (    Visit https://github.com/embeddedos-org/EoSuite/releases) Tj
+1 0 0 1 40 368 Tm (    - Windows: EoSuite-windows-x64.exe \(portable, no install\)) Tj
+1 0 0 1 40 356 Tm (    - macOS:   EoSuite-macos-arm64.dmg) Tj
+1 0 0 1 40 344 Tm (    - Linux:   EoSuite-linux-x64.deb or EoSuite-linux-x64) Tj
+1 0 0 1 40 332 Tm () Tj
+1 0 0 1 40 320 Tm (================================================================================) Tj
+1 0 0 1 40 308 Tm (2. MAIN WINDOW LAYOUT) Tj
+1 0 0 1 40 296 Tm (================================================================================) Tj
+1 0 0 1 40 284 Tm () Tj
+1 0 0 1 40 272 Tm (  EoSuite uses a MobaXterm-style layout with these components:) Tj
+1 0 0 1 40 260 Tm () Tj
+1 0 0 1 40 248 Tm (  +---------------------------------------------------------------+) Tj
+1 0 0 1 40 236 Tm (  | Menu Bar: Terminal | Sessions | View | Tools | Games | Help   |) Tj
+1 0 0 1 40 224 Tm (  +---------------------------------------------------------------+) Tj
+1 0 0 1 40 212 Tm (  | Toolbar: Session | Servers | Tools | Games | View | Theme     |) Tj
+1 0 0 1 40 200 Tm (  +---------------------------------------------------------------+) Tj
+1 0 0 1 40 188 Tm (  | Sidebar   |  Tabbed Workspace                                 |) Tj
+1 0 0 1 40 176 Tm (  | \(Sessions\)|  [Home] [Terminal] [eCal] [eWeb] ...              |) Tj
+1 0 0 1 40 164 Tm (  |           |                                                    |) Tj
+1 0 0 1 40 152 Tm (  | SSH       |  Active tool or terminal content                   |) Tj
+1 0 0 1 40 140 Tm (  | Serial    |                                                    |) Tj
+1 0 0 1 40 128 Tm (  | Local     |                                                    |) Tj
+1 0 0 1 40 116 Tm (  +-----------+----------------------------------------------------+) Tj
+1 0 0 1 40 104 Tm (  | Status Bar: Ready                            Dark Theme        |) Tj
+1 0 0 1 40 92 Tm (  +---------------------------------------------------------------+) Tj
+1 0 0 1 40 80 Tm () Tj
+1 0 0 1 40 68 Tm (  Sidebar:) Tj
+1 0 0 1 40 56 Tm (    - Collapsible panel on the left) Tj
+ET
+endstream
+endobj
+endobj
+5 0 obj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+6 0 obj
+5 0 obj
+<< /Length 3462 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm (    - Shows saved SSH, Serial, and Local sessions) Tj
+1 0 0 1 40 740 Tm (    - Double-click a session to reconnect) Tj
+1 0 0 1 40 728 Tm (    - Toggle with Ctrl+B) Tj
+1 0 0 1 40 716 Tm () Tj
+1 0 0 1 40 704 Tm (  Tabs:) Tj
+1 0 0 1 40 692 Tm (    - Right-click any tab for: Pop-out, Duplicate, Close) Tj
+1 0 0 1 40 680 Tm (    - Drag tabs to reorder \(future feature\)) Tj
+1 0 0 1 40 668 Tm () Tj
+1 0 0 1 40 656 Tm (  Split View:) Tj
+1 0 0 1 40 644 Tm (    - View menu > Single / Horizontal / Vertical / Quad) Tj
+1 0 0 1 40 632 Tm (    - Assign any tool to any pane) Tj
+1 0 0 1 40 620 Tm () Tj
+1 0 0 1 40 608 Tm (  Pop-out Windows:) Tj
+1 0 0 1 40 596 Tm (    - Right-click tab > Pop-out to Window) Tj
+1 0 0 1 40 584 Tm (    - Each pop-out has: re-attach, fullscreen, stay-on-top) Tj
+1 0 0 1 40 572 Tm () Tj
+1 0 0 1 40 560 Tm (================================================================================) Tj
+1 0 0 1 40 548 Tm (3. KEYBOARD SHORTCUTS) Tj
+1 0 0 1 40 536 Tm (================================================================================) Tj
+1 0 0 1 40 524 Tm () Tj
+1 0 0 1 40 512 Tm (  Ctrl+N / Ctrl+T     New local terminal) Tj
+1 0 0 1 40 500 Tm (  Ctrl+Shift+S        New SSH session dialog) Tj
+1 0 0 1 40 488 Tm (  Ctrl+B              Toggle sidebar) Tj
+1 0 0 1 40 476 Tm (  Ctrl+W              Close current tab) Tj
+1 0 0 1 40 464 Tm (  F11                 Toggle fullscreen) Tj
+1 0 0 1 40 452 Tm (  Alt+F4              Exit application) Tj
+1 0 0 1 40 440 Tm () Tj
+1 0 0 1 40 428 Tm (================================================================================) Tj
+1 0 0 1 40 416 Tm (4. TERMINAL & SESSIONS) Tj
+1 0 0 1 40 404 Tm (================================================================================) Tj
+1 0 0 1 40 392 Tm () Tj
+1 0 0 1 40 380 Tm (  LOCAL TERMINAL) Tj
+1 0 0 1 40 368 Tm (    Menu: Terminal > New Local Terminal \(or Ctrl+N\)) Tj
+1 0 0 1 40 356 Tm (    Opens a system shell \(cmd/PowerShell on Windows, bash on Linux/macOS\)) Tj
+1 0 0 1 40 344 Tm () Tj
+1 0 0 1 40 332 Tm (  SSH CLIENT) Tj
+1 0 0 1 40 320 Tm (    Menu: Terminal > New SSH Session \(or Ctrl+Shift+S\)) Tj
+1 0 0 1 40 308 Tm (    Quick-connect format: user@hostname:port) Tj
+1 0 0 1 40 296 Tm (    Supports: identity file \(-i\), custom port \(-p\)) Tj
+1 0 0 1 40 284 Tm (    Sessions are saved automatically to ~/.eosuite/sessions.json) Tj
+1 0 0 1 40 272 Tm () Tj
+1 0 0 1 40 260 Tm (  SERIAL TERMINAL) Tj
+1 0 0 1 40 248 Tm (    Menu: Terminal > New Serial Connection) Tj
+1 0 0 1 40 236 Tm (    Auto-detects COM ports \(Windows\) or /dev/ttyUSB* \(Linux\)) Tj
+1 0 0 1 40 224 Tm (    Baud rates: 9600, 19200, 38400, 57600, 115200, 230400, 460800, 921600) Tj
+1 0 0 1 40 212 Tm () Tj
+1 0 0 1 40 200 Tm (  SESSION MANAGER) Tj
+1 0 0 1 40 188 Tm (    Menu: Sessions > Manage Sessions) Tj
+1 0 0 1 40 176 Tm (    - View all saved sessions \(SSH, Serial, Local\)) Tj
+1 0 0 1 40 164 Tm (    - Search by name or connection string) Tj
+1 0 0 1 40 152 Tm (    - Remove old sessions) Tj
+1 0 0 1 40 140 Tm (    - Sessions persist in JSON format) Tj
+1 0 0 1 40 128 Tm () Tj
+1 0 0 1 40 116 Tm (================================================================================) Tj
+1 0 0 1 40 104 Tm (5. TOOL REFERENCE) Tj
+1 0 0 1 40 92 Tm (================================================================================) Tj
+1 0 0 1 40 80 Tm () Tj
+1 0 0 1 40 68 Tm (  Access all tools from: Menu > Tools) Tj
+1 0 0 1 40 56 Tm () Tj
+ET
+endstream
+endobj
+endobj
+7 0 obj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 6 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+8 0 obj
+7 0 obj
+<< /Length 4603 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 740 Tm (  eCal ? Calculator                                           Menu: Tools) Tj
+1 0 0 1 40 728 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 716 Tm (    Modes: Basic, Scientific, Tax) Tj
+1 0 0 1 40 704 Tm (    Basic: Type expressions like 2+3*4, press = or Enter) Tj
+1 0 0 1 40 692 Tm (    Scientific: sin, cos, tan, log, sqrt, pi, e, factorial) Tj
+1 0 0 1 40 680 Tm (    Tax: Enter income, select tax brackets, calculate liability) Tj
+1 0 0 1 40 668 Tm (    Safe eval: Only allows math operations \(no code injection\)) Tj
+1 0 0 1 40 656 Tm () Tj
+1 0 0 1 40 644 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 632 Tm (  eTimer ? Stopwatch & Countdown                              Menu: Tools) Tj
+1 0 0 1 40 620 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 608 Tm (    Stopwatch: Start/Stop/Reset with lap times) Tj
+1 0 0 1 40 596 Tm (    Countdown: Set hours:minutes:seconds, counts down to zero) Tj
+1 0 0 1 40 584 Tm (    Display: Large digital format HH:MM:SS.mmm) Tj
+1 0 0 1 40 572 Tm () Tj
+1 0 0 1 40 560 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 548 Tm (  eClock ? World Clock                                        Menu: Tools) Tj
+1 0 0 1 40 536 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 524 Tm (    Shows live time for multiple cities worldwide) Tj
+1 0 0 1 40 512 Tm (    37 pre-configured timezones \(UTC-10 to UTC+12\)) Tj
+1 0 0 1 40 500 Tm (    Default cities: New York, London, Tokyo, Sydney, Mumbai,) Tj
+1 0 0 1 40 488 Tm (                    Berlin, Sao Paulo, Los Angeles, Dubai, Singapore) Tj
+1 0 0 1 40 476 Tm (    Add/Remove: Select from dropdown, click Add/Remove) Tj
+1 0 0 1 40 464 Tm (    Analog clock: Shows hour/minute/second hands for selected city) Tj
+1 0 0 1 40 452 Tm (    Click a city row to switch the analog display) Tj
+1 0 0 1 40 440 Tm () Tj
+1 0 0 1 40 428 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 416 Tm (  eNote ? Text Editor                                         Menu: Tools) Tj
+1 0 0 1 40 404 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 392 Tm (    Features: New, Open, Save, Save As, Find, Replace, Word Count) Tj
+1 0 0 1 40 380 Tm (    Supports: .txt files, undo/redo, line/column display) Tj
+1 0 0 1 40 368 Tm (    Find: Case-insensitive search with highlight) Tj
+1 0 0 1 40 356 Tm (    Replace: Find and replace all occurrences) Tj
+1 0 0 1 40 344 Tm (    Status bar: Shows Ln, Col, character count) Tj
+1 0 0 1 40 332 Tm () Tj
+1 0 0 1 40 320 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 308 Tm (  eViewer ? Hex Inspector                                     Menu: Tools) Tj
+1 0 0 1 40 296 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 284 Tm (    Opens any file in hex view with color-coded bytes:) Tj
+1 0 0 1 40 272 Tm (      Blue   = offset column) Tj
+1 0 0 1 40 260 Tm (      Green  = printable ASCII \(0x20-0x7E\)) Tj
+1 0 0 1 40 248 Tm (      Orange = high bytes \(> 0x7F\)) Tj
+1 0 0 1 40 236 Tm (      Red    = control characters \(0x01-0x1F\)) Tj
+1 0 0 1 40 224 Tm (      Gray   = null bytes \(0x00\)) Tj
+1 0 0 1 40 212 Tm (    Go to offset: Enter hex address to jump) Tj
+1 0 0 1 40 200 Tm () Tj
+1 0 0 1 40 188 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 176 Tm (  eConverter ? Format Converter                               Menu: Tools) Tj
+1 0 0 1 40 164 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 152 Tm (    Text:  Upper, Lower, Sort lines, Unique, Reverse) Tj
+1 0 0 1 40 140 Tm (    Encoding: Base64 encode/decode, Hex encode/decode) Tj
+1 0 0 1 40 128 Tm (    Data: CSV to JSON, JSON to CSV, JSON format/minify) Tj
+1 0 0 1 40 116 Tm (    Docs: Text to PDF, Markdown to HTML) Tj
+1 0 0 1 40 104 Tm (    Files: DOCX to Text, Image resize \(requires Pillow\)) Tj
+1 0 0 1 40 92 Tm (    16+ conversion types with file input/output) Tj
+1 0 0 1 40 80 Tm () Tj
+1 0 0 1 40 68 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 56 Tm (  eGuard ? Keep Awake                                         Menu: Tools) Tj
+ET
+endstream
+endobj
+endobj
+9 0 obj
+8 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 8 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+10 0 obj
+9 0 obj
+<< /Length 4552 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 740 Tm (    Prevents screen sleep / screensaver activation) Tj
+1 0 0 1 40 728 Tm (    Windows: Uses SetThreadExecutionState API) Tj
+1 0 0 1 40 716 Tm (    macOS/Linux: Background thread activity) Tj
+1 0 0 1 40 704 Tm (    Toggle: Click Activate/Deactivate button) Tj
+1 0 0 1 40 692 Tm (    Status indicator: Green circle = active) Tj
+1 0 0 1 40 680 Tm () Tj
+1 0 0 1 40 668 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 656 Tm (  eWeb ? Web Browser                                          Menu: Tools) Tj
+1 0 0 1 40 644 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 632 Tm (    Rich HTML rendering with styled text \(headings, bold, italic, links\)) Tj
+1 0 0 1 40 620 Tm (    Navigation: Back, Forward, Refresh, Home \(google.com\)) Tj
+1 0 0 1 40 608 Tm (    Clickable links: Click to navigate, right-click for options) Tj
+1 0 0 1 40 596 Tm (    Pop-out: Open pages in separate windows) Tj
+1 0 0 1 40 584 Tm (    Status bar: Shows current URL and link preview on hover) Tj
+1 0 0 1 40 572 Tm () Tj
+1 0 0 1 40 560 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 548 Tm (  eZip ? Archive Manager                                      Menu: Tools) Tj
+1 0 0 1 40 536 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 524 Tm (    Supports: ZIP \(read/write/append\), TAR/TAR.GZ \(read/extract\)) Tj
+1 0 0 1 40 512 Tm (    Open: Browse and view archive contents) Tj
+1 0 0 1 40 500 Tm (    Create: Select files > create new ZIP archive) Tj
+1 0 0 1 40 488 Tm (    Extract: Extract all to chosen directory) Tj
+1 0 0 1 40 476 Tm (    Add: Append files to existing ZIP) Tj
+1 0 0 1 40 464 Tm () Tj
+1 0 0 1 40 452 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 440 Tm (  eCleaner ? Disk Cleanup                                     Menu: Tools) Tj
+1 0 0 1 40 428 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 416 Tm (    Categories: Temp files, Python cache, Log files,) Tj
+1 0 0 1 40 404 Tm (                Clipboard, Browser cache, Recycle bin) Tj
+1 0 0 1 40 392 Tm (    Workflow: Check categories > Scan > Review size > Clean) Tj
+1 0 0 1 40 380 Tm (    Shows total reclaimable space before cleaning) Tj
+1 0 0 1 40 368 Tm (    Safe: Confirms before deleting) Tj
+1 0 0 1 40 356 Tm () Tj
+1 0 0 1 40 344 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 332 Tm (  eVPN ? VPN & Proxy Manager                                  Menu: Tools) Tj
+1 0 0 1 40 320 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 308 Tm (    VPN Connect: OpenVPN, WireGuard, IKEv2, L2TP) Tj
+1 0 0 1 40 296 Tm (    SSH SOCKS Proxy: Creates SOCKS5 tunnel through SSH) Tj
+1 0 0 1 40 284 Tm (    Free Proxies: Fetches public SOCKS5/HTTP proxy lists) Tj
+1 0 0 1 40 272 Tm (    Country filter: US, GB, DE, FR, JP, KR, IN, BR, and more) Tj
+1 0 0 1 40 260 Tm (    Check IP: Verifies your public IP address) Tj
+1 0 0 1 40 248 Tm () Tj
+1 0 0 1 40 236 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 224 Tm (  eChat ? Chat Interface                                      Menu: Tools) Tj
+1 0 0 1 40 212 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 200 Tm (    Local chat with echo bot for testing) Tj
+1 0 0 1 40 188 Tm (    Commands: /help, /clear, /time, /name <new_name>) Tj
+1 0 0 1 40 176 Tm (    Custom username: Set in the header bar) Tj
+1 0 0 1 40 164 Tm (    Color-coded: Timestamps \(blue\), usernames \(green\), system \(gray\)) Tj
+1 0 0 1 40 152 Tm () Tj
+1 0 0 1 40 140 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 128 Tm (  ePaint ? Drawing Canvas                                     Menu: Tools) Tj
+1 0 0 1 40 116 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 104 Tm (    Tools: Brush, Rectangle, Oval, Line, Eraser) Tj
+1 0 0 1 40 92 Tm (    Colors: 8 quick-select colors + full color picker) Tj
+1 0 0 1 40 80 Tm (    Brush size: Adjustable slider \(1-20\)) Tj
+1 0 0 1 40 68 Tm (    Save: Export as PostScript \(.ps\) file) Tj
+1 0 0 1 40 56 Tm (    Clear: Wipe entire canvas) Tj
+ET
+endstream
+endobj
+endobj
+11 0 obj
+10 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+12 0 obj
+11 0 obj
+<< /Length 4566 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm () Tj
+1 0 0 1 40 740 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 728 Tm (  ePlay ? Media Player                                        Menu: Tools) Tj
+1 0 0 1 40 716 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 704 Tm (    Opens media files with system default player) Tj
+1 0 0 1 40 692 Tm (    Controls: Play/Pause, Stop, Rewind, Forward, Prev, Next) Tj
+1 0 0 1 40 680 Tm (    Volume: Adjustable slider \(0-100\)) Tj
+1 0 0 1 40 668 Tm (    Playlist: Add multiple files, double-click to select) Tj
+1 0 0 1 40 656 Tm (    Formats: MP3, WAV, OGG, FLAC, MP4, AVI, MKV) Tj
+1 0 0 1 40 644 Tm () Tj
+1 0 0 1 40 632 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 620 Tm (  eBuffer ? Clipboard Manager                                 Menu: Tools) Tj
+1 0 0 1 40 608 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 596 Tm (    Captures clipboard content automatically \(every 2 seconds\)) Tj
+1 0 0 1 40 584 Tm (    20 slots maximum, newest first) Tj
+1 0 0 1 40 572 Tm (    Actions per slot: Copy back, Preview, Delete) Tj
+1 0 0 1 40 560 Tm (    Deduplication: Won't capture same content twice in a row) Tj
+1 0 0 1 40 548 Tm (    Clear All: Removes all slots \(with confirmation\)) Tj
+1 0 0 1 40 536 Tm () Tj
+1 0 0 1 40 524 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 512 Tm (  ePDF ? PDF Viewer                                           Menu: Tools) Tj
+1 0 0 1 40 500 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 488 Tm (    Opens PDF files and extracts text for display) Tj
+1 0 0 1 40 476 Tm (    Page navigation: Previous / Next with page counter) Tj
+1 0 0 1 40 464 Tm (    Find: Search text within the current page) Tj
+1 0 0 1 40 452 Tm (    Save Text: Export extracted text to .txt file) Tj
+1 0 0 1 40 440 Tm (    Backends: pypdf, PyMuPDF, pdftotext, built-in parser) Tj
+1 0 0 1 40 428 Tm () Tj
+1 0 0 1 40 416 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 404 Tm (  eFTP ? File Transfer Client                                 Menu: Tools) Tj
+1 0 0 1 40 392 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 380 Tm (    FileZilla-style dual-pane layout) Tj
+1 0 0 1 40 368 Tm (    Left pane: Local files with size and date) Tj
+1 0 0 1 40 356 Tm (    Right pane: Remote files via SSH \(ls -la\)) Tj
+1 0 0 1 40 344 Tm (    Transfer: Upload \(local > remote\), Download \(remote > local\)) Tj
+1 0 0 1 40 332 Tm (    Actions: Delete remote, Create directory) Tj
+1 0 0 1 40 320 Tm (    Protocols: SFTP, FTP, SCP) Tj
+1 0 0 1 40 308 Tm () Tj
+1 0 0 1 40 296 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 284 Tm (  eTunnel ? SSH Tunneling                                     Menu: Tools) Tj
+1 0 0 1 40 272 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 260 Tm (    Types: Local \(-L\), Remote \(-R\), Dynamic SOCKS \(-D\)) Tj
+1 0 0 1 40 248 Tm (    Command preview: Shows exact SSH command before executing) Tj
+1 0 0 1 40 236 Tm (    Multiple tunnels: Run several tunnels simultaneously) Tj
+1 0 0 1 40 224 Tm (    Log: Shows connection status and errors) Tj
+1 0 0 1 40 212 Tm () Tj
+1 0 0 1 40 200 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 188 Tm (  eVirusTower ? Malware Scanner                               Menu: Tools) Tj
+1 0 0 1 40 176 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 164 Tm (    Scans files for known malware signatures \(MD5 hashes\)) Tj
+1 0 0 1 40 152 Tm (    Pattern detection: cmd.exe del, WScript.Shell, powershell -enc) Tj
+1 0 0 1 40 140 Tm (    EICAR test file detection) Tj
+1 0 0 1 40 128 Tm (    Suspicious extensions: .exe, .bat, .vbs, .ps1, .scr) Tj
+1 0 0 1 40 116 Tm (    Report export: Save scan results to text file) Tj
+1 0 0 1 40 104 Tm () Tj
+1 0 0 1 40 92 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 80 Tm (  eVNC ? Remote Desktop Viewer                                Menu: Tools) Tj
+1 0 0 1 40 68 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 56 Tm (    Connects to VNC servers using system VNC client) Tj
+ET
+endstream
+endobj
+endobj
+13 0 obj
+12 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 12 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+14 0 obj
+13 0 obj
+<< /Length 3597 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm (    Supported: TigerVNC, TightVNC, RealVNC, UltraVNC) Tj
+1 0 0 1 40 740 Tm (    Quality: Low/Medium/High/Lossless) Tj
+1 0 0 1 40 728 Tm (    Options: Fullscreen, View-only mode) Tj
+1 0 0 1 40 716 Tm (    SSH Tunnel + VNC: Create encrypted tunnel first, then connect) Tj
+1 0 0 1 40 704 Tm (    Saved connections: Store host/port/display for quick access) Tj
+1 0 0 1 40 692 Tm () Tj
+1 0 0 1 40 680 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 668 Tm (  Snake ? Classic Game                                       Menu: Games) Tj
+1 0 0 1 40 656 Tm (  --------------------------------------------------------------------------) Tj
+1 0 0 1 40 644 Tm (    Grid: 30x20 with adjustable speed) Tj
+1 0 0 1 40 632 Tm (    Controls: Arrow keys or WASD) Tj
+1 0 0 1 40 620 Tm (    Features: Score tracking, high score, food placement) Tj
+1 0 0 1 40 608 Tm (    Reset: Start new game anytime) Tj
+1 0 0 1 40 596 Tm () Tj
+1 0 0 1 40 584 Tm (================================================================================) Tj
+1 0 0 1 40 572 Tm (6. THEME & VIEW OPTIONS) Tj
+1 0 0 1 40 560 Tm (================================================================================) Tj
+1 0 0 1 40 548 Tm () Tj
+1 0 0 1 40 536 Tm (  Toggle Theme:) Tj
+1 0 0 1 40 524 Tm (    Menu: Settings > Toggle Theme) Tj
+1 0 0 1 40 512 Tm (    Or click the theme button on the toolbar) Tj
+1 0 0 1 40 500 Tm (    Switches between Dark \(VS Code style\) and Light mode) Tj
+1 0 0 1 40 488 Tm () Tj
+1 0 0 1 40 476 Tm (  Split View:) Tj
+1 0 0 1 40 464 Tm (    Menu: View > Split Horizontal / Vertical / Quad / Single) Tj
+1 0 0 1 40 452 Tm (    Assign any open tool to any pane) Tj
+1 0 0 1 40 440 Tm () Tj
+1 0 0 1 40 428 Tm (  Pop-out Windows:) Tj
+1 0 0 1 40 416 Tm (    Right-click any tab > Pop-out to Window) Tj
+1 0 0 1 40 404 Tm (    Pop-out windows support: Re-attach, Fullscreen, Stay on top) Tj
+1 0 0 1 40 392 Tm () Tj
+1 0 0 1 40 380 Tm (  Toggle Sidebar:  Ctrl+B or Menu: View > Toggle Sidebar) Tj
+1 0 0 1 40 368 Tm (  Toggle Toolbar:  Ctrl+B or Menu: View > Toggle Toolbar) Tj
+1 0 0 1 40 356 Tm (  Full Screen:     F11) Tj
+1 0 0 1 40 344 Tm () Tj
+1 0 0 1 40 332 Tm (================================================================================) Tj
+1 0 0 1 40 320 Tm (7. CI / TESTING) Tj
+1 0 0 1 40 308 Tm (================================================================================) Tj
+1 0 0 1 40 296 Tm () Tj
+1 0 0 1 40 284 Tm (  Run Tests:) Tj
+1 0 0 1 40 272 Tm (    $ pip install -r requirements-dev.txt) Tj
+1 0 0 1 40 260 Tm (    $ python -m pytest tests/ -v) Tj
+1 0 0 1 40 248 Tm () Tj
+1 0 0 1 40 236 Tm (  Test Coverage: 28 test files, 400+ test cases) Tj
+1 0 0 1 40 224 Tm (  CI Pipeline: GitHub Actions ? flake8 lint + pytest) Tj
+1 0 0 1 40 212 Tm (  Matrix: Ubuntu / Windows / macOS x Python 3.11 / 3.12) Tj
+1 0 0 1 40 200 Tm () Tj
+1 0 0 1 40 188 Tm (  Run headless tests \(no display\):) Tj
+1 0 0 1 40 176 Tm (    $ python -m pytest tests/ -v -m "not gui") Tj
+1 0 0 1 40 164 Tm () Tj
+1 0 0 1 40 152 Tm (================================================================================) Tj
+1 0 0 1 40 140 Tm (8. TROUBLESHOOTING) Tj
+1 0 0 1 40 128 Tm (================================================================================) Tj
+1 0 0 1 40 116 Tm () Tj
+1 0 0 1 40 104 Tm (  "No module named tkinter":) Tj
+1 0 0 1 40 92 Tm (    Install Python from python.org \(includes tkinter by default\)) Tj
+1 0 0 1 40 80 Tm (    Linux: sudo apt install python3-tk) Tj
+1 0 0 1 40 68 Tm () Tj
+1 0 0 1 40 56 Tm (  SSH connection fails:) Tj
+ET
+endstream
+endobj
+endobj
+15 0 obj
+14 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 14 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+16 0 obj
+15 0 obj
+<< /Length 1981 >>
+stream
+BT /Courier 9 Tf
+1 0 0 1 40 752 Tm (    Ensure ssh client is installed and in PATH) Tj
+1 0 0 1 40 740 Tm (    Check hostname, port, and credentials) Tj
+1 0 0 1 40 728 Tm () Tj
+1 0 0 1 40 716 Tm (  Serial port not detected:) Tj
+1 0 0 1 40 704 Tm (    Windows: Check Device Manager for COM ports) Tj
+1 0 0 1 40 692 Tm (    Linux: Ensure user is in 'dialout' group) Tj
+1 0 0 1 40 680 Tm (    macOS: Check /dev/tty.* devices) Tj
+1 0 0 1 40 668 Tm () Tj
+1 0 0 1 40 656 Tm (  VNC viewer not found:) Tj
+1 0 0 1 40 644 Tm (    Install TigerVNC: https://tigervnc.org) Tj
+1 0 0 1 40 632 Tm (    Linux: sudo apt install tigervnc-viewer) Tj
+1 0 0 1 40 620 Tm (    macOS: brew install tiger-vnc) Tj
+1 0 0 1 40 608 Tm () Tj
+1 0 0 1 40 596 Tm (  Tests skipped \(GUI tests\):) Tj
+1 0 0 1 40 584 Tm (    GUI tests require a display. Use xvfb-run on headless Linux.) Tj
+1 0 0 1 40 572 Tm (    Non-GUI tests run with: pytest -m "not gui") Tj
+1 0 0 1 40 560 Tm () Tj
+1 0 0 1 40 548 Tm (================================================================================) Tj
+1 0 0 1 40 536 Tm (9. LICENSE & CREDITS) Tj
+1 0 0 1 40 524 Tm (================================================================================) Tj
+1 0 0 1 40 512 Tm () Tj
+1 0 0 1 40 500 Tm (  License: MIT License) Tj
+1 0 0 1 40 488 Tm (  Repository: https://github.com/embeddedos-org/EoSuite) Tj
+1 0 0 1 40 476 Tm (  Built with Python + tkinter) Tj
+1 0 0 1 40 464 Tm (  Cross-platform: Windows, macOS, Linux) Tj
+1 0 0 1 40 452 Tm () Tj
+1 0 0 1 40 440 Tm (  No external dependencies required for core functionality.) Tj
+1 0 0 1 40 428 Tm (  Optional: pypdf \(PDF reading\), Pillow \(image ops\), python-docx \(DOCX\)) Tj
+1 0 0 1 40 416 Tm () Tj
+1 0 0 1 40 404 Tm (================================================================================) Tj
+1 0 0 1 40 392 Tm (                          End of EoSuite Help Guide) Tj
+1 0 0 1 40 380 Tm (================================================================================) Tj
+ET
+endstream
+endobj
+endobj
+17 0 obj
+16 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 16 0 R /Resources << /Font << /Courier 3 0 R >> >> >>
+endobj
+endobj
+xref
+0 18
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000155 00000 n 
+0000000238 00000 n 
+0000004142 00000 n 
+0000004288 00000 n 
+0000007817 00000 n 
+0000007963 00000 n 
+0000012633 00000 n 
+0000012779 00000 n 
+0000017399 00000 n 
+0000017548 00000 n 
+0000022183 00000 n 
+0000022332 00000 n 
+0000025998 00000 n 
+0000026147 00000 n 
+0000028197 00000 n 
+trailer
+<< /Size 18 /Root 1 0 R >>
+startxref
+28346
+%%EOF

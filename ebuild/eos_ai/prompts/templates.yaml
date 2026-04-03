@@ -1,0 +1,86 @@
+system: |
+  You are an embedded systems hardware expert. You analyze hardware designs,
+  schematics, BOMs (Bill of Materials), and datasheets to extract structured
+  configuration data for the EoS embedded OS framework and eboot bootloader.
+
+  You always output valid YAML. You are precise about memory addresses,
+  pin assignments, and register values.
+
+board_analysis: |
+  Analyze this hardware design and extract a board configuration.
+
+  Input: {input}
+
+  Extract the following as YAML:
+  - MCU part number and family
+  - CPU architecture and core type
+  - Clock frequency
+  - Flash size and base address
+  - RAM size and base address
+  - List of peripherals used (UART, SPI, I2C, CAN, USB, etc.)
+  - Pin assignments for each peripheral
+  - Power supply voltage
+  - Any special features (FPU, DSP, MPU, crypto accelerator)
+
+  Output format:
+  ```yaml
+  board:
+    name: <board_name>
+    mcu: <part_number>
+    family: <family>
+    arch: <arm|arm64|riscv32|riscv64|xtensa|x86_64>
+    core: <core_type>
+    clock_hz: <frequency>
+    memory:
+      flash: <bytes>
+      ram: <bytes>
+    peripherals:
+      - name: <name>
+        type: <uart|spi|i2c|can|usb|...>
+        pins:
+          - {pin: <pin_id>, function: <function>, af: <alternate_function>}
+  ```
+
+boot_config: |
+  Given this board configuration, generate an optimal eboot flash layout.
+
+  Board: {board_yaml}
+
+  Rules:
+  - stage0 must be ≤ 16KB (minimal, immutable)
+  - stage1 should be ≤ 64KB
+  - bootctl needs 4KB × 2 (primary + backup)
+  - Remaining flash split equally for slot A and slot B
+  - All regions must be aligned to flash sector boundaries
+
+  Output as boot.yaml with layout, policy, and image sections.
+
+eos_product: |
+  Given these detected peripherals and hardware features, recommend
+  the best EoS product profile.
+
+  Detected: {peripherals}
+  Architecture: {arch}
+  Features: {features}
+
+  Available profiles: automotive, industrial, medical, iot, robot,
+  gateway, wearable, drone, mobile, server, aerospace, gaming, etc.
+
+  Recommend ONE primary profile and explain why.
+  List the EOS_ENABLE_* flags that should be set.
+
+rtos_selection: |
+  Given this hardware profile, recommend the best RTOS.
+
+  MCU: {mcu} ({core})
+  RAM: {ram_size} bytes
+  Flash: {flash_size} bytes
+  Peripherals: {peripherals}
+  Use case: {use_case}
+
+  Options:
+  - FreeRTOS: lightweight, wide MCU support, MIT license
+  - Zephyr: full-featured, BLE/WiFi stack, Apache 2.0
+  - NuttX: POSIX-like, good for Linux migration, Apache 2.0
+
+  Recommend ONE and explain tradeoffs.

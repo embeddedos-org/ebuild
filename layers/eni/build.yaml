@@ -1,0 +1,9 @@
+name: eni
+version: "0.1.0"
+backend: cmake
+
+cmake:
+  build_type: Release
+  defines:
+    ENI_BUILD_TESTS: "ON"
+    ENI_EIPC_ENABLED: "ON"

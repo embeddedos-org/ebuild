@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=65.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eosuite"
+version = "1.1.0"
+description = "Super Lightweight Terminal Suite with 29+ built-in tools"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "EoS Team"}]
+keywords = ["terminal", "ssh", "serial", "gui", "tools", "vpn", "ftp", "games"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+
+[project.optional-dependencies]
+all = ["pypdf>=3.0", "Pillow>=9.0", "python-docx>=0.8"]
+
+[project.gui-scripts]
+eosuite = "gui.main_window:MainWindow.launch"
+
+[project.urls]
+Homepage = "https://github.com/embeddedos-org/EoSuite"
+Repository = "https://github.com/embeddedos-org/EoSuite"
+Documentation = "https://github.com/embeddedos-org/EoSuite#readme"
+Issues = "https://github.com/embeddedos-org/EoSuite/issues"
+
+[tool.setuptools.packages.find]
+include = ["gui*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "gui: marks tests that require display/GUI (deselect with '-m \"not gui\"')",
+]

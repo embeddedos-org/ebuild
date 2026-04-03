@@ -1,0 +1,16 @@
+# EAI — AI Layer
+# Build with: ebuild build
+# ebuild auto-detects CMakeLists.txt and uses the cmake backend.
+
+name: eai
+version: "0.1.0"
+backend: cmake
+
+cmake:
+  build_type: Release
+  defines:
+    EAI_BUILD_TESTS: "ON"
+
+toolchain:
+  compiler: gcc
+  arch: x86_64

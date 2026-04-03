@@ -1,0 +1,38 @@
+# EAI Profile: Robot Controller
+# Real-time deployment for robotics and motion control
+
+ai:
+  variant: framework
+  mode: local
+
+  runtime:
+    providers:
+      - onnxruntime
+      - tflite
+
+  tools:
+    - device.read_sensor
+    - mqtt.publish
+
+  connectors:
+    - can
+    - mqtt
+
+  policy:
+    cloud_fallback: false
+    max_inference_ms: 50
+    max_memory_mb: 1024
+
+  observability: true
+
+  hardware:
+    accelerator: gpu
+    can_bus: true
+    gpio: true
+    imu: true
+    lidar: false
+
+  description: >
+    Robot controller profile for autonomous navigation,
+    motor control, and sensor fusion. Optimized for low-latency
+    inference with CAN bus communication.

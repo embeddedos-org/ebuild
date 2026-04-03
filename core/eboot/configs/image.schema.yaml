@@ -1,0 +1,93 @@
+# eboot Image Schema — defines image header format and signing requirements
+# Used by ebuild to pack and sign firmware images for eboot consumption
+
+image_header:
+  magic: "EBOOT"
+  version: 1
+  byte_order: little-endian
+
+  fields:
+    - name: magic
+      type: char[4]
+      offset: 0
+      value: "EBOOT"
+      description: Magic identifier
+
+    - name: header_version
+      type: uint32
+      offset: 4
+      description: Header format version
+
+    - name: image_size
+      type: uint32
+      offset: 8
+      description: Size of firmware payload (excluding header)
+
+    - name: image_hash
+      type: uint8[32]
+      offset: 12
+      description: SHA-256 hash of firmware payload
+
+    - name: firmware_version
+      type: uint32
+      offset: 44
+      description: Firmware version (monotonic, for anti-rollback)
+
+    - name: build_timestamp
+      type: uint32
+      offset: 48
+      description: Build timestamp (Unix epoch)
+
+    - name: target_slot
+      type: uint8
+      offset: 52
+      description: "Target slot: 0=any, 1=slot_a, 2=slot_b"
+
+    - name: flags
+      type: uint16
+      offset: 53
+      description: Image flags (signed, encrypted, compressed)
+
+    - name: signature
+      type: uint8[64]
+      offset: 55
+      description: Ed25519 signature (or first 64 bytes of RSA sig)
+
+    - name: reserved
+      type: uint8[9]
+      offset: 119
+      description: Reserved for future use
+
+  total_size: 128
+
+  flags:
+    SIGNED: 0x0001
+    ENCRYPTED: 0x0002
+    COMPRESSED: 0x0004
+    TEST_IMAGE: 0x0008
+
+signing:
+  supported_algorithms:
+    - name: ed25519
+      key_size: 32
+      sig_size: 64
+      description: EdDSA over Curve25519 — fast, small signatures
+
+    - name: rsa2048
+      key_size: 256
+      sig_size: 256
+      description: RSA 2048-bit — widely supported, larger signatures
+
+    - name: ecdsa_p256
+      key_size: 32
+      sig_size: 64
+      description: ECDSA over P-256 — balance of security and size
+
+  verification_flow:
+    1: Read image header (128 bytes)
+    2: Verify magic == "EBOOT" and header_version >= 1
+    3: Compute SHA-256 of payload (image_size bytes after header)
+    4: Compare computed hash with image_hash field
+    5: If SIGNED flag set, verify signature over hash using public key
+    6: If firmware_version < current, reject (anti-rollback)
+    7: Accept image for boot

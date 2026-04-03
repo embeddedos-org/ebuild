@@ -1,0 +1,11 @@
+package: freertos
+version: "11.1.0"
+description: "Real-time operating system kernel for embedded devices"
+license: MIT
+url: https://github.com/FreeRTOS/FreeRTOS-Kernel/releases/download/V11.1.0/FreeRTOS-KernelV11.1.0.zip
+checksum: sha256:placeholder
+build: cmake
+configure_args:
+  - -DFREERTOS_HEAP=4
+  - -DFREERTOS_PORT=GCC_ARM_CM4F
+dependencies: []

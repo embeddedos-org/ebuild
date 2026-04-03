@@ -1,0 +1,67 @@
+# eboot Flash Layout Schema — defines memory partitioning contract
+# Constraints that ebuild's validator checks before generating C headers
+
+flash_layout:
+  constraints:
+    stage0_max_size: 16384
+    stage1_max_size: 65536
+    bootctl_size: 4096
+    min_slot_size: 32768
+    alignment: 4096
+
+  rules:
+    - name: stage0_size_limit
+      description: Stage-0 must be ≤ 16KB to stay immutable and minimal
+      check: layout.stage0.size <= 16384
+
+    - name: stage1_size_limit
+      description: Stage-1 should be ≤ 64KB
+      check: layout.stage1.size <= 65536
+
+    - name: bootctl_redundancy
+      description: Boot control block must have primary + backup copies
+      check: layout.bootctl_primary AND layout.bootctl_backup
+
+    - name: bootctl_size_match
+      description: Primary and backup bootctl must be same size
+      check: layout.bootctl_primary.size == layout.bootctl_backup.size
+
+    - name: slot_alignment
+      description: All regions must be aligned to flash sector boundary
+      check: all offsets % alignment == 0
+
+    - name: no_overlap
+      description: No flash regions may overlap
+      check: regions are non-overlapping and within flash_size
+
+    - name: total_fits_flash
+      description: Total of all regions must not exceed flash_size
+      check: sum(all region sizes) <= flash_size
+
+  typical_layouts:
+    small_flash_256k:
+      flash_size: 262144
+      stage0: { offset: 0x0, size: 8192 }
+      stage1: { offset: 0x2000, size: 32768 }
+      bootctl_primary: { offset: 0xA000, size: 4096 }
+      bootctl_backup: { offset: 0xB000, size: 4096 }
+      slot_a: { offset: 0xC000, size: 106496 }
+      slot_b: { offset: 0x26000, size: 106496 }
+
+    medium_flash_1m:
+      flash_size: 1048576
+      stage0: { offset: 0x0, size: 16384 }
+      stage1: { offset: 0x4000, size: 65536 }
+      bootctl_primary: { offset: 0x14000, size: 4096 }
+      bootctl_backup: { offset: 0x15000, size: 4096 }
+      slot_a: { offset: 0x16000, size: 479232 }
+      slot_b: { offset: 0x8B000, size: 479232 }
+
+    large_flash_2m:
+      flash_size: 2097152
+      stage0: { offset: 0x0, size: 16384 }
+      stage1: { offset: 0x4000, size: 65536 }
+      bootctl_primary: { offset: 0x14000, size: 4096 }
+      bootctl_backup: { offset: 0x15000, size: 4096 }
+      slot_a: { offset: 0x16000, size: 1003520 }
+      slot_b: { offset: 0x10B000, size: 1003520 }
