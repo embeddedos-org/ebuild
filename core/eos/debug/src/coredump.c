@@ -52,7 +52,7 @@ int eos_coredump_capture(EosCrashReason reason, const EosCrashRegs *regs) {
     dump.reason = reason;
     if (regs) dump.regs = *regs;
 
-        /* Stack capture is platform-specific; skip raw pointer dereference in
+    /* Stack capture is platform-specific; skip raw pointer dereference in
        hosted/test builds to avoid accessing unmapped embedded addresses. */
     dump.stack_size = 0;
 
