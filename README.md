@@ -1,18 +1,81 @@
-# ⚙️ eBuild — EoS Embedded OS Platform
+# ⚙️ eBuild — EoS Embedded OS Build Tool
 
 [![CI](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml)
 [![Nightly](https://github.com/embeddedos-org/ebuild/actions/workflows/nightly.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/nightly.yml)
 [![Release](https://github.com/embeddedos-org/ebuild/actions/workflows/release.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/release.yml)
 [![Version](https://img.shields.io/github/v/tag/embeddedos-org/ebuild?label=version)](https://github.com/embeddedos-org/ebuild/releases/latest)
 
+> **⚠️ Not Gentoo ebuilds.** This project is the **EmbeddedOS Build Tool** (`ebuild`) — a unified build system for the EoS embedded operating system. It is _not_ related to [Gentoo's ebuild format](https://wiki.gentoo.org/wiki/Ebuild) or the Portage package manager.
+
 **Single monorepo for the entire EoS Embedded Operating System.**
 
-One clone, one build command — from PCB hardware description to deployable firmware image.
+One clone, one build command — from PCB hardware description to deployable firmware image. `ebuild` orchestrates cross-compilation across multiple backends (CMake, Make, Meson, Cargo, Kbuild), resolves package dependencies, analyzes hardware schematics, and generates deployable OS images for 14+ embedded targets.
+
+## What This Does
+
+| Capability | Description |
+|---|---|
+| **Build OS images** | Cross-compile a complete embedded OS (kernel, HAL, drivers, services) for ARM, AArch64, RISC-V, MIPS, x86_64 |
+| **Generate SDKs** | Produce Yocto-style SDKs with toolchain files, sysroots, and environment scripts |
+| **Analyze hardware** | Parse KiCad schematics, YAML board descriptions, BOMs → auto-detect MCU, peripherals, memory layout |
+| **Manage packages** | Resolve, fetch, build, and cache external dependencies via YAML recipes |
+| **Scaffold projects** | Generate complete project skeletons from 6 templates (bare-metal, RTOS, Linux, hybrid, safety-critical, secure-boot) |
+| **Package deliverables** | Create versioned ZIP bundles with firmware, SDK, sources, and SBOM |
+
+## Quick Start
 
 ```bash
+# 1. Clone
 git clone https://github.com/embeddedos-org/ebuild.git
 cd ebuild
+
+# 2. Install (editable mode for development)
+pip install -e .
+
+# 3. Build core only (EoS kernel + eBoot bootloader)
+ebuild build --target raspi4
+
+# 4. Build with optional layers (AI, neural interface, IPC)
+ebuild build --target raspi4 --with eai,eni,eipc
+
+# 5. Build everything
 ebuild build --target raspi4 --with all
+```
+
+### Workflow Examples
+
+**Create a new project from a template:**
+```bash
+# Scaffold a safety-critical RTOS project for the TMS570
+ebuild new --board tms570 --template safety-critical --name my_safety_app
+
+# This generates:
+#   my_safety_app/
+#   ├── build.yaml          # Build configuration
+#   ├── eos.yaml            # EoS platform config
+#   ├── src/main.c          # Application entry point
+#   ├── linker/tms570_app.ld
+#   └── README.md
+```
+
+**Build and generate an SDK:**
+```bash
+# Generate a cross-compilation SDK
+ebuild sdk --target raspi4 --output build/
+
+# Use the SDK in your own project
+source build/eos-sdk-raspi4/environment-setup
+cmake -B app-build -DCMAKE_TOOLCHAIN_FILE=$CMAKE_TOOLCHAIN_FILE
+cmake --build app-build
+```
+
+**Analyze hardware from a schematic:**
+```bash
+# Analyze a KiCad schematic or YAML board description
+ebuild analyze --input hardware/board/sample_iot_gateway.yaml
+
+# Output: detected MCU (STM32H743), peripherals, memory map,
+#         suggested build config, EoS enables
 ```
 
 ## Architecture
@@ -29,38 +92,18 @@ ebuild/
 │   └── eosuite/                   Dev tools (Ebot client, 20+ GUI apps)
 ├── sdk/                           SDK generator + header-only API
 ├── ebuild/                        Build system CLI (Python)
+│   ├── cli/                       18 CLI commands
+│   ├── build/                     Multi-backend build dispatch
+│   ├── packages/                  Package recipe/registry/resolver pipeline
+│   ├── eos_ai/                    Hardware analyzer + project generator
+│   └── plugins/                   Plugin system (extensible hooks)
 ├── hardware/                      PCB/YAML hardware descriptions
+├── recipes/                       Package recipes (zlib, mbedtls, freertos, ...)
 ├── templates/                     Project templates (6 types)
 └── tests/                         Unified test suite
 ```
 
-## Quick Start
-
-```bash
-# Install
-pip install -e .
-
-# Build core only (EoS + eBoot)
-ebuild build --target raspi4
-
-# Build with AI + neural interface
-ebuild build --target raspi4 --with eai,eni
-
-# Build everything
-ebuild build --target raspi4 --with all
-
-# Generate SDK for cross-compilation
-ebuild sdk --target raspi4
-
-# Package deliverable ZIP
-ebuild package --target raspi4 --version 0.1.0
-
-# List supported targets
-ebuild sdk --list
-
-# List available LLM models
-ebuild models --ram 500
-```
+For a detailed architecture overview, see [docs/architecture.md](docs/architecture.md).
 
 ## Supported Hardware (14 targets)
 
@@ -70,6 +113,7 @@ ebuild models --ram 500
 | `stm32h7` | ARM Cortex-M7 | cortex-m7 | ST STM32H743 | stm32h7 |
 | `nrf52` | ARM Cortex-M4 | cortex-m4 | Nordic nRF52840 | nrf52 |
 | `rp2040` | ARM Cortex-M0+ | cortex-m0+ | RPi RP2040 | samd51 |
+| `tms570` | ARM Cortex-R5F | cortex-r5f | TI TMS570 | cortex_r5 |
 | `raspi3` | AArch64 | cortex-a53 | Broadcom BCM2837 | qemu_arm64 |
 | `raspi4` | AArch64 | cortex-a72 | Broadcom BCM2711 | rpi4 |
 | `imx8m` | AArch64 | cortex-a53 | NXP i.MX8M | imx8m |
@@ -78,6 +122,8 @@ ebuild models --ram 500
 | `sifive_u` | RISC-V | u74 | SiFive FU740 | sifive_u |
 | `malta` | MIPS | 24kf | MIPS Malta | mips |
 | `x86_64` | x86_64 | generic | Generic PC | x86_64_efi |
+
+For adding new board targets, see [docs/guides/adding_a_board.md](docs/guides/adding_a_board.md).
 
 ## Layers (optional components)
 
@@ -112,6 +158,23 @@ ebuild models --ram 500
 
 26 board ports, A/B firmware update, secure boot chain, crypto verification, recovery partition.
 
+## CLI Commands (18)
+
+| Command | Description |
+|---|---|
+| `ebuild build` | Build from build.yaml (core + selected layers) |
+| `ebuild build --with eai,eni` | Build with optional layers |
+| `ebuild sdk --target raspi4` | Generate Yocto-style SDK |
+| `ebuild package --target raspi4` | Package deliverable ZIP (source + SDK + libs + image) |
+| `ebuild models` | List LLM models for EAI layer |
+| `ebuild analyze` | Analyze hardware (KiCad/YAML/text) |
+| `ebuild firmware` | Build RTOS firmware |
+| `ebuild system` | Build Linux system image |
+| `ebuild integration` | Build + test all components |
+| `ebuild qemu` | QEMU sanity boot test |
+| `ebuild new` | Scaffold project from template |
+| + 7 more | clean, configure, info, install, add, list-packages, generate-boot |
+
 ## SDK
 
 ```bash
@@ -133,23 +196,6 @@ Or use the header-only SDK:
 
 See `sdk/README.md` for full API reference.
 
-## CLI Commands (18)
-
-| Command | Description |
-|---|---|
-| `ebuild build` | Build from build.yaml (core + selected layers) |
-| `ebuild build --with eai,eni` | Build with optional layers |
-| `ebuild sdk --target raspi4` | Generate Yocto-style SDK |
-| `ebuild package --target raspi4` | Package deliverable ZIP (source + SDK + libs + image) |
-| `ebuild models` | List LLM models for EAI layer |
-| `ebuild analyze` | Analyze hardware (KiCad/YAML/text) |
-| `ebuild firmware` | Build RTOS firmware |
-| `ebuild system` | Build Linux system image |
-| `ebuild integration` | Build + test all components |
-| `ebuild qemu` | QEMU sanity boot test |
-| `ebuild new` | Scaffold project from template |
-| + 7 more | clean, configure, info, install, add, list-packages, generate-boot |
-
 ## Build from Source
 
 ```bash
@@ -167,6 +213,16 @@ cmake -B build -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
   -DCMAKE_SYSTEM_NAME=Linux -DEOS_WITH_ALL=ON
 cmake --build build
 ```
+
+## Extending ebuild
+
+ebuild supports a plugin system for extending its functionality. See:
+
+- [Plugin Development](docs/guides/customization.md) — how to write plugins and customize builds
+- [Adding a Board Target](docs/guides/adding_a_board.md) — step-by-step guide for new MCUs/SoCs
+- [Architecture Overview](docs/architecture.md) — how the subsystems connect
+- [Compatibility Matrix](docs/compatibility.md) — supported toolchain and host OS versions
+- [Overlay System](docs/guides/overlays.md) — sharing board configs and layer presets
 
 ## Standards Compliance
 

@@ -25,5 +25,7 @@ dev = [
 [project.scripts]
 ebuild = "ebuild.cli.commands:cli"
 
+[project.entry-points."ebuild.plugins"]
+
 [tool.setuptools.packages.find]
 include = ["ebuild*"]

@@ -45,6 +45,7 @@ _skip_no_sibling = pytest.mark.skipif(
 # =====================================================================
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootToolchain:
     """1.1 — eboot/toolchains/arm-none-eabi-r5.cmake"""
 
@@ -101,6 +102,7 @@ class TestEbootToolchain:
 
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootBoardHeader:
     """1.2 — eboot/boards/cortex_r5/board_cortex_r5.h"""
 
@@ -173,6 +175,7 @@ class TestEbootBoardHeader:
 
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootBoardPort:
     """1.3 — eboot/boards/cortex_r5/board_cortex_r5.c"""
 
@@ -258,6 +261,7 @@ class TestEbootBoardPort:
 
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootLinkerScripts:
     """1.4 & 1.5 — Cortex-R5 linker scripts."""
 
@@ -308,6 +312,7 @@ class TestEbootLinkerScripts:
 
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootCMakeLists:
     """1.6 — eboot/CMakeLists.txt cortex_r5 integration."""
 
@@ -341,6 +346,7 @@ class TestEbootCMakeLists:
 
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootMPU:
     """1.7 — eboot/core/mpu_boot.c Cortex-R PMSAv7 support."""
 
@@ -397,6 +403,7 @@ class TestEbootMPU:
 
 
 @_skip_no_eboot
+@pytest.mark.eboot
 class TestEbootReleaseCI:
     """4.1 — eboot/.github/workflows/release.yml Cortex-R5 matrix entry."""
 
@@ -432,6 +439,7 @@ class TestEbootReleaseCI:
 # =====================================================================
 
 @_skip_no_eos
+@pytest.mark.eos
 class TestEosToolchainYAML:
     """2.1 — eos/toolchains/arm-none-eabi-r5.yaml"""
 
@@ -470,6 +478,8 @@ class TestEosToolchainYAML:
 
 
 @_skip_no_sibling
+@pytest.mark.eos
+@pytest.mark.cross_repo
 class TestEosToolchainCMake:
     """2.2 — eos/toolchains/arm-none-eabi-r5.cmake"""
 
@@ -492,6 +502,7 @@ class TestEosToolchainCMake:
 
 
 @_skip_no_eos
+@pytest.mark.eos
 class TestEosBoardYAML:
     """2.3 — eos/boards/tms570.yaml"""
 
@@ -534,6 +545,7 @@ class TestEosBoardYAML:
 
 
 @_skip_no_eos
+@pytest.mark.eos
 class TestEosToolchainC:
     """2.4 — eos/toolchains/src/toolchain.c arm-none-eabi detection."""
 
@@ -563,6 +575,7 @@ class TestEosToolchainC:
 
 
 @_skip_no_eos
+@pytest.mark.eos
 class TestEosHalRTOS:
     """2.5 — eos/hal/src/hal_rtos.c updated comments."""
 
@@ -588,6 +601,7 @@ class TestEosHalRTOS:
 # Phase 3 — ebuild: MCU Database + CLI + Toolchain + Project Generator
 # =====================================================================
 
+@pytest.mark.ebuild
 class TestEbuildMCUDatabase:
     """3.1 — ebuild MCU_DATABASE R5 entries."""
 
@@ -637,6 +651,7 @@ class TestEbuildMCUDatabase:
         assert profile.core == "cortex-r5f"
 
 
+@pytest.mark.ebuild
 class TestEbuildCLIBoardMap:
     """3.2 — ebuild CLI commands.py board_map."""
 
@@ -681,6 +696,7 @@ class TestEbuildCLIBoardMap:
         assert "r5f" in block
 
 
+@pytest.mark.ebuild
 class TestEbuildPredefinedToolchains:
     """3.3 — ebuild PREDEFINED_TOOLCHAINS arm-none-eabi entry.
 
@@ -710,6 +726,7 @@ class TestEbuildPredefinedToolchains:
         assert '"arm"' in entry
 
 
+@pytest.mark.ebuild
 class TestEbuildProjectGenerator:
     """3.4 — ebuild eos_project_generator.py R5 mappings."""
 
@@ -735,6 +752,8 @@ class TestEbuildProjectGenerator:
 # =====================================================================
 
 @_skip_no_sibling
+@pytest.mark.integration
+@pytest.mark.cross_repo
 class TestEndToEndPipeline:
     """Validates the complete cross-repo Cortex-R5 pipeline."""
 
@@ -907,6 +926,7 @@ class TestEndToEndPipeline:
 # Phase 5 — Example project + template validation
 # =====================================================================
 
+@pytest.mark.ebuild
 class TestCortexR5Example:
     """Validates the Cortex-R5 example project and safety-critical template."""
 

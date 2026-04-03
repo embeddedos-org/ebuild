@@ -14,6 +14,8 @@ import tempfile
 import shutil
 from pathlib import Path
 
+import pytest
+
 # pythonpath in pytest.ini handles this for pytest; keep for standalone mode.
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -23,6 +25,11 @@ from ebuild.eos_ai.eos_hw_analyzer import (
 )
 
 
+@pytest.mark.ebuild
+import pytest
+
+
+@pytest.mark.ebuild
 class TestHardwareAnalyzer:
     """Tests for EosHardwareAnalyzer."""
 
@@ -131,6 +138,7 @@ class TestHardwareAnalyzer:
         profile.peripherals.append(PeripheralInfo(name="UART", peripheral_type="uart"))
         prompt = self.analyzer.generate_prompt(profile)
         assert "STM32H7" in prompt
+@pytest.mark.ebuild
         assert "cortex-m7" in prompt
         assert "uart" in prompt
 
@@ -168,6 +176,8 @@ class TestHardwareProfile:
         profile = HardwareProfile()
         assert profile.mcu == ""
         assert profile.flash_size == 0
+@pytest.mark.ebuild
+@pytest.mark.integration
         assert len(profile.peripherals) == 0
         assert profile.confidence == 0.0
 

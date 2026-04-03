@@ -17,8 +17,6 @@ import pytest
 # ── Repo roots (available to all tests via conftest) ─────────
 # tests/ebuild/conftest.py → parent = tests/ebuild/ → parent = tests/ → parent = repo root
 EBUILD_ROOT = Path(__file__).resolve().parent.parent.parent
-EBUILD_ROOT = Path(__file__).resolve().parent.parent.parent
-EOS_ROOT = EBUILD_ROOT.parent / "eos"
 EBOOT_ROOT = EBUILD_ROOT.parent / "eboot"
 
 

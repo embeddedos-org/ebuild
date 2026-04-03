@@ -1,0 +1,11 @@
+package: lwip
+version: "2.2.0"
+description: "Lightweight TCP/IP stack for embedded systems"
+license: BSD-3-Clause
+url: https://download.savannah.nongnu.org/releases/lwip/lwip-2.2.0.zip
+checksum: sha256:placeholder
+build: cmake
+configure_args:
+  - -DLWIP_DIR=${SOURCE_DIR}
+  - -DBUILD_SHARED_LIBS=OFF
+dependencies: []

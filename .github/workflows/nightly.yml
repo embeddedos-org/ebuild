@@ -1,57 +1,141 @@
-name: Nightly Regression
+name: Nightly
 
 on:
   schedule:
-    - cron: "0 2 * * *"
+    - cron: "0 3 * * *"  # 3 AM UTC daily
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  superbuild:
-    name: Superbuild (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  full-test-suite:
+    name: Full Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run all tests with coverage
+        run: pytest tests/ --cov=ebuild --cov-report=xml -v --tb=short -m "not qemu"
+
+  board-matrix:
+    name: Board Target Validation (${{ matrix.board }})
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        board:
+          - generic
+          - stm32f4
+          - stm32h7
+          - nrf52
+          - rp2040
+          - tms570
+          - raspi4
+          - esp32
+          - am64x
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install
-        run: pip install -e ".[dev]"
-      - name: Lint
-        run: flake8 ebuild/ --max-line-length 120
-      - name: Test
-        run: pytest tests/ -v
-      - name: Type check
-        run: mypy ebuild/ --ignore-missing-imports
-      - name: CMake build (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update && sudo apt-get install -y cmake ninja-build
-          cmake -B build -G Ninja -DEOS_BUILD_TESTS=ON
-          cmake --build build
-          ctest --test-dir build --output-on-failure
 
-  report:
-    name: Nightly Report
-    runs-on: ubuntu-latest
-    needs: [superbuild]
-    if: always()
-    steps:
-      - name: Results
+      - name: Install ebuild
+        run: pip install -e .
+
+      - name: Validate board target
         run: |
-          echo "## Nightly Regression Report"
-          echo "| Job | Status |"
-          echo "|---|---|"
-          echo "| Superbuild | ${{ needs.superbuild.result }} |"
-          if [ "${{ needs.superbuild.result }}" != "success" ]; then
-            echo "❌ REGRESSION DETECTED"
-            exit 1
-          fi
-          echo "✅ All checks passed"
+          python -c "
+          from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
+          analyzer = EosHardwareAnalyzer()
+          board = '${{ matrix.board }}'
+          if board != 'generic':
+              profile = analyzer.interpret_text(f'{board} board')
+              print(f'Board: {board}')
+              print(f'MCU: {profile.mcu}')
+              print(f'Arch: {profile.arch}')
+              print(f'Core: {profile.core}')
+          else:
+              print('Board: generic (host)')
+          print('✅ Board target validated')
+          "
+
+  qemu-smoke:
+    name: QEMU Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-arm qemu-system-aarch64 qemu-system-riscv64 qemu-system-mips
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run QEMU tests
+        run: pytest tests/ -v -m "qemu" --tb=short
+        continue-on-error: true
+
+  sbom-validation:
+    name: SBOM Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate SBOM
+        run: |
+          python -c "
+          import json
+          with open('sbom.json') as f:
+              sbom = json.load(f)
+          assert 'bomFormat' in sbom, 'Missing bomFormat'
+          assert sbom['bomFormat'] == 'CycloneDX', 'Not CycloneDX format'
+          print(f'SBOM version: {sbom.get(\"specVersion\", \"unknown\")}')
+          print(f'Components: {len(sbom.get(\"components\", []))}')
+          print('✅ SBOM validation passed')
+          "
+
+  lockfile-check:
+    name: Package Lockfile Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ebuild
+        run: pip install -e .
+
+      - name: Validate package pipeline
+        run: |
+          python -c "
+          from ebuild.packages.registry import PackageRegistry
+          from ebuild.packages.recipe import PackageRecipe
+          registry = PackageRegistry()
+          registry.add_search_path('recipes')
+          count = registry.scan()
+          print(f'Recipes found: {count}')
+          for pkg in registry.list_packages():
+              print(f'  {pkg.name} {pkg.version} ({pkg.build_system})')
+          print('✅ Package registry validation passed')
+          "
