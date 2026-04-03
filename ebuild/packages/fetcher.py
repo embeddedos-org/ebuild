@@ -55,7 +55,17 @@ class PackageFetcher:
 
     def _download(self, recipe: PackageRecipe) -> Path:
         """Download the source archive if not already cached."""
+        if not recipe.url:
+            raise FetchError(f"No URL specified for package {recipe.name}")
+        if not recipe.url.startswith(("http://", "https://")):
+            raise FetchError(
+                f"Invalid URL scheme for {recipe.name}: {recipe.url} "
+                f"(only http:// and https:// are allowed)"
+            )
+
         filename = self._archive_filename(recipe)
+        if not filename:
+            raise FetchError(f"Could not derive filename from URL: {recipe.url}")
         archive_path = self.download_dir / filename
 
         if archive_path.exists():
@@ -108,6 +118,13 @@ class PackageFetcher:
                     tar.extractall(extract_to, filter="data")
             elif name.endswith(".zip"):
                 with zipfile.ZipFile(archive_path, "r") as zf:
+                    for member in zf.namelist():
+                        member_path = Path(extract_to) / member
+                        resolved = member_path.resolve()
+                        if not str(resolved).startswith(str(Path(extract_to).resolve())):
+                            raise FetchError(
+                                f"Zip path traversal detected: {member}"
+                            )
                     zf.extractall(extract_to)
             else:
                 raise FetchError(f"Unsupported archive format: {archive_path.name}")

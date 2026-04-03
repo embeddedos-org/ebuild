@@ -92,12 +92,19 @@ class EosConfigValidator:
 
     def _validate_board(self, path: Path, result: ValidationResult):
         try:
-            data = yaml.safe_load(path.read_text())
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
         except Exception as e:
             result.add_error("board.yaml", "", f"Parse error: {e}")
             return
 
+        if not isinstance(data, dict):
+            result.add_error("board.yaml", "", "Invalid format: expected YAML mapping")
+            return
+
         board = data.get("board", data)
+        if not isinstance(board, dict):
+            result.add_error("board.yaml", "board", "Board section must be a mapping")
+            return
 
         if not board.get("name"):
             result.add_error("board.yaml", "name", "Board name is required")
@@ -117,12 +124,19 @@ class EosConfigValidator:
 
     def _validate_boot(self, path: Path, result: ValidationResult):
         try:
-            data = yaml.safe_load(path.read_text())
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
         except Exception as e:
             result.add_error("boot.yaml", "", f"Parse error: {e}")
             return
 
+        if not isinstance(data, dict):
+            result.add_error("boot.yaml", "", "Invalid format: expected YAML mapping")
+            return
+
         boot = data.get("boot", data)
+        if not isinstance(boot, dict):
+            result.add_error("boot.yaml", "boot", "Boot section must be a mapping")
+            return
 
         if not boot.get("board"):
             result.add_error("boot.yaml", "board", "Board name is required")
@@ -156,11 +170,27 @@ class EosConfigValidator:
 
     def _validate_build(self, path: Path, result: ValidationResult):
         try:
-            data = yaml.safe_load(path.read_text())
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
         except Exception as e:
             result.add_error("build.yaml", "", f"Parse error: {e}")
             return
 
+        if not isinstance(data, dict):
+            result.add_error("build.yaml", "", "Invalid format: expected YAML mapping")
+            return
+
         project = data.get("project", {})
+        if not isinstance(project, dict):
+            result.add_error("build.yaml", "project", "Project section must be a mapping")
+            return
+
         if not project.get("name"):
             result.add_error("build.yaml", "project.name", "Project name is required")
+
+        targets = data.get("targets", [])
+        if not targets:
+            result.add_warning("build.yaml", "targets", "No build targets defined")
+
+        toolchain = data.get("toolchain", {})
+        if isinstance(toolchain, dict) and not toolchain.get("compiler"):
+            result.add_warning("build.yaml", "toolchain.compiler", "Compiler not specified")
