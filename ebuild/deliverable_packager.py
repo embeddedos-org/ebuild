@@ -5,7 +5,7 @@
 EoS Deliverable Packager - packages complete product deliverable per hardware target.
 
 Every build releases:
-  1. EoS source code for the product (all 8 repos)
+  1. EoS source code for the product (all 7 repos)
   2. Generated SDK (toolchain, sysroot)
   3. Cross-compiled libraries (eos, eboot, eai, eni, eipc)
   4. Bootable rootfs image
@@ -14,7 +14,7 @@ Every build releases:
 
 Output: eos-{target}-v{version}-deliverable.zip
 """
-import os, json, shutil, zipfile, sys, glob
+import os, json, shutil, zipfile, sys
 from datetime import datetime, timezone
 
 try:

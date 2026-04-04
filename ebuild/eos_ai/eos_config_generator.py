@@ -118,7 +118,7 @@ class EosConfigGenerator:
 
     def generate_build_yaml(self, profile: HardwareProfile) -> Path:
         """Generate ebuild build.yaml for the project."""
-        toolchain = "arm-none-eabi" if "arm" in profile.arch else "gcc"
+        toolchain = "arm-none-eabi" if profile.arch == "arm" else "gcc"
         rtos = "freertos"
         if profile.has_peripheral("ble"):
             rtos = "zephyr"

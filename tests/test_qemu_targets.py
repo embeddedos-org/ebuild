@@ -164,7 +164,7 @@ class TestQEMUBootSmoke:
         result = _run_qemu(QEMU_ARM, "lm3s6965evb", timeout=3)
         # QEMU should start (and exit quickly with no kernel)
         # A non-None result means it didn't hang
-        assert result is not None or True  # Timeout is acceptable (no kernel)
+        assert result is not None  # Timeout returns None, which is acceptable
 
     @_skip_no_qemu_aarch64
     def test_aarch64_virt_qemu_starts(self):
@@ -174,13 +174,13 @@ class TestQEMUBootSmoke:
             extra_args=["-cpu", "cortex-a72"],
             timeout=3,
         )
-        assert result is not None or True
+        assert result is not None
 
     @_skip_no_qemu_riscv64
     def test_riscv64_virt_qemu_starts(self):
         """Verify qemu-system-riscv64 starts with virt machine."""
         result = _run_qemu(QEMU_RISCV64, "virt", timeout=3)
-        assert result is not None or True
+        assert result is not None
 
 
 # Standalone runner

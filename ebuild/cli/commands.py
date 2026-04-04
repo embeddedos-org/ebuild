@@ -505,7 +505,7 @@ def add_package(log: Logger, package_name: str, pkg_version: Optional[str], conf
     with open(config_path_obj, "w", encoding="utf-8") as f:
         yaml.dump(raw, f, default_flow_style=False, sort_keys=False)
 
-    log.success(f"Added {package_name}" + (f" v{pkg_version}" if pkg_version else "") + " to {config_path}")
+    log.success(f"Added {package_name}" + (f" v{pkg_version}" if pkg_version else "") + f" to {config_path}")
 
 
 @cli.command()

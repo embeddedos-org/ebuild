@@ -9,9 +9,10 @@ for the target architecture.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 
 class KernelError(Exception):
@@ -39,7 +40,7 @@ class KernelBuilder:
             env["CROSS_COMPILE"] = cross_compile
 
         cmd = ["make", "-C", str(source_dir), f"O={self.kernel_dir}", defconfig]
-        result = subprocess.run(cmd, capture_output=True, env={**dict(__import__("os").environ), **env})
+        result = subprocess.run(cmd, capture_output=True, env={**dict(os.environ), **env})
         if result.returncode != 0:
             raise KernelError(f"Kernel configure failed: {result.stderr.decode()}")
 
@@ -49,7 +50,7 @@ class KernelBuilder:
         arch: str = "arm64",
         cross_compile: str = "",
         jobs: int = 4,
-        targets: Optional[list[str]] = None,
+        targets: Optional[List[str]] = None,
     ) -> Path:
         """Build the kernel image."""
         if targets is None:
@@ -65,7 +66,7 @@ class KernelBuilder:
             f"-j{jobs}",
         ] + targets
 
-        result = subprocess.run(cmd, capture_output=True, env={**dict(__import__("os").environ), **env})
+        result = subprocess.run(cmd, capture_output=True, env={**dict(os.environ), **env})
         if result.returncode != 0:
             raise KernelError(f"Kernel build failed: {result.stderr.decode()}")
 
@@ -90,7 +91,7 @@ class KernelBuilder:
             f"-j{jobs}",
             "modules",
         ]
-        result = subprocess.run(cmd, capture_output=True, env={**dict(__import__("os").environ), **env})
+        result = subprocess.run(cmd, capture_output=True, env={**dict(os.environ), **env})
         if result.returncode != 0:
             raise KernelError(f"Module build failed: {result.stderr.decode()}")
 
@@ -100,7 +101,7 @@ class KernelBuilder:
             f"INSTALL_MOD_PATH={install_dir}",
             "modules_install",
         ]
-        result = subprocess.run(cmd, capture_output=True, env={**dict(__import__("os").environ), **env})
+        result = subprocess.run(cmd, capture_output=True, env={**dict(os.environ), **env})
         if result.returncode != 0:
             raise KernelError(f"Module install failed: {result.stderr.decode()}")
 

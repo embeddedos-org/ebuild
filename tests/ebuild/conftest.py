@@ -18,6 +18,7 @@ import pytest
 # tests/ebuild/conftest.py → parent = tests/ebuild/ → parent = tests/ → parent = repo root
 EBUILD_ROOT = Path(__file__).resolve().parent.parent.parent
 EBOOT_ROOT = EBUILD_ROOT.parent / "eboot"
+EOS_ROOT = EBUILD_ROOT.parent / "eos"
 
 
 def _module_available(name: str) -> bool:

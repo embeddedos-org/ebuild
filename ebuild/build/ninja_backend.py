@@ -89,7 +89,7 @@ class NinjaBackend:
 
             obj_files = []
             for src in target.sources:
-                obj = str(self.build_dir / src).replace(".c", ".o")
+                obj = str(Path(self.build_dir / src).with_suffix(".o"))
                 obj_files.append(obj)
                 lines.append(
                     f"build {obj}: cc {src}"

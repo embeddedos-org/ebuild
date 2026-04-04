@@ -198,7 +198,6 @@ def generate_sdk(target, output_dir, hardware_file=None):
     with open(os.path.join(sdk_dir, "sdk-info.txt"), "w") as f:
         f.write("\n".join(si) + "\n")
     # manifest.json
-    # manifest.json
     manifest = {
         "product": "eos-" + target,
         "target": {

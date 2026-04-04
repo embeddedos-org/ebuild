@@ -147,7 +147,7 @@ def _build_rootfs(build_dir: Path, libs: List[Path], trigger: str,
 
     # EoS release info
     (rootfs / "etc" / "eos-release").write_text(
-        f"EOS_VERSION=0.3.0\n"
+        f"EOS_VERSION=0.1.0\n"
         f"EOS_BUILD=ebuild-integration\n"
         f"TRIGGER_REPO={trigger}\n"
     )
