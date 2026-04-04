@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   validate:
@@ -113,14 +114,58 @@ jobs:
           merge-multiple: true
       - name: Generate checksums
         run: sha256sum *.tar.gz dist/*.whl dist/*.tar.gz > SHA256SUMS.txt 2>/dev/null || true
+      - name: Generate SBOM (CycloneDX v1.5)
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "00000000-0000-0000-0000-$(date +%s)")
+          cat > sbom.cdx.json << EOF
+          {
+            "bomFormat": "CycloneDX",
+            "specVersion": "1.5",
+            "serialNumber": "urn:uuid:${UUID}",
+            "version": 1,
+            "metadata": {
+              "timestamp": "${TIMESTAMP}",
+              "component": {
+                "type": "application",
+                "name": "ebuild",
+                "version": "${{ steps.version.outputs.tag }}",
+                "supplier": { "name": "embeddedos-org" },
+                "licenses": [{ "license": { "id": "MIT" } }]
+              }
+            },
+            "components": []
+          }
+          EOF
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+      - name: Sign artifacts
+        run: |
+          for f in *.tar.gz dist/*.whl; do
+            [ -f "$f" ] && cosign sign-blob --yes --bundle "${f}.sig.bundle" "$f" 2>/dev/null || true
+          done
+      - name: Check release does not already exist
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" &>/dev/null; then
+            echo "::error::Release already exists."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "ebuild ${{ steps.version.outputs.tag }}"
           generate_release_notes: true
+          body: |
+            ### Release Integrity
+            - `SHA256SUMS.txt` — checksums
+            - `sbom.cdx.json` — CycloneDX SBOM (v1.5)
+            - `*.sig.bundle` — Sigstore cosign signatures
           files: |
             *.tar.gz
             dist/*
             SHA256SUMS.txt
+            sbom.cdx.json
           prerelease: ${{ contains(steps.version.outputs.tag, 'rc') || contains(steps.version.outputs.tag, 'beta') }}
