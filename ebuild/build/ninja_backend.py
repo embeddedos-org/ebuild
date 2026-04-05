@@ -9,6 +9,7 @@ Generates build.ninja and compile_commands.json from a ProjectConfig.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -126,7 +127,14 @@ class NinjaBackend:
                 if libs:
                     lines.append(f"  libs = {' '.join(libs)}")
             elif target.target_type in ("static_library", "shared_library"):
-                ext = ".a" if target.target_type == "static_library" else ".so"
+                if target.target_type == "static_library":
+                    ext = ".a"
+                elif sys.platform == "win32":
+                    ext = ".dll"
+                elif sys.platform == "darwin":
+                    ext = ".dylib"
+                else:
+                    ext = ".so"
                 out = str(self.build_dir / f"lib{target.name}{ext}")
                 rule = "ar_rule" if target.target_type == "static_library" else "link"
                 lines.append(

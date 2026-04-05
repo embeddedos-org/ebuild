@@ -10,6 +10,7 @@ CMake, Make, Meson, Cargo, Kbuild.
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -92,7 +93,8 @@ class BackendDispatcher:
             subprocess.run(cmd, check=True)
 
         elif backend == "make":
-            cmd = ["make", "-C", str(self.source_dir)]
+            make_cmd = "nmake" if sys.platform == "win32" else "make"
+            cmd = [make_cmd, "-C", str(self.source_dir)]
             subprocess.run(cmd, check=True)
 
         elif backend == "meson":

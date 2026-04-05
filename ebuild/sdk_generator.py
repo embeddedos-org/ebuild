@@ -184,7 +184,23 @@ def generate_sdk(target, output_dir, hardware_file=None):
     env.append('echo "EoS SDK for ' + target + ' (' + info["vendor"] + " " + info["soc"] + ') initialized"')
     with open(os.path.join(sdk_dir, "environment-setup"), "w") as f:
         f.write("\n".join(env) + "\n")
-    os.chmod(os.path.join(sdk_dir, "environment-setup"), 0o755)
+    if os.name != "nt":
+        os.chmod(os.path.join(sdk_dir, "environment-setup"), 0o755)
+    # Generate Windows batch equivalent
+    bat = []
+    bat.append("@echo off")
+    bat.append("REM EoS SDK Environment for " + target)
+    bat.append('set "EOS_SDK_ROOT=' + os.path.abspath(sdk_dir).replace("/", "\\") + '"')
+    bat.append('set "EOS_SDK_SYSROOT=%EOS_SDK_ROOT%\\sysroot"')
+    bat.append('set "EOS_SDK_TARGET=' + target + '"')
+    bat.append('set "EOS_SDK_ARCH=' + arch + '"')
+    bat.append('set "CC=' + triplet + '-gcc"')
+    bat.append('set "CXX=' + triplet + '-g++"')
+    bat.append('set "CMAKE_TOOLCHAIN_FILE=%EOS_SDK_ROOT%\\toolchain.cmake"')
+    bat.append('set "PKG_CONFIG_PATH=%EOS_SDK_SYSROOT%\\usr\\lib\\pkgconfig"')
+    bat.append('echo EoS SDK for ' + target + ' (' + info["vendor"] + " " + info["soc"] + ') initialized')
+    with open(os.path.join(sdk_dir, "environment-setup.bat"), "w") as f:
+        f.write("\r\n".join(bat) + "\r\n")
     # sdk-info.txt
     si = []
     si.append("EoS SDK")
