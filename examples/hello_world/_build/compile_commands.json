@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "/home/spatchava/EoS/ebuild/examples/hello_world",
+    "command": "gcc -Wall -O2 -c src/main.c",
+    "file": "src/main.c"
+  }
+]

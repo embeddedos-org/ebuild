@@ -101,6 +101,7 @@ class NinjaBackend:
             if target.target_type == "executable":
                 ldflags = list(target.ldflags)
                 libs = []
+                dep_archives = []
                 for pkg_name in target.uses:
                     pkg = self.package_paths.get(pkg_name)
                     if pkg:
@@ -109,9 +110,16 @@ class NinjaBackend:
                         for lib in pkg.libraries:
                             libs.append(f"-l{lib}")
 
+                # Add internal library dependencies (static_library targets)
+                for dep_name in target.depends:
+                    for dep_target in self.config.targets:
+                        if dep_target.name == dep_name and dep_target.target_type == "static_library":
+                            dep_archives.append(str(self.build_dir / f"lib{dep_name}.a"))
+
+                link_inputs = obj_files + dep_archives
                 out = str(self.build_dir / target.name)
                 lines.append(
-                    f"build {out}: link {' '.join(obj_files)}"
+                    f"build {out}: link {' '.join(link_inputs)}"
                 )
                 if ldflags:
                     lines.append(f"  ldflags = {' '.join(ldflags)}")

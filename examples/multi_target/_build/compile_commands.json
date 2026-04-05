@@ -1,0 +1,12 @@
+[
+  {
+    "directory": "/home/spatchava/EoS/ebuild/examples/multi_target",
+    "command": "gcc -Wall -O2 -Iinclude/ -c src/mathlib.c",
+    "file": "src/mathlib.c"
+  },
+  {
+    "directory": "/home/spatchava/EoS/ebuild/examples/multi_target",
+    "command": "gcc -Iinclude/ -c src/main.c",
+    "file": "src/main.c"
+  }
+]

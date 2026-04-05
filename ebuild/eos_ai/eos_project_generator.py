@@ -647,44 +647,18 @@ class EosProjectGenerator:
         Tries the DepsManager resolution chain first (cache, sibling, config).
         If not found, clones via DepsManager.setup() into the shared cache.
 
-        Tries the DepsManager resolution chain first (cache, sibling, config).
-        If that fails, clones via DepsManager.setup() into the shared cache.
-
+        Args:
             clone_dir: Ignored (kept for API compat). Uses DepsManager cache.
             need_eos: Whether the eos repo is needed.
             need_eboot: Whether the eboot repo is needed.
+            shallow: Use shallow clones.
+        """
         try:
             from ebuild.deps.manager import DepsManager
-                resolved = mgr.get_repo_path("eos")
             mgr = DepsManager()
 
             if need_eos and self.eos_repo is None:
                 resolved = mgr.get_repo_path("eos")
-                if resolved:
-                    self.eos_repo = resolved
-                else:
-                    self.eos_repo = mgr.setup(
-                        "eos", url=self.eos_url, shallow=shallow
-                    )
-
-            if need_eboot and self.eboot_repo is None:
-                resolved = mgr.get_repo_path("eboot")
-                if resolved:
-                    self.eboot_repo = resolved
-                else:
-                    self.eboot_repo = mgr.setup(
-                        "eboot", url=self.eboot_url, shallow=shallow
-                    )
-        except Exception:
-            if need_eos and self.eos_repo is None:
-                self.eos_repo = self._clone_repo(
-                    self.eos_url, "eos", clone_dir, shallow
-                )
-            if need_eboot and self.eboot_repo is None:
-                self.eboot_repo = self._clone_repo(
-                    self.eboot_url, "eboot", clone_dir, shallow
-                )
-
                 if resolved:
                     self.eos_repo = resolved
                 else:

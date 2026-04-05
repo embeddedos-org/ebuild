@@ -250,11 +250,11 @@ def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str])
         log.success(f"Generated {build_path / 'compile_commands.json'}")
 
         log.step("Invoking ninja...")
-        ninja_cmd = [sys.executable, "-m", "ninja", "-C", str(build_path)]
+        ninja_cmd = [sys.executable, "-m", "ninja", "-f", str(build_path / "build.ninja")]
         if log.verbose:
             ninja_cmd.append("-v")
 
-        result = subprocess.run(ninja_cmd, capture_output=not log.verbose)
+        result = subprocess.run(ninja_cmd, capture_output=not log.verbose, cwd=str(cfg.source_dir))
         if result.returncode != 0:
             if not log.verbose and result.stderr:
                 log.error(result.stderr.decode(errors="replace"))
