@@ -87,6 +87,315 @@ Each `analyze` command generates **9 files** in ~260ms:
 | `pack_image.sh` | Image packing + signing script |
 | `llm_prompt.txt` | Optional LLM enhancement prompt |
 
+---
+
+### Generated Files — Detailed Explanation
+
+Here's what each file contains and how it's used, using `sample_stm32f4_sensor.kicad_sch` as an example:
+
+#### 1. `board.yaml` — Hardware Board Description
+
+**Who uses it:** EoS build system, device drivers, board support packages.
+
+Describes the MCU, architecture, and every peripheral detected from your schematic. This is the "source of truth" for what hardware the firmware needs to support.
+
+```yaml
+board:
+  name: stm32f4
+  mcu: STM32F4
+  family: STM32F4
+  arch: arm
+  core: cortex-m4
+  vendor: ST
+  clock_hz: 168000000
+  memory:
+    flash: 1048576     # 1MB
+    ram: 196608        # 192KB
+  peripherals:
+  - name: BME280       # Detected from KiCad component U2
+    type: i2c
+    bus: i2c
+  - name: W25Q128      # Detected from component U3
+    type: spi
+    bus: spi
+  - name: SN65HVD230   # CAN transceiver U6
+    type: can
+  - name: UART
+    type: uart
+```
+
+#### 2. `boot.yaml` — Bootloader Flash Layout
+
+**Who uses it:** eBoot bootloader, OTA update system, factory provisioning tools.
+
+Defines how the MCU's flash memory is partitioned for secure boot with A/B firmware slots. eBoot reads this to know where Stage-0, Stage-1, boot control blocks, and firmware slots live in flash.
+
+```yaml
+boot:
+  board: stm32f4
+  arch: arm
+  flash_base: '0x08000000'        # STM32F4 flash starts here
+  flash_size: 1048576              # 1MB total
+  layout:
+    stage0:                        # First-stage bootloader (runs from reset)
+      offset: '0x00000000'
+      size: 16384                  # 16KB
+    stage1:                        # Boot manager (selects firmware slot)
+      offset: '0x4000'
+      size: 65536                  # 64KB
+    bootctl_primary:               # Boot control block (active slot, attempt count)
+      offset: '0x14000'
+      size: 4096                   # 4KB
+    bootctl_backup:                # Redundant copy (corruption protection)
+      offset: '0x15000'
+      size: 4096
+    slot_a:                        # Firmware slot A (active)
+      offset: '0x16000'
+      size: 479232                 # ~468KB
+    slot_b:                        # Firmware slot B (update target)
+      offset: '0x8b000'
+      size: 479232
+  policy:
+    max_boot_attempts: 3           # Rollback after 3 failed boots
+    watchdog_timeout_ms: 5000      # 5-second watchdog
+    require_signature: true        # Ed25519 signature required
+    anti_rollback: true            # Monotonic counter prevents downgrades
+  image:
+    header_version: 1
+    hash_algo: sha256
+    sign_algo: ed25519
+```
+
+#### 3. `build.yaml` — Build Configuration
+
+**Who uses it:** `ebuild build` command, CI/CD pipelines.
+
+Tells ebuild how to compile the firmware: which backend (cmake), which toolchain (arm-none-eabi-gcc), and which EoS features to enable based on detected peripherals.
+
+```yaml
+project:
+  name: stm32f4-firmware
+  version: 0.1.0
+backend: cmake
+toolchain:
+  compiler: gcc
+  arch: arm
+  prefix: arm-none-eabi           # Cross-compiler prefix
+cmake:
+  build_type: Release
+  defines:
+    EOS_PLATFORM: rtos
+    EOS_ENABLE_I2C: 'ON'          # For BME280 sensor
+    EOS_ENABLE_SPI: 'ON'          # For W25Q128 flash
+    EOS_ENABLE_USB: 'ON'          # For CP2102N USB-UART
+    EOS_ENABLE_CAN: 'ON'          # For SN65HVD230 CAN bus
+    EOS_ENABLE_UART: 'ON'         # For debug console
+```
+
+#### 4. `eos_product_config.h` — C Feature Header
+
+**Who uses it:** EoS firmware source code (`#include "eos_product_config.h"`).
+
+A C header that the firmware includes to know what hardware is available. EoS drivers use these `#define`s to conditionally compile only the drivers your board actually needs.
+
+```c
+#ifndef EOS_GENERATED_CONFIG_H
+#define EOS_GENERATED_CONFIG_H
+
+#define EOS_PRODUCT_NAME    "stm32f4"
+#define EOS_MCU             "STM32F4"
+#define EOS_ARCH            "arm"
+#define EOS_CORE            "cortex-m4"
+#define EOS_VENDOR          "ST"
+#define EOS_CLOCK_HZ         168000000
+#define EOS_FLASH_SIZE       1048576
+#define EOS_RAM_SIZE         196608
+
+#define EOS_ENABLE_CAN               1
+#define EOS_ENABLE_I2C               1
+#define EOS_ENABLE_SPI               1
+#define EOS_ENABLE_UART              1
+#define EOS_ENABLE_USB               1
+
+#endif
+```
+
+In your firmware code:
+```c
+#include "eos_product_config.h"
+
+void app_init(void) {
+#if EOS_ENABLE_I2C
+    bme280_init();    // Only compiled if I2C detected on board
+#endif
+#if EOS_ENABLE_CAN
+    can_bus_init();   // Only compiled if CAN detected
+#endif
+}
+```
+
+#### 5. `eboot_flash_layout.h` — Bootloader Flash Constants
+
+**Who uses it:** eBoot bootloader C code (`#include "eboot_flash_layout.h"`).
+
+Gives eBoot the exact memory addresses for each flash partition. Without this, the bootloader wouldn't know where to find firmware images or where to write OTA updates.
+
+```c
+#define EBOOT_FLASH_BASE        0x8000000    // Flash start
+#define EBOOT_FLASH_SIZE        1048576      // 1MB total
+
+#define EBOOT_STAGE0_OFFSET  0x0             // Stage-0 at flash start
+#define EBOOT_STAGE0_ADDR    (0x8000000 + 0x0)
+#define EBOOT_STAGE0_SIZE    16384           // 16KB
+
+#define EBOOT_STAGE1_OFFSET  0x4000          // Stage-1 at 16KB
+#define EBOOT_STAGE1_ADDR    (0x8000000 + 0x4000)
+#define EBOOT_STAGE1_SIZE    65536           // 64KB
+
+#define EBOOT_SLOT_A_OFFSET  0x16000         // Firmware slot A
+#define EBOOT_SLOT_A_SIZE    479232          // ~468KB
+
+#define EBOOT_SLOT_B_OFFSET  0x8b000         // Firmware slot B
+#define EBOOT_SLOT_B_SIZE    479232
+
+#define EBOOT_MAX_BOOT_ATTEMPTS 3
+#define EBOOT_REQUIRE_SIGNATURE 1            // Ed25519 required
+#define EBOOT_ANTI_ROLLBACK     1            // Version must increase
+```
+
+#### 6. `eboot_memory.ld` — Linker Script Memory Regions
+
+**Who uses it:** GCC linker (passed via `-T eboot_memory.ld`).
+
+Tells the linker exactly where each bootloader component lives in flash memory. The compiler uses this to place code at the correct addresses so Stage-0 runs from reset, Stage-1 runs after verification, etc.
+
+```ld
+MEMORY
+{
+  stage0          (rx)  : ORIGIN = 0x8000000,  LENGTH = 16384
+  stage1          (rx)  : ORIGIN = 0x8004000,  LENGTH = 65536
+  bootctl_primary (rw)  : ORIGIN = 0x8014000,  LENGTH = 4096
+  bootctl_backup  (rw)  : ORIGIN = 0x8015000,  LENGTH = 4096
+  slot_a          (rw)  : ORIGIN = 0x8016000,  LENGTH = 479232
+  slot_b          (rw)  : ORIGIN = 0x808b000,  LENGTH = 479232
+}
+```
+
+#### 7. `eboot_config.cmake` — CMake Build Definitions
+
+**Who uses it:** CMake build system when building eBoot for this board.
+
+Passes the board name, flash sizes, and security settings to CMake so eBoot compiles with the correct configuration for your specific board.
+
+```cmake
+set(EBLDR_BOARD "stm32f4")
+set(EBLDR_FLASH_SIZE 1048576)
+set(EBLDR_STAGE0_SIZE 16384)
+set(EBLDR_STAGE1_SIZE 65536)
+set(EBLDR_SLOT_A_SIZE 479232)
+set(EBLDR_SLOT_B_SIZE 479232)
+set(EBLDR_MAX_BOOT_ATTEMPTS 3)
+set(EBLDR_REQUIRE_SIGNATURE ON)
+```
+
+#### 8. `pack_image.sh` — Firmware Packing Script
+
+**Who uses it:** Build pipeline / CI — run after compiling firmware to create a signed image.
+
+Takes a raw firmware `.bin` file, computes its SHA-256 hash, prepends an eBoot-compatible image header, and produces a `.signed.bin` ready for flashing or OTA delivery.
+
+```bash
+#!/bin/bash
+# Usage: ./pack_image.sh firmware.bin [signing_key.pem]
+
+FIRMWARE=$1
+OUTPUT="${FIRMWARE%.bin}.signed.bin"
+
+sha256sum $FIRMWARE > ${FIRMWARE}.sha256
+
+python3 -c "
+import struct, hashlib, sys
+fw = open(sys.argv[1], 'rb').read()
+h = hashlib.sha256(fw).digest()
+header = struct.pack('<4sII32s', b'EBOOT', 1, len(fw), h)
+out = open(sys.argv[2], 'wb')
+out.write(header)
+out.write(fw)
+" $FIRMWARE $OUTPUT
+```
+
+#### 9. `llm_prompt.txt` — LLM Enhancement Prompt
+
+**Who uses it:** Optional — pass to an LLM (Ollama/OpenAI) for deeper hardware analysis.
+
+If you have a local LLM running, ebuild can send this prompt to get enhanced peripheral configuration suggestions (pin muxing, DMA channels, interrupt priorities) beyond what the rule engine detects.
+
+```text
+Analyze this embedded hardware design and suggest optimal configuration:
+
+MCU: STM32F4 (cortex-m4)
+Architecture: arm
+Peripherals: i2c, spi, usb, can, uart
+
+Suggest: pin assignments, DMA channels, interrupt priorities,
+clock tree configuration, and power optimization.
+```
+
+---
+
+### How the Files Flow Together
+
+```
+                     Your Hardware
+                    ┌─────────────┐
+                    │ .kicad_sch  │  ← KiCad schematic
+                    │ .yaml       │  ← or manual board description
+                    │ .csv        │  ← or BOM export
+                    └──────┬──────┘
+                           │
+                    ebuild analyze
+                           │
+          ┌────────────────┼────────────────┐
+          ▼                ▼                ▼
+    ┌──────────┐    ┌──────────┐    ┌──────────────┐
+    │board.yaml│    │boot.yaml │    │build.yaml    │
+    │          │    │          │    │              │
+    │ MCU info │    │ Flash    │    │ Toolchain    │
+    │ Periphs  │    │ layout   │    │ CMake defs   │
+    └────┬─────┘    └────┬─────┘    └──────┬───────┘
+         │               │                │
+         ▼               ▼                ▼
+ ┌───────────────┐ ┌────────────────┐ ┌──────────────┐
+ │eos_product_   │ │eboot_flash_    │ │eboot_config. │
+ │config.h       │ │layout.h        │ │cmake         │
+ │               │ │eboot_memory.ld │ │              │
+ │ C #defines    │ │                │ │ CMake vars   │
+ │ for firmware  │ │ C #defines +   │ │ for eBoot    │
+ │               │ │ linker script  │ │ build        │
+ └───────┬───────┘ │ for bootloader │ └──────┬───────┘
+         │         └────────┬───────┘        │
+         │                  │                │
+         ▼                  ▼                ▼
+    ┌─────────────────────────────────────────────┐
+    │           ebuild build / cmake              │
+    │  Compiles EoS firmware + eBoot bootloader   │
+    │  with the correct config for YOUR board     │
+    └─────────────────────┬───────────────────────┘
+                          │
+                          ▼
+                  ┌───────────────┐
+                  │pack_image.sh  │
+                  │               │
+                  │ Signs firmware│
+                  │ with eBoot    │
+                  │ image header  │
+                  └───────┬───────┘
+                          │
+                          ▼
+                   firmware.signed.bin
+                   Ready to flash! 🚀
+```
+
 ### Example 4: Scaffold a New Project
 
 ```bash
