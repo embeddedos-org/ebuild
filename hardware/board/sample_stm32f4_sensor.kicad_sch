@@ -1,0 +1,212 @@
+(kicad_sch (version 20230121) (generator eeschema)
+  (uuid "a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+  (paper "A4")
+
+  (title_block
+    (title "STM32F4 Sensor Board")
+    (date "2026-01-15")
+    (rev "1.0")
+    (company "EoS Project")
+  )
+
+  (lib_symbols)
+
+  ;; ============================================================
+  ;; MCU: STM32F407VGT6 (ARM Cortex-M4, 168MHz, 1MB flash, 192KB RAM)
+  ;; ============================================================
+  (symbol (lib_id "MCU_ST_STM32:STM32F407VGT6") (at 100 80 0)
+    (uuid "11111111-1111-1111-1111-111111111111")
+    (property "Reference" "U1" (at 100 60 0))
+    (property "Value" "STM32F407VGT6" (at 100 65 0))
+    (property "Footprint" "Package_QFP:LQFP-100_14x14mm_P0.5mm" (at 100 70 0))
+    (property "Datasheet" "https://www.st.com/resource/en/datasheet/stm32f407vg.pdf" (at 100 75 0))
+    (property "Manufacturer" "STMicroelectronics" (at 0 0 0))
+    (pin "1" "PA0" (at 80 80 0))
+    (pin "2" "PA1" (at 80 82 0))
+    (pin "3" "PA2" (at 80 84 0))
+    (pin "4" "PA3" (at 80 86 0))
+    (pin "5" "PA5" (at 80 88 0))
+    (pin "6" "PA6" (at 80 90 0))
+    (pin "7" "PA7" (at 80 92 0))
+    (pin "8" "PA9" (at 80 94 0))
+    (pin "9" "PA10" (at 80 96 0))
+    (pin "10" "PA11" (at 80 98 0))
+    (pin "11" "PA12" (at 80 100 0))
+    (pin "20" "PB6" (at 120 80 0))
+    (pin "21" "PB7" (at 120 82 0))
+    (pin "22" "PB8" (at 120 84 0))
+    (pin "23" "PB9" (at 120 86 0))
+    (pin "30" "PC0" (at 120 88 0))
+    (pin "31" "PC13" (at 120 90 0))
+    (pin "40" "PD0" (at 120 92 0))
+    (pin "41" "PD1" (at 120 94 0))
+    (pin "42" "PD12" (at 120 96 0))
+  )
+
+  ;; ============================================================
+  ;; BME280 — Temperature / Humidity / Pressure Sensor (I2C)
+  ;; ============================================================
+  (symbol (lib_id "Sensor:BME280") (at 180 80 0)
+    (uuid "22222222-2222-2222-2222-222222222222")
+    (property "Reference" "U2" (at 180 70 0))
+    (property "Value" "BME280" (at 180 75 0))
+    (property "Footprint" "Package_LGA:Bosch_LGA-8_2.5x2.5mm" (at 0 0 0))
+    (pin "1" "SDA" (at 170 80 0))
+    (pin "2" "SCL" (at 170 82 0))
+    (pin "3" "VDD" (at 170 84 0))
+    (pin "4" "GND" (at 170 86 0))
+  )
+
+  ;; ============================================================
+  ;; W25Q128 — 16MB SPI NOR Flash
+  ;; ============================================================
+  (symbol (lib_id "Memory_Flash:W25Q128JV") (at 180 120 0)
+    (uuid "33333333-3333-3333-3333-333333333333")
+    (property "Reference" "U3" (at 180 110 0))
+    (property "Value" "W25Q128JVSIQ" (at 180 115 0))
+    (property "Footprint" "Package_SO:SOIC-8_5.23x5.23mm_P1.27mm" (at 0 0 0))
+    (pin "1" "CS" (at 170 120 0))
+    (pin "2" "MISO" (at 170 122 0))
+    (pin "5" "MOSI" (at 170 124 0))
+    (pin "6" "SCLK" (at 170 126 0))
+    (pin "8" "VCC" (at 170 128 0))
+    (pin "4" "GND" (at 170 130 0))
+  )
+
+  ;; ============================================================
+  ;; LIS3DH — 3-axis Accelerometer (I2C)
+  ;; ============================================================
+  (symbol (lib_id "Sensor_Motion:LIS3DH") (at 180 160 0)
+    (uuid "44444444-4444-4444-4444-444444444444")
+    (property "Reference" "U4" (at 180 150 0))
+    (property "Value" "LIS3DHTR" (at 180 155 0))
+    (property "Footprint" "Package_LGA:LGA-16_3x3mm_P0.5mm" (at 0 0 0))
+    (pin "1" "SDA" (at 170 160 0))
+    (pin "2" "SCL" (at 170 162 0))
+    (pin "3" "INT1" (at 170 164 0))
+    (pin "4" "INT2" (at 170 166 0))
+  )
+
+  ;; ============================================================
+  ;; CP2102N — USB-to-UART Bridge
+  ;; ============================================================
+  (symbol (lib_id "Interface_USB:CP2102N-A02") (at 50 80 0)
+    (uuid "55555555-5555-5555-5555-555555555555")
+    (property "Reference" "U5" (at 50 70 0))
+    (property "Value" "CP2102N" (at 50 75 0))
+    (property "Footprint" "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm" (at 0 0 0))
+    (pin "1" "D+" (at 40 80 0))
+    (pin "2" "D-" (at 40 82 0))
+    (pin "3" "TXD" (at 60 80 0))
+    (pin "4" "RXD" (at 60 82 0))
+  )
+
+  ;; ============================================================
+  ;; SN65HVD230 — CAN Bus Transceiver
+  ;; ============================================================
+  (symbol (lib_id "Interface_CAN_LIN:SN65HVD230") (at 50 130 0)
+    (uuid "66666666-6666-6666-6666-666666666666")
+    (property "Reference" "U6" (at 50 120 0))
+    (property "Value" "SN65HVD230" (at 50 125 0))
+    (property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (at 0 0 0))
+    (pin "1" "TXD" (at 40 130 0))
+    (pin "2" "GND" (at 40 132 0))
+    (pin "3" "VCC" (at 40 134 0))
+    (pin "4" "RXD" (at 40 136 0))
+    (pin "6" "CANL" (at 60 130 0))
+    (pin "7" "CANH" (at 60 132 0))
+  )
+
+  ;; ============================================================
+  ;; AMS1117-3.3 — 3.3V LDO Voltage Regulator
+  ;; ============================================================
+  (symbol (lib_id "Regulator_Linear:AMS1117-3.3") (at 50 170 0)
+    (uuid "77777777-7777-7777-7777-777777777777")
+    (property "Reference" "U7" (at 50 160 0))
+    (property "Value" "AMS1117-3.3" (at 50 165 0))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-223-3_TabPin2" (at 0 0 0))
+    (pin "1" "GND" (at 40 170 0))
+    (pin "2" "VOUT" (at 60 170 0))
+    (pin "3" "VIN" (at 40 172 0))
+  )
+
+  ;; ============================================================
+  ;; Passive Components
+  ;; ============================================================
+  (symbol (lib_id "Device:R") (at 140 80 0)
+    (uuid "88888888-8888-8888-8888-888888888881")
+    (property "Reference" "R1" (at 140 77 0))
+    (property "Value" "4.7k" (at 140 83 0))
+    (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 0 0 0))
+  )
+
+  (symbol (lib_id "Device:R") (at 145 80 0)
+    (uuid "88888888-8888-8888-8888-888888888882")
+    (property "Reference" "R2" (at 145 77 0))
+    (property "Value" "4.7k" (at 145 83 0))
+    (property "Footprint" "Resistor_SMD:R_0402_1005Metric" (at 0 0 0))
+  )
+
+  (symbol (lib_id "Device:C") (at 130 170 0)
+    (uuid "99999999-9999-9999-9999-999999999991")
+    (property "Reference" "C1" (at 130 167 0))
+    (property "Value" "100nF" (at 130 173 0))
+    (property "Footprint" "Capacitor_SMD:C_0402_1005Metric" (at 0 0 0))
+  )
+
+  (symbol (lib_id "Device:C") (at 135 170 0)
+    (uuid "99999999-9999-9999-9999-999999999992")
+    (property "Reference" "C2" (at 135 167 0))
+    (property "Value" "10uF" (at 135 173 0))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 0 0 0))
+  )
+
+  (symbol (lib_id "Device:Crystal") (at 130 90 0)
+    (uuid "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+    (property "Reference" "Y1" (at 130 87 0))
+    (property "Value" "8MHz" (at 130 93 0))
+    (property "Footprint" "Crystal:Crystal_SMD_HC49-SD" (at 0 0 0))
+  )
+
+  (symbol (lib_id "Device:LED") (at 130 100 0)
+    (uuid "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+    (property "Reference" "D1" (at 130 97 0))
+    (property "Value" "LED_Green" (at 130 103 0))
+    (property "Footprint" "LED_SMD:LED_0603_1608Metric" (at 0 0 0))
+  )
+
+  ;; ============================================================
+  ;; Net Labels (bus connections)
+  ;; ============================================================
+  (label "I2C1_SDA" (at 170 80 0) (uuid "label-01"))
+  (label "I2C1_SCL" (at 170 82 0) (uuid "label-02"))
+  (label "I2C1_SDA" (at 120 82 0) (uuid "label-03"))
+  (label "I2C1_SCL" (at 120 80 0) (uuid "label-04"))
+  (label "SPI1_MOSI" (at 80 92 0) (uuid "label-05"))
+  (label "SPI1_MISO" (at 80 90 0) (uuid "label-06"))
+  (label "SPI1_SCK" (at 80 88 0) (uuid "label-07"))
+  (label "USART1_TX" (at 80 94 0) (uuid "label-08"))
+  (label "USART1_RX" (at 80 96 0) (uuid "label-09"))
+  (label "CAN1_TX" (at 120 92 0) (uuid "label-10"))
+  (label "CAN1_RX" (at 120 94 0) (uuid "label-11"))
+  (label "USB_DP" (at 80 98 0) (uuid "label-12"))
+  (label "USB_DM" (at 80 100 0) (uuid "label-13"))
+
+  (global_label "3V3" (at 60 170 0) (uuid "gl-01"))
+  (global_label "GND" (at 40 170 0) (uuid "gl-02"))
+  (global_label "CANH" (at 60 132 0) (uuid "gl-03"))
+  (global_label "CANL" (at 60 130 0) (uuid "gl-04"))
+
+  ;; ============================================================
+  ;; Wire connections
+  ;; ============================================================
+  (wire (pts (xy 120 82) (xy 170 80)))
+  (wire (pts (xy 120 80) (xy 170 82)))
+  (wire (pts (xy 80 92) (xy 170 124)))
+  (wire (pts (xy 80 90) (xy 170 122)))
+  (wire (pts (xy 80 88) (xy 170 126)))
+  (wire (pts (xy 80 94) (xy 60 80)))
+  (wire (pts (xy 80 96) (xy 60 82)))
+  (wire (pts (xy 120 92) (xy 40 130)))
+  (wire (pts (xy 120 94) (xy 40 136)))
+)
