@@ -9,7 +9,7 @@
 
 **Single monorepo for the entire EoS Embedded Operating System.**
 
-One clone, one build command — from PCB hardware description to deployable firmware image. `ebuild` orchestrates cross-compilation across multiple backends (CMake, Make, Meson, Cargo, Kbuild), resolves package dependencies, analyzes hardware schematics, and generates deployable OS images for 14+ embedded targets.
+One clone, one build command — from PCB hardware description to deployable firmware image. `ebuild` orchestrates cross-compilation across multiple backends (CMake, Make, Meson, Cargo, Kbuild), resolves package dependencies, analyzes hardware schematics, and generates deployable OS images for 73+ embedded targets.
 
 ## What This Does
 
@@ -96,7 +96,7 @@ ebuild analyze --input hardware/board/sample_iot_gateway.yaml
 ebuild/
 ├── core/                          ALWAYS BUILT
 │   ├── eos/                       Embedded OS (HAL, kernel, services, debug, drivers)
-│   └── eboot/                     Bootloader (26 boards, A/B update, secure boot)
+│   └── eboot/                     Bootloader (83 boards across 73 architectures, A/B update, secure boot)
 ├── layers/                        OPTIONAL (--with flag)
 │   ├── eai/                       AI layer (LLM models, Ebot server)
 │   ├── eni/                       Neural interface (Neuralink adapter)
@@ -117,7 +117,7 @@ ebuild/
 
 For a detailed architecture overview, see [docs/architecture.md](docs/architecture.md).
 
-## Supported Hardware (14 targets)
+## Supported Hardware (73+ targets)
 
 | Target | Arch | CPU | Vendor | eBoot Board |
 |---|---|---|---|---|
@@ -168,7 +168,7 @@ For adding new board targets, see [docs/guides/adding_a_board.md](docs/guides/ad
 
 ### eBoot — Bootloader
 
-26 board ports, A/B firmware update, secure boot chain, crypto verification, recovery partition.
+83 board ports across 73 architectures, A/B firmware update, secure boot chain, crypto verification, recovery partition.
 
 ## CLI Commands (18)
 
