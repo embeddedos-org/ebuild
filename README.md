@@ -32,15 +32,27 @@ cd ebuild
 # 2. Install (editable mode for development)
 pip install -e .
 
-# 3. Build core only (EoS kernel + eBoot bootloader)
+# 3. Setup — clone eos + eboot repos to ~/.ebuild/repos/
+ebuild setup
+
+# 4. Build core only (EoS kernel + eBoot bootloader)
+ebuild setup
+
+# 5. Build with optional layers (AI, neural interface, IPC)
 ebuild build --target raspi4
 
-# 4. Build with optional layers (AI, neural interface, IPC)
+# 6. Build everything
 ebuild build --target raspi4 --with eai,eni,eipc
 
-# 5. Build everything
+# 6. Build everything
+> **Note:** `ebuild setup` replaces the old `core/eos/` and `core/eboot/` embedded copies.
+> See [docs/dependency-management.md](docs/dependency-management.md) for custom forks, branch pinning, and migration.
+
 ebuild build --target raspi4 --with all
 ```
+
+> **Note:** `ebuild setup` replaces the old `core/eos/` and `core/eboot/` embedded copies.
+> See [docs/dependency-management.md](docs/dependency-management.md) for custom forks, branch pinning, and migration details.
 
 ### Workflow Examples
 

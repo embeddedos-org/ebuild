@@ -33,18 +33,106 @@ elseif(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # ================================================================
-# Core: EoS (always built)
+# Core: EoS + eBoot (always built, dynamically resolved)
 # ================================================================
 message(STATUS "=== EoS Platform v${PROJECT_VERSION} ===")
 message(STATUS "  Target: ${EOS_TARGET}")
-add_subdirectory(core/eos)
-message(STATUS "  Core/EoS: ON")
+set(EOS_SOURCE_DIR "" CACHE PATH "Path to EoS source (auto-resolved if empty)")
+# Allow user to override repo paths at cmake configure time
+set(EOS_SOURCE_DIR "" CACHE PATH "Path to EoS source (auto-resolved if empty)")
+set(EBOOT_SOURCE_DIR "" CACHE PATH "Path to eBoot source (auto-resolved if empty)")
+    if(EXISTS "$ENV{HOME}/.ebuild/repos/eos/CMakeLists.txt")
+# --- Auto-resolve EoS source directory ---
+if(NOT EOS_SOURCE_DIR OR EOS_SOURCE_DIR STREQUAL "")
+    # 1. Check ~/.ebuild/repos/eos (cached clone)
+    if(DEFINED ENV{HOME} AND EXISTS "$ENV{HOME}/.ebuild/repos/eos/CMakeLists.txt")
+        set(EOS_SOURCE_DIR "$ENV{HOME}/.ebuild/repos/eos")
+    elseif(DEFINED ENV{USERPROFILE} AND EXISTS "$ENV{USERPROFILE}/.ebuild/repos/eos/CMakeLists.txt")
+        set(EOS_SOURCE_DIR "$ENV{USERPROFILE}/.ebuild/repos/eos")
+    # 2. Check sibling directory ../eos
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../eos/CMakeLists.txt")
+        get_filename_component(EOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../eos" ABSOLUTE)
+    # 3. Fallback to embedded core/eos
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/eos/CMakeLists.txt")
+        set(EOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core/eos")
+        message(WARNING "Using embedded core/eos/ is deprecated. Run 'ebuild setup' to use cached repos.")
+    endif()
+endif()
 
-# ================================================================
-# Core: eBoot (always built)
-# ================================================================
-add_subdirectory(core/eboot)
-message(STATUS "  Core/eBoot: ON")
+if(EOS_SOURCE_DIR AND EXISTS "${EOS_SOURCE_DIR}/CMakeLists.txt")
+    add_subdirectory(${EOS_SOURCE_DIR} ${CMAKE_BINARY_DIR}/eos)
+    message(STATUS "  Core/EoS: ON (${EOS_SOURCE_DIR})")
+else()
+    message(WARNING "EoS source not found. Run 'ebuild setup' or pass -DEOS_SOURCE_DIR=<path>.")
+endif()
+
+# --- Auto-resolve eBoot source directory ---
+if(NOT EBOOT_SOURCE_DIR OR EBOOT_SOURCE_DIR STREQUAL "")
+    # 1. Check ~/.ebuild/repos/eboot (cached clone)
+    if(DEFINED ENV{HOME} AND EXISTS "$ENV{HOME}/.ebuild/repos/eboot/CMakeLists.txt")
+        set(EBOOT_SOURCE_DIR "$ENV{HOME}/.ebuild/repos/eboot")
+    elseif(DEFINED ENV{USERPROFILE} AND EXISTS "$ENV{USERPROFILE}/.ebuild/repos/eboot/CMakeLists.txt")
+        set(EBOOT_SOURCE_DIR "$ENV{USERPROFILE}/.ebuild/repos/eboot")
+    # 2. Check sibling directory ../eboot
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../eboot/CMakeLists.txt")
+        get_filename_component(EBOOT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../eboot" ABSOLUTE)
+    # 3. Fallback to embedded core/eboot
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/eboot/CMakeLists.txt")
+        set(EBOOT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core/eboot")
+        message(WARNING "Using embedded core/eboot/ is deprecated. Run 'ebuild setup' to use cached repos.")
+    endif()
+endif()
+
+if(EBOOT_SOURCE_DIR AND EXISTS "${EBOOT_SOURCE_DIR}/CMakeLists.txt")
+    add_subdirectory(${EBOOT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/eboot)
+    message(STATUS "  Core/eBoot: ON (${EBOOT_SOURCE_DIR})")
+else()
+    message(WARNING "eBoot source not found. Run 'ebuild setup' or pass -DEBOOT_SOURCE_DIR=<path>.")
+endif()
+
+        set(EOS_SOURCE_DIR "$ENV{HOME}/.ebuild/repos/eos")
+    elseif(EXISTS "$ENV{USERPROFILE}/.ebuild/repos/eos/CMakeLists.txt")
+        set(EOS_SOURCE_DIR "$ENV{USERPROFILE}/.ebuild/repos/eos")
+    # 2. Check sibling directory ../eos
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../eos/CMakeLists.txt")
+        get_filename_component(EOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../eos" ABSOLUTE)
+    # 3. Fallback to embedded core/eos
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/eos/CMakeLists.txt")
+        set(EOS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core/eos")
+        message(WARNING "Using embedded core/eos/ — run 'ebuild setup' to use cached repos instead.")
+    endif()
+endif()
+
+if(EOS_SOURCE_DIR AND EXISTS "${EOS_SOURCE_DIR}/CMakeLists.txt")
+    add_subdirectory(${EOS_SOURCE_DIR} ${CMAKE_BINARY_DIR}/eos)
+    message(STATUS "  Core/EoS: ON (${EOS_SOURCE_DIR})")
+else()
+    message(WARNING "EoS source not found. Run 'ebuild setup' or set -DEOS_SOURCE_DIR=<path>.")
+endif()
+
+# --- Auto-resolve eBoot source directory ---
+if(NOT EBOOT_SOURCE_DIR)
+    # 1. Check ~/.ebuild/repos/eboot (cached clone)
+    if(EXISTS "$ENV{HOME}/.ebuild/repos/eboot/CMakeLists.txt")
+        set(EBOOT_SOURCE_DIR "$ENV{HOME}/.ebuild/repos/eboot")
+    elseif(EXISTS "$ENV{USERPROFILE}/.ebuild/repos/eboot/CMakeLists.txt")
+        set(EBOOT_SOURCE_DIR "$ENV{USERPROFILE}/.ebuild/repos/eboot")
+    # 2. Check sibling directory ../eboot
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../eboot/CMakeLists.txt")
+        get_filename_component(EBOOT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../eboot" ABSOLUTE)
+    # 3. Fallback to embedded core/eboot
+    elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/core/eboot/CMakeLists.txt")
+        set(EBOOT_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/core/eboot")
+        message(WARNING "Using embedded core/eboot/ — run 'ebuild setup' to use cached repos instead.")
+    endif()
+endif()
+
+if(EBOOT_SOURCE_DIR AND EXISTS "${EBOOT_SOURCE_DIR}/CMakeLists.txt")
+    add_subdirectory(${EBOOT_SOURCE_DIR} ${CMAKE_BINARY_DIR}/eboot)
+    message(STATUS "  Core/eBoot: ON (${EBOOT_SOURCE_DIR})")
+else()
+    message(WARNING "eBoot source not found. Run 'ebuild setup' or set -DEBOOT_SOURCE_DIR=<path>.")
+endif()
 
 # ================================================================
 # Optional Layers

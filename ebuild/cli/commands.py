@@ -1092,3 +1092,549 @@ def generate_boot(log: Logger, boot_yaml: str, output_dir: str) -> None:
     except Exception as e:
         log.error(f"Generation failed: {e}")
         raise SystemExit(1)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Dependency management commands
+# ═══════════════════════════════════════════════════════════════
+
+@cli.command()
+@click.option("--eos-url", default=None, help="Git URL for eos repo (overrides default).")
+@click.option("--eboot-url", default=None, help="Git URL for eboot repo (overrides default).")
+@click.option("--eos-branch", default=None, help="Branch/tag for eos repo.")
+@click.option("--eboot-branch", default=None, help="Branch/tag for eboot repo.")
+@click.option("--eos-path", default=None, type=click.Path(exists=True), help="Link to local eos repo (no clone).")
+@click.option("--eboot-path", default=None, type=click.Path(exists=True), help="Link to local eboot repo (no clone).")
+@click.pass_obj
+def setup(
+    log: Logger,
+    eos_url: Optional[str],
+    eboot_url: Optional[str],
+    eos_branch: Optional[str],
+    eboot_branch: Optional[str],
+    eos_path: Optional[str],
+    eboot_path: Optional[str],
+) -> None:
+    """Clone eos + eboot repos to the local cache (~/.ebuild/repos/).
+
+    On first run this clones both repos with default settings.
+    Use flags to override URLs, branches, or link to local repos.
+
+    Examples:
+
+        ebuild setup
+
+        ebuild setup --eos-url https://github.com/myfork/eos.git
+
+        ebuild setup --eboot-branch v0.2.0
+
+        ebuild setup --eos-path /path/to/local/eos
+    """
+    from ebuild.deps.manager import DepsManager
+
+    log.header("ebuild — Setup")
+    mgr = DepsManager()
+
+    try:
+        log.step("Setting up eos...")
+        eos_dir = mgr.setup("eos", url=eos_url, branch=eos_branch, path=eos_path)
+        log.success(f"  eos: {eos_dir}")
+
+        log.step("Setting up eboot...")
+        eboot_dir = mgr.setup("eboot", url=eboot_url, branch=eboot_branch, path=eboot_path)
+        log.success(f"  eboot: {eboot_dir}")
+
+        log.success("Setup complete. Repos are ready.")
+    except Exception as e:
+        log.error(f"Setup failed: {e}")
+        raise SystemExit(1)
+
+
+@cli.group()
+@click.pass_context
+def repos(ctx: click.Context) -> None:
+    """Manage cached eos/eboot repositories."""
+    pass
+
+
+@repos.command("status")
+@click.pass_obj
+def repos_status(log: Logger) -> None:
+    """Show all repos, URLs, branches, and paths."""
+    from ebuild.deps.manager import DepsManager
+
+    log.header("ebuild — Repo Status")
+    mgr = DepsManager()
+    entries = mgr.status()
+
+    for info in entries:
+        log.step(f"{info['name']}")
+        log.info(f"  URL:    {info['url']}")
+        log.info(f"  Branch: {info['branch']}")
+        if info.get("config_path"):
+            log.info(f"  Linked: {info['config_path']}")
+        if info.get("cached"):
+            log.info(f"  Cached: {info['cache_location']}")
+            log.info(f"  Git:    {info.get('git_branch', '?')} @ {info.get('git_commit', '?')}")
+        else:
+            log.info("  Cached: no")
+
+
+@repos.command("update")
+@click.argument("repo_name", required=False, default=None)
+@click.pass_obj
+def repos_update(log: Logger, repo_name: Optional[str]) -> None:
+    """Git pull latest for one or all repos."""
+    from ebuild.deps.manager import DepsManager
+
+    log.header("ebuild — Repo Update")
+    mgr = DepsManager()
+    results = mgr.update(repo_name)
+
+    for name, result in results.items():
+        if "updated" in result:
+            log.success(f"  {name}: {result}")
+        elif "failed" in result:
+            log.error(f"  {name}: {result}")
+        else:
+            log.info(f"  {name}: {result}")
+
+
+@repos.command("set-url")
+@click.argument("repo_name")
+@click.argument("url")
+@click.pass_obj
+def repos_set_url(log: Logger, repo_name: str, url: str) -> None:
+    """Change the git URL for a repo."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.set_url(repo_name, url)
+    log.success(f"Set {repo_name} URL to {url}")
+
+
+@repos.command("set-branch")
+@click.argument("repo_name")
+@click.argument("branch")
+@click.pass_obj
+def repos_set_branch(log: Logger, repo_name: str, branch: str) -> None:
+    """Change the branch/tag for a repo."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.set_branch(repo_name, branch)
+    log.success(f"Set {repo_name} branch to {branch}")
+
+
+@repos.command("link")
+@click.argument("repo_name")
+@click.argument("local_path", type=click.Path(exists=True))
+@click.pass_obj
+def repos_link(log: Logger, repo_name: str, local_path: str) -> None:
+    """Link a repo to a local directory (no clone)."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.link(repo_name, local_path)
+    log.success(f"Linked {repo_name} → {Path(local_path).resolve()}")
+
+
+@repos.command("unlink")
+@click.argument("repo_name")
+@click.pass_obj
+def repos_unlink(log: Logger, repo_name: str) -> None:
+    """Remove local path override, reverting to cache."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.unlink(repo_name)
+    log.success(f"Unlinked {repo_name} — will use cached clone.")
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Board generation command
+# ═══════════════════════════════════════════════════════════════
+
+@cli.command("generate-board")
+@click.option("--mcu", default=None, help="MCU name (e.g., stm32f407, nrf52840).")
+@click.option("--from-kicad", "kicad_file", default=None, type=click.Path(exists=True), help="KiCad schematic (.kicad_sch).")
+@click.option("--from-eagle", "eagle_file", default=None, type=click.Path(exists=True), help="Eagle schematic (.sch).")
+@click.option("--from-bom", "bom_file", default=None, type=click.Path(exists=True), help="BOM CSV file.")
+@click.option("--describe", "description", default=None, help="Text description of hardware.")
+@click.option("--product", default=None, help="Product profile for auto-config (e.g., ble-sensor, gateway).")
+@click.option("--output", "output_dir", default="_generated", help="Output directory for generated configs.")
+@click.option("--eos-schemas", default=None, help="Path to eos/schemas/ for hardware vocabulary.")
+@click.pass_obj
+def generate_board(
+    log: Logger,
+    mcu: Optional[str],
+    kicad_file: Optional[str],
+    eagle_file: Optional[str],
+    bom_file: Optional[str],
+    description: Optional[str],
+    product: Optional[str],
+    output_dir: str,
+    eos_schemas: Optional[str],
+) -> None:
+    """Generate board/boot/build YAML configs from hardware inputs.
+
+    Accepts an MCU name, KiCad schematic, Eagle schematic, BOM CSV,
+    or text description. Generates board.yaml, boot.yaml, build.yaml,
+    eos_product_config.h, and eboot integration files.
+
+    Examples:
+
+        ebuild generate-board --mcu stm32f407 --output ./config/
+
+        ebuild generate-board --from-kicad design.kicad_sch --output ./config/
+
+        ebuild generate-board --from-eagle design.sch --output ./config/
+
+        ebuild generate-board --from-bom parts.csv --output ./config/
+
+        ebuild generate-board --describe "STM32H743 with CAN, SPI flash" --output ./config/
+
+        ebuild generate-board --mcu nrf52840 --product ble-sensor --output ./config/
+    """
+    log.header("ebuild — Board Config Generator")
+
+    try:
+        from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
+        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+        from ebuild.eos_ai.eos_validator import EosConfigValidator
+        from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
+
+        analyzer = EosHardwareAnalyzer(eos_schemas_path=eos_schemas)
+
+        # Determine input source
+        if kicad_file:
+            log.step(f"Analyzing KiCad schematic: {kicad_file}")
+            profile = analyzer.interpret_kicad(kicad_file)
+        elif eagle_file:
+            log.step(f"Analyzing Eagle schematic: {eagle_file}")
+            profile = analyzer.interpret_file(eagle_file)
+        elif bom_file:
+            log.step(f"Analyzing BOM: {bom_file}")
+            content = Path(bom_file).read_text(encoding="utf-8", errors="replace")
+            profile = analyzer.interpret_bom(content)
+        elif description:
+            log.step("Analyzing text description...")
+            profile = analyzer.interpret_text(description)
+        elif mcu:
+            log.step(f"Generating config for MCU: {mcu}")
+            profile = analyzer.interpret_text(mcu)
+        else:
+            log.error("Provide --mcu, --from-kicad, --from-eagle, --from-bom, or --describe.")
+            raise SystemExit(1)
+
+        # Override MCU if explicitly provided alongside another input
+        if mcu and profile.mcu != mcu:
+            profile.mcu = mcu
+
+        log.info(f"MCU: {profile.mcu or '(unknown)'} ({profile.core})")
+        log.info(f"Arch: {profile.arch or '(unknown)'}")
+        log.info(f"Peripherals: {len(profile.peripherals)} detected")
+        for p in profile.peripherals:
+            log.info(f"  - {p.peripheral_type}: {p.name}")
+
+        # Generate configs
+        log.step("Generating board/boot/build configs...")
+        gen = EosConfigGenerator(output_dir)
+        outputs = gen.generate_all(profile)
+
+        for name, path in outputs.items():
+            log.success(f"  {name}: {path}")
+
+        # Validate
+        log.step("Validating generated configs...")
+        validator = EosConfigValidator()
+        val_result = validator.validate_all(output_dir)
+        log.info(val_result.summary())
+
+        # Generate eboot integration files
+        log.step("Generating eboot integration files...")
+        integrator = EosBootIntegrator(output_dir)
+        boot_outputs = integrator.generate_from_boot_yaml(str(outputs["boot"]))
+        for name, path in boot_outputs.items():
+            log.success(f"  {name}: {path}")
+
+        log.success("Board config generation complete.")
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        log.error(f"Board generation failed: {e}")
+        raise SystemExit(1)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Dependency management commands
+# ═══════════════════════════════════════════════════════════════
+
+@cli.command()
+@click.option("--eos-url", default=None, help="Git URL for eos repo (overrides default).")
+@click.option("--eboot-url", default=None, help="Git URL for eboot repo (overrides default).")
+@click.option("--eos-branch", default=None, help="Branch/tag for eos repo.")
+@click.option("--eboot-branch", default=None, help="Branch/tag for eboot repo.")
+@click.option("--eos-path", default=None, type=click.Path(exists=True), help="Link to local eos repo (no clone).")
+@click.option("--eboot-path", default=None, type=click.Path(exists=True), help="Link to local eboot repo (no clone).")
+@click.pass_obj
+def setup(
+    log: Logger,
+    eos_url: Optional[str],
+    eboot_url: Optional[str],
+    eos_branch: Optional[str],
+    eboot_branch: Optional[str],
+    eos_path: Optional[str],
+    eboot_path: Optional[str],
+) -> None:
+    """Clone eos + eboot repos to the local cache (~/.ebuild/repos/).
+
+    On first run this clones both repos with default settings.
+    Use flags to override URLs, branches, or link to local repos.
+
+    Examples:
+
+        ebuild setup
+
+        ebuild setup --eos-url https://github.com/myfork/eos.git
+
+        ebuild setup --eboot-branch v0.2.0
+
+        ebuild setup --eos-path /path/to/local/eos
+    """
+    from ebuild.deps.manager import DepsManager
+
+    log.header("ebuild — Setup")
+    mgr = DepsManager()
+
+    try:
+        log.step("Setting up eos...")
+        eos_dir = mgr.setup("eos", url=eos_url, branch=eos_branch, path=eos_path)
+        log.success(f"  eos: {eos_dir}")
+
+        log.step("Setting up eboot...")
+        eboot_dir = mgr.setup("eboot", url=eboot_url, branch=eboot_branch, path=eboot_path)
+        log.success(f"  eboot: {eboot_dir}")
+
+        log.success("Setup complete. Repos are ready.")
+    except Exception as e:
+        log.error(f"Setup failed: {e}")
+        raise SystemExit(1)
+
+
+@cli.group()
+@click.pass_context
+def repos(ctx: click.Context) -> None:
+    """Manage cached eos/eboot repositories."""
+    pass
+
+
+@repos.command("status")
+@click.pass_obj
+def repos_status(log: Logger) -> None:
+    """Show all repos, URLs, branches, and paths."""
+    from ebuild.deps.manager import DepsManager
+
+    log.header("ebuild — Repo Status")
+    mgr = DepsManager()
+    entries = mgr.status()
+
+    for info in entries:
+        log.step(f"{info['name']}")
+        log.info(f"  URL:    {info['url']}")
+        log.info(f"  Branch: {info['branch']}")
+        if info.get("config_path"):
+            log.info(f"  Linked: {info['config_path']}")
+        if info.get("cached"):
+            log.info(f"  Cached: {info['cache_location']}")
+            log.info(f"  Git:    {info.get('git_branch', '?')} @ {info.get('git_commit', '?')}")
+        else:
+            log.info("  Cached: no")
+
+
+@repos.command("update")
+@click.argument("repo_name", required=False, default=None)
+@click.pass_obj
+def repos_update(log: Logger, repo_name: Optional[str]) -> None:
+    """Git pull latest for one or all repos."""
+    from ebuild.deps.manager import DepsManager
+
+    log.header("ebuild — Repo Update")
+    mgr = DepsManager()
+    results = mgr.update(repo_name)
+
+    for name, result in results.items():
+        if "updated" in result:
+            log.success(f"  {name}: {result}")
+        elif "failed" in result:
+            log.error(f"  {name}: {result}")
+        else:
+            log.info(f"  {name}: {result}")
+
+
+@repos.command("set-url")
+@click.argument("repo_name")
+@click.argument("url")
+@click.pass_obj
+def repos_set_url(log: Logger, repo_name: str, url: str) -> None:
+    """Change the git URL for a repo."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.set_url(repo_name, url)
+    log.success(f"Set {repo_name} URL to {url}")
+
+
+@repos.command("set-branch")
+@click.argument("repo_name")
+@click.argument("branch")
+@click.pass_obj
+def repos_set_branch(log: Logger, repo_name: str, branch: str) -> None:
+    """Change the branch/tag for a repo."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.set_branch(repo_name, branch)
+    log.success(f"Set {repo_name} branch to {branch}")
+
+
+@repos.command("link")
+@click.argument("repo_name")
+@click.argument("local_path", type=click.Path(exists=True))
+@click.pass_obj
+def repos_link(log: Logger, repo_name: str, local_path: str) -> None:
+    """Link a repo to a local directory (no clone)."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.link(repo_name, local_path)
+    log.success(f"Linked {repo_name} → {Path(local_path).resolve()}")
+
+
+@repos.command("unlink")
+@click.argument("repo_name")
+@click.pass_obj
+def repos_unlink(log: Logger, repo_name: str) -> None:
+    """Remove local path override, reverting to cache."""
+    from ebuild.deps.manager import DepsManager
+
+    mgr = DepsManager()
+    mgr.unlink(repo_name)
+    log.success(f"Unlinked {repo_name} — will use cached clone.")
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Board generation command
+# ═══════════════════════════════════════════════════════════════
+
+@cli.command("generate-board")
+@click.option("--mcu", default=None, help="MCU name (e.g., stm32f407, nrf52840).")
+@click.option("--from-kicad", "kicad_file", default=None, type=click.Path(exists=True), help="KiCad schematic (.kicad_sch).")
+@click.option("--from-eagle", "eagle_file", default=None, type=click.Path(exists=True), help="Eagle schematic (.sch).")
+@click.option("--from-bom", "bom_file", default=None, type=click.Path(exists=True), help="BOM CSV file.")
+@click.option("--describe", "description", default=None, help="Text description of hardware.")
+@click.option("--product", default=None, help="Product profile for auto-config (e.g., ble-sensor, gateway).")
+@click.option("--output", "output_dir", default="_generated", help="Output directory for generated configs.")
+@click.option("--eos-schemas", default=None, help="Path to eos/schemas/ for hardware vocabulary.")
+@click.pass_obj
+def generate_board(
+    log: Logger,
+    mcu: Optional[str],
+    kicad_file: Optional[str],
+    eagle_file: Optional[str],
+    bom_file: Optional[str],
+    description: Optional[str],
+    product: Optional[str],
+    output_dir: str,
+    eos_schemas: Optional[str],
+) -> None:
+    """Generate board/boot/build YAML configs from hardware inputs.
+
+    Accepts an MCU name, KiCad schematic, Eagle schematic, BOM CSV,
+    or text description. Generates board.yaml, boot.yaml, build.yaml,
+    eos_product_config.h, and eboot integration files.
+
+    Examples:
+
+        ebuild generate-board --mcu stm32f407 --output ./config/
+
+        ebuild generate-board --from-kicad design.kicad_sch --output ./config/
+
+        ebuild generate-board --from-eagle design.sch --output ./config/
+
+        ebuild generate-board --from-bom parts.csv --output ./config/
+
+        ebuild generate-board --describe "STM32H743 with CAN, SPI flash" --output ./config/
+
+        ebuild generate-board --mcu nrf52840 --product ble-sensor --output ./config/
+    """
+    log.header("ebuild — Board Config Generator")
+
+    try:
+        from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
+        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+        from ebuild.eos_ai.eos_validator import EosConfigValidator
+        from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
+
+        analyzer = EosHardwareAnalyzer(eos_schemas_path=eos_schemas)
+
+        # Determine input source
+        if kicad_file:
+            log.step(f"Analyzing KiCad schematic: {kicad_file}")
+            profile = analyzer.interpret_kicad(kicad_file)
+        elif eagle_file:
+            log.step(f"Analyzing Eagle schematic: {eagle_file}")
+            profile = analyzer.interpret_file(eagle_file)
+        elif bom_file:
+            log.step(f"Analyzing BOM: {bom_file}")
+            content = Path(bom_file).read_text(encoding="utf-8", errors="replace")
+            profile = analyzer.interpret_bom(content)
+        elif description:
+            log.step("Analyzing text description...")
+            profile = analyzer.interpret_text(description)
+        elif mcu:
+            log.step(f"Generating config for MCU: {mcu}")
+            profile = analyzer.interpret_text(mcu)
+        else:
+            log.error("Provide --mcu, --from-kicad, --from-eagle, --from-bom, or --describe.")
+            raise SystemExit(1)
+
+        # Override MCU if explicitly provided alongside another input
+        if mcu and profile.mcu != mcu:
+            profile.mcu = mcu
+
+        log.info(f"MCU: {profile.mcu or '(unknown)'} ({profile.core})")
+        log.info(f"Arch: {profile.arch or '(unknown)'}")
+        log.info(f"Peripherals: {len(profile.peripherals)} detected")
+        for p in profile.peripherals:
+            log.info(f"  - {p.peripheral_type}: {p.name}")
+
+        # Generate configs
+        log.step("Generating board/boot/build configs...")
+        generator = EosConfigGenerator(output_dir)
+        outputs = generator.generate_all(profile)
+
+        for name, path in outputs.items():
+            log.success(f"  {name}: {path}")
+
+        # Validate
+        log.step("Validating generated configs...")
+        validator = EosConfigValidator()
+        result = validator.validate_all(output_dir)
+        log.info(result.summary())
+
+        # Generate eboot integration files
+        log.step("Generating eboot integration files...")
+        integrator = EosBootIntegrator(output_dir)
+        boot_outputs = integrator.generate_from_boot_yaml(str(outputs["boot"]))
+        for name, path in boot_outputs.items():
+            log.success(f"  {name}: {path}")
+
+        log.success("Board config generation complete.")
+
+    except SystemExit:
+        raise
+    except Exception as e:
+        log.error(f"Board generation failed: {e}")
+        raise SystemExit(1)

@@ -53,7 +53,8 @@ class EosConfigValidator:
 
     REQUIRED_BOARD_FIELDS = ["name", "arch"]
     REQUIRED_BOOT_FIELDS = ["board", "flash_size"]
-    VALID_ARCHS = ["arm", "arm64", "xtensa", "riscv32", "riscv64", "x86_64", "x86", "mips", "mips64", "mipsel", "powerpc", "m68k", "sh", "sparc"]
+    VALID_ARCHS = ["arm", "arm64", "xtensa", "riscv32", "riscv64", "x86_64",
+                   "x86", "mips", "mips64", "m68k", "powerpc", "sh", "sparc", "mipsel"]
     VALID_HASH_ALGOS = ["sha256", "sha512"]
     VALID_SIGN_ALGOS = ["ed25519", "rsa2048", "rsa4096", "ecdsa_p256"]
 

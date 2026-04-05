@@ -75,12 +75,40 @@ def _find_workspace(start: Path) -> Path:
 
 
 def _find_repos(workspace: Path) -> Dict[str, Path]:
-    """Locate all sibling repos in the workspace."""
+    """Locate repos via DepsManager cache, then fall back to sibling dirs."""
     found = {}
+
+    try:
+        from ebuild.deps.manager import DepsManager
+        mgr = DepsManager()
+        for name in REPOS:
+            resolved = mgr.get_repo_path(name, project_dir=workspace)
+            if resolved:
+                found[name] = resolved
+    except Exception:
+        pass
+
+    # Fall back to sibling directories for any repos not yet found
+
+        if name not in found:
+            repo_dir = workspace / name
+            if repo_dir.is_dir():
+                found[name] = repo_dir
+
+        for name in REPOS:
+            resolved = mgr.get_repo_path(name, project_dir=workspace)
+            if resolved:
+                found[name] = resolved
+    except Exception:
+        pass
+
+    # Fall back to sibling directories for any repos not yet found
     for name in REPOS:
-        repo_dir = workspace / name
-        if repo_dir.is_dir():
-            found[name] = repo_dir
+        if name not in found:
+            repo_dir = workspace / name
+            if repo_dir.is_dir():
+                found[name] = repo_dir
+
     return found
 
 
