@@ -306,6 +306,103 @@ def _run_pack_image(build_dir, log):
             log.warning("  Pack script failed: " + str(e))
 
 
+def _get_target_class(board):
+    """Look up the target class (mcu, sbc, soc, pc, virtual, devboard) for a board."""
+    from ebuild.sdk_generator import TARGET_ARCH
+    info = TARGET_ARCH.get(board.lower())
+    if info:
+        return info.get("class", "mcu")
+    return "mcu"
+
+
+def _generate_image(board, build_dir, log):
+    """Generate a testable image based on target class.
+
+    MCU targets: handled by _run_pack_image() (firmware .bin).
+    Linux-class targets: assemble rootfs + create tar.gz disk image.
+    """
+    from ebuild.system.rootfs import RootfsBuilder
+    from ebuild.system.image import ImageBuilder
+
+    target_class = _get_target_class(board)
+
+    if target_class == "mcu":
+        _run_pack_image(build_dir, log)
+        return None
+
+    # Linux-class target: assemble rootfs + create disk image
+    log.step("[7/7] Generating system image...")
+
+    # Assemble rootfs skeleton
+    log.info("  Assembling rootfs...")
+    rootfs_builder = RootfsBuilder(build_dir)
+    rootfs_dir = rootfs_builder.assemble(
+        init_system="busybox",
+        hostname="eos-" + board.lower(),
+    )
+    log.success("  Rootfs assembled: " + str(rootfs_dir))
+
+    # Copy built libraries into rootfs
+    lib_dest = rootfs_dir / "usr" / "lib" / "eos"
+    lib_dest.mkdir(parents=True, exist_ok=True)
+    lib_count = 0
+    for lib_file in build_dir.glob("*.a"):
+        shutil.copy2(str(lib_file), str(lib_dest / lib_file.name))
+        lib_count += 1
+    # Also check subdirectories for libraries
+    for lib_file in build_dir.rglob("*.a"):
+        dest = lib_dest / lib_file.name
+        if not dest.exists():
+            shutil.copy2(str(lib_file), str(dest))
+            lib_count += 1
+    if lib_count > 0:
+        log.info("  Installed " + str(lib_count) + " libraries into rootfs")
+
+    # Copy generated headers into rootfs
+    gen_include = build_dir / "include" / "generated"
+    if gen_include.exists():
+        inc_dest = rootfs_dir / "usr" / "include" / "eos"
+        inc_dest.mkdir(parents=True, exist_ok=True)
+        header_count = 0
+        for header in gen_include.glob("*.h"):
+            shutil.copy2(str(header), str(inc_dest / header.name))
+            header_count += 1
+        if header_count > 0:
+            log.info("  Installed " + str(header_count) + " headers into rootfs")
+
+    # Copy SDK info into rootfs
+    sdk_dir = build_dir / "sdk"
+    if sdk_dir.exists():
+        sdk_dest = rootfs_dir / "opt" / "eos-sdk"
+        sdk_dest.mkdir(parents=True, exist_ok=True)
+        for item in sdk_dir.rglob("*"):
+            if item.is_file():
+                rel = item.relative_to(sdk_dir)
+                dest = sdk_dest / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(str(item), str(dest))
+
+    # Create disk image (tar.gz — cross-platform, always works)
+    log.info("  Creating disk image...")
+    imager = ImageBuilder(build_dir, log=log)
+    image_path = imager.create(
+        rootfs_dir=rootfs_dir,
+        image_format="tar",
+        label="eos-" + board.lower(),
+    )
+    log.success("  Image created: " + str(image_path))
+
+    # Report image size
+    if image_path.exists():
+        size_kb = image_path.stat().st_size // 1024
+        if size_kb > 1024:
+            log.info("  Size: " + str(size_kb // 1024) + " MB")
+        else:
+            log.info("  Size: " + str(size_kb) + " KB")
+
+    return image_path
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="ebuild")
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose output.")
@@ -374,9 +471,10 @@ def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str],
             source_dir = Path(".")
             if (source_dir / "CMakeLists.txt").exists():
                 _run_cmake_build(profile, board, source_dir, build_path, log)
-                _run_pack_image(build_path, log)
             else:
                 log.info("No CMakeLists.txt found -- pipeline steps complete (no cmake build).")
+
+            _generate_image(board, build_path, log)
 
             log.success("Build completed successfully (pipeline mode).")
             return
@@ -523,19 +621,22 @@ def pipeline(log: Logger, board: str, hardware: Optional[str],
         )
 
         if skip_build:
-            log.info("--skip-build: skipping cmake build step.")
+            log.info("--skip-build: skipping cmake build and image generation.")
         else:
             source_dir = Path(".")
             if (source_dir / "CMakeLists.txt").exists():
                 _run_cmake_build(profile, board, source_dir, build_path, log)
-                _run_pack_image(build_path, log)
             else:
                 log.info("No CMakeLists.txt found -- skipping cmake build step.")
+
+            _generate_image(board, build_path, log)
 
         # Summary
         log.header("Pipeline Summary")
         configs_dir = build_path / "configs"
         sdk_dir = build_path / "sdk"
+        images_dir = build_path / "images"
+        rootfs_dir = build_path / "rootfs"
         if configs_dir.exists():
             config_files = list(configs_dir.iterdir())
             log.info("  Configs: " + str(len(config_files)) + " files in " + str(configs_dir))
@@ -544,6 +645,16 @@ def pipeline(log: Logger, board: str, hardware: Optional[str],
         if sdk_dir.exists():
             sdk_subdirs = [d for d in sdk_dir.iterdir() if d.is_dir()]
             log.info("  SDK: " + str(len(sdk_subdirs)) + " target(s) in " + str(sdk_dir))
+        if images_dir.exists():
+            image_files = list(images_dir.iterdir())
+            log.info("  Images: " + str(len(image_files)) + " file(s) in " + str(images_dir))
+            for f in sorted(image_files):
+                size_kb = f.stat().st_size // 1024
+                size_str = str(size_kb // 1024) + " MB" if size_kb > 1024 else str(size_kb) + " KB"
+                log.info("    " + f.name + " (" + size_str + ")")
+        if rootfs_dir.exists():
+            rootfs_dirs = [d for d in rootfs_dir.iterdir() if d.is_dir()]
+            log.info("  Rootfs: " + str(len(rootfs_dirs)) + " directories in " + str(rootfs_dir))
 
         log.success("Pipeline completed successfully.")
 
