@@ -3,7 +3,8 @@
 
 """CLI commands for ebuild using Click.
 
-Provides build, clean, configure, info, install, add, and list-packages commands.
+Provides build, clean, configure, info, install, add, list-packages,
+pipeline, and hardware analysis commands.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 import yaml
@@ -154,6 +155,157 @@ def _detect_libraries(lib_dir: Path, pkg_name: str) -> List[str]:
     return libs if libs else [pkg_name]
 
 
+# ═══════════════════════════════════════════════════════════════
+#  Pipeline helper — shared by `pipeline` and `build --board`
+# ═══════════════════════════════════════════════════════════════
+
+def _run_pipeline_steps(
+    board: str,
+    hardware: Optional[str],
+    build_dir: Path,
+    log: Logger,
+) -> Tuple[Any, Dict[str, Path], Dict[str, Path]]:
+    """Run the full pipeline: analyze -> generate configs -> generate eboot -> generate SDK.
+
+    Returns (profile, config_outputs, boot_outputs).
+    """
+    from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
+    from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+    from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
+    from ebuild.sdk_generator import generate_sdk
+
+    configs_dir = build_dir / "configs"
+    sdk_dir = build_dir / "sdk"
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    sdk_dir.mkdir(parents=True, exist_ok=True)
+
+    # Step 1: Analyze hardware
+    log.step("[1/6] Analyzing hardware...")
+    analyzer = EosHardwareAnalyzer()
+
+    if hardware:
+        hw_path = Path(hardware)
+        if not hw_path.exists():
+            raise FileNotFoundError("Hardware file not found: " + hardware)
+        log.info("  Reading hardware design: " + str(hw_path))
+        profile = analyzer.interpret_file(str(hw_path))
+    else:
+        log.info("  Using board name: " + board)
+        profile = analyzer.interpret_text(board)
+
+    # Override MCU from --board if the profile didn't detect one
+    if board and (not profile.mcu or profile.mcu.lower() != board.lower()):
+        mcu_info = analyzer.MCU_DATABASE.get(board.lower())
+        if mcu_info:
+            profile.mcu = board.upper()
+            profile.arch = mcu_info["arch"]
+            profile.core = mcu_info["core"]
+            profile.vendor = mcu_info["vendor"]
+            profile.mcu_family = mcu_info["family"]
+
+    log.info("  MCU: " + profile.mcu + " (" + profile.core + ")")
+    log.info("  Arch: " + profile.arch)
+    log.info("  Peripherals: " + str(len(profile.peripherals)) + " detected")
+
+    # Step 2: Generate configs (board.yaml, boot.yaml, build.yaml, eos_product_config.h)
+    log.step("[2/6] Generating configs...")
+    config_gen = EosConfigGenerator(str(configs_dir))
+    config_outputs = config_gen.generate_all(profile)
+    for name, path in config_outputs.items():
+        log.success("  " + name + ": " + str(path))
+
+    # Step 3: Generate eboot integration (flash layout, linker, pack script, cmake defs)
+    log.step("[3/6] Generating eboot integration files...")
+    integrator = EosBootIntegrator(str(configs_dir))
+    boot_outputs = integrator.generate_from_boot_yaml(str(config_outputs["boot"]))
+    for name, path in boot_outputs.items():
+        log.success("  " + name + ": " + str(path))
+
+    # Step 4: Generate SDK (toolchain.cmake, environment-setup, eboot target config)
+    log.step("[4/6] Generating SDK...")
+    target_name = board.lower()
+    generate_sdk(target_name, str(sdk_dir))
+    log.success("  SDK generated in " + str(sdk_dir))
+
+    # Step 5: Copy generated headers to build include path
+    log.step("[5/6] Copying headers to build include path...")
+    include_dir = build_dir / "include" / "generated"
+    include_dir.mkdir(parents=True, exist_ok=True)
+
+    for header_name in ["eos_product_config.h", "eboot_flash_layout.h"]:
+        src = configs_dir / header_name
+        if src.exists():
+            dst = include_dir / header_name
+            shutil.copy2(str(src), str(dst))
+            log.info("  " + header_name + " -> " + str(dst))
+
+    return profile, config_outputs, boot_outputs
+
+
+def _run_cmake_build(profile, board, source_dir, build_dir, log):
+    """Run cmake configure + build with EOS_ENABLE_* defines injected."""
+    from ebuild.build.dispatch import BackendDispatcher
+
+    enables = profile.get_eos_enables()
+    cmake_defines = {}
+    cmake_defines["EOS_BOARD"] = board.lower()
+    cmake_defines["EOS_ARCH"] = profile.arch or "arm"
+    cmake_defines["EOS_CORE"] = profile.core or "cortex-m4"
+
+    for flag, val in enables.items():
+        cmake_defines[flag] = "ON" if val else "OFF"
+
+    # Point cmake to generated config headers
+    gen_include = build_dir / "include" / "generated"
+    if gen_include.exists():
+        cmake_defines["EOS_GENERATED_INCLUDE_DIR"] = str(gen_include).replace("\\", "/")
+
+    # Point to eboot cmake defs if present
+    eboot_cmake = build_dir / "configs" / "eboot_config.cmake"
+    if eboot_cmake.exists():
+        cmake_defines["EBOOT_CONFIG_FILE"] = str(eboot_cmake).replace("\\", "/")
+
+    log.step("[6/6] Building with cmake...")
+    log.info("  Defines: " + str(len(cmake_defines)) + " cmake variables")
+
+    dispatcher = BackendDispatcher(source_dir, build_dir)
+
+    log.step("  Configuring (cmake)...")
+    dispatcher.configure(backend="cmake", config={"defines": cmake_defines})
+
+    log.step("  Building (cmake)...")
+    dispatcher.build(backend="cmake", config={})
+
+
+def _run_pack_image(build_dir, log):
+    """Run pack_image.sh if it exists and firmware output is present."""
+    pack_script = build_dir / "configs" / "pack_image.sh"
+    if not pack_script.exists():
+        return
+
+    firmware_candidates = list(build_dir.glob("*.bin")) + list(build_dir.glob("*.elf"))
+    if not firmware_candidates:
+        log.info("No firmware binary found -- skipping image packing.")
+        return
+
+    firmware = firmware_candidates[0]
+    log.step("Packing firmware image: " + firmware.name + "...")
+
+    if os.name == "nt":
+        log.info("  Pack script is a bash script -- skipping on Windows.")
+        log.info("  Run manually: bash " + str(pack_script) + " " + str(firmware))
+    else:
+        try:
+            subprocess.run(
+                ["bash", str(pack_script), str(firmware)],
+                check=True,
+                cwd=str(build_dir),
+            )
+            log.success("  Firmware image packed.")
+        except subprocess.CalledProcessError as e:
+            log.warning("  Pack script failed: " + str(e))
+
+
 @click.group()
 @click.version_option(version=__version__, prog_name="ebuild")
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose output.")
@@ -183,12 +335,53 @@ def cli(ctx: click.Context, verbose: bool) -> None:
     type=click.Choice(["auto", "cmake", "make", "meson", "cargo", "ninja", "kbuild"]),
     help="Force a specific build backend.",
 )
+@click.option(
+    "--board",
+    default=None,
+    help="Target board name (e.g., stm32f4, nrf52). Triggers full pipeline before build.",
+)
+@click.option(
+    "--hardware",
+    default=None,
+    type=click.Path(exists=True),
+    help="Hardware design file (.kicad_sch, .sch, .csv). Used with --board for analysis.",
+)
 @click.pass_obj
-def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str]) -> None:
-    """Parse config, detect backend, and build the project."""
+def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str],
+          board: Optional[str], hardware: Optional[str]) -> None:
+    """Parse config, detect backend, and build the project.
+
+    When --board is provided, runs the full pipeline (analyze -> generate ->
+    build) before the normal cmake build. Generated configs are stored in
+    _build/configs/ and EOS_ENABLE_* defines are passed to cmake automatically.
+    """
     log.header("ebuild — Build")
 
+    build_path = Path(build_dir)
+
     try:
+        # Pipeline mode: --board triggers full analyze -> generate -> build
+        if board:
+            log.info("Board pipeline mode: " + board)
+
+            profile, config_outputs, boot_outputs = _run_pipeline_steps(
+                board=board,
+                hardware=hardware,
+                build_dir=build_path,
+                log=log,
+            )
+
+            source_dir = Path(".")
+            if (source_dir / "CMakeLists.txt").exists():
+                _run_cmake_build(profile, board, source_dir, build_path, log)
+                _run_pack_image(build_path, log)
+            else:
+                log.info("No CMakeLists.txt found -- pipeline steps complete (no cmake build).")
+
+            log.success("Build completed successfully (pipeline mode).")
+            return
+
+        # Normal mode: standard config-based build
         log.step("Loading configuration...")
         cfg = load_config(config_path)
         log.info(f"Project: {cfg.name} v{cfg.version}")
@@ -277,6 +470,90 @@ def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str])
         raise SystemExit(1)
     except RuntimeError as e:
         log.error(str(e))
+        raise SystemExit(1)
+
+
+@cli.command()
+@click.option(
+    "--board",
+    required=True,
+    help="Target board name (e.g., stm32f4, nrf52, stm32h7).",
+)
+@click.option(
+    "--hardware",
+    default=None,
+    type=click.Path(exists=True),
+    help="Hardware design file (.kicad_sch, .sch, .csv) for schematic analysis.",
+)
+@click.option(
+    "--build-dir",
+    default="_build",
+    type=click.Path(),
+    help="Build output directory.",
+)
+@click.option(
+    "--skip-build",
+    is_flag=True,
+    default=False,
+    help="Only generate configs and SDK -- skip cmake build.",
+)
+@click.pass_obj
+def pipeline(log: Logger, board: str, hardware: Optional[str],
+             build_dir: str, skip_build: bool) -> None:
+    """Run the full end-to-end build pipeline for a target board.
+
+    Chains: analyze hardware -> generate configs -> generate eboot integration ->
+    generate SDK -> cmake build -> pack firmware image.
+
+    Examples:\n
+        ebuild pipeline --board stm32f4\n
+        ebuild pipeline --board stm32f4 --hardware board.kicad_sch\n
+        ebuild pipeline --board nrf52 --skip-build
+    """
+    log.header("ebuild — Full Pipeline")
+
+    build_path = Path(build_dir)
+
+    try:
+        profile, config_outputs, boot_outputs = _run_pipeline_steps(
+            board=board,
+            hardware=hardware,
+            build_dir=build_path,
+            log=log,
+        )
+
+        if skip_build:
+            log.info("--skip-build: skipping cmake build step.")
+        else:
+            source_dir = Path(".")
+            if (source_dir / "CMakeLists.txt").exists():
+                _run_cmake_build(profile, board, source_dir, build_path, log)
+                _run_pack_image(build_path, log)
+            else:
+                log.info("No CMakeLists.txt found -- skipping cmake build step.")
+
+        # Summary
+        log.header("Pipeline Summary")
+        configs_dir = build_path / "configs"
+        sdk_dir = build_path / "sdk"
+        if configs_dir.exists():
+            config_files = list(configs_dir.iterdir())
+            log.info("  Configs: " + str(len(config_files)) + " files in " + str(configs_dir))
+            for f in sorted(config_files):
+                log.info("    " + f.name)
+        if sdk_dir.exists():
+            sdk_subdirs = [d for d in sdk_dir.iterdir() if d.is_dir()]
+            log.info("  SDK: " + str(len(sdk_subdirs)) + " target(s) in " + str(sdk_dir))
+
+        log.success("Pipeline completed successfully.")
+
+    except FileNotFoundError as e:
+        log.error(str(e))
+        raise SystemExit(1)
+    except SystemExit:
+        raise
+    except Exception as e:
+        log.error("Pipeline failed: " + str(e))
         raise SystemExit(1)
 
 
@@ -1350,279 +1627,6 @@ def generate_board(
         validator = EosConfigValidator()
         val_result = validator.validate_all(output_dir)
         log.info(val_result.summary())
-
-        # Generate eboot integration files
-        log.step("Generating eboot integration files...")
-        integrator = EosBootIntegrator(output_dir)
-        boot_outputs = integrator.generate_from_boot_yaml(str(outputs["boot"]))
-        for name, path in boot_outputs.items():
-            log.success(f"  {name}: {path}")
-
-        log.success("Board config generation complete.")
-
-    except SystemExit:
-        raise
-    except Exception as e:
-        log.error(f"Board generation failed: {e}")
-        raise SystemExit(1)
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Dependency management commands
-# ═══════════════════════════════════════════════════════════════
-
-@cli.command()
-@click.option("--eos-url", default=None, help="Git URL for eos repo (overrides default).")
-@click.option("--eboot-url", default=None, help="Git URL for eboot repo (overrides default).")
-@click.option("--eos-branch", default=None, help="Branch/tag for eos repo.")
-@click.option("--eboot-branch", default=None, help="Branch/tag for eboot repo.")
-@click.option("--eos-path", default=None, type=click.Path(exists=True), help="Link to local eos repo (no clone).")
-@click.option("--eboot-path", default=None, type=click.Path(exists=True), help="Link to local eboot repo (no clone).")
-@click.pass_obj
-def setup(
-    log: Logger,
-    eos_url: Optional[str],
-    eboot_url: Optional[str],
-    eos_branch: Optional[str],
-    eboot_branch: Optional[str],
-    eos_path: Optional[str],
-    eboot_path: Optional[str],
-) -> None:
-    """Clone eos + eboot repos to the local cache (~/.ebuild/repos/).
-
-    On first run this clones both repos with default settings.
-    Use flags to override URLs, branches, or link to local repos.
-
-    Examples:
-
-        ebuild setup
-
-        ebuild setup --eos-url https://github.com/myfork/eos.git
-
-        ebuild setup --eboot-branch v0.2.0
-
-        ebuild setup --eos-path /path/to/local/eos
-    """
-    from ebuild.deps.manager import DepsManager
-
-    log.header("ebuild — Setup")
-    mgr = DepsManager()
-
-    try:
-        log.step("Setting up eos...")
-        eos_dir = mgr.setup("eos", url=eos_url, branch=eos_branch, path=eos_path)
-        log.success(f"  eos: {eos_dir}")
-
-        log.step("Setting up eboot...")
-        eboot_dir = mgr.setup("eboot", url=eboot_url, branch=eboot_branch, path=eboot_path)
-        log.success(f"  eboot: {eboot_dir}")
-
-        log.success("Setup complete. Repos are ready.")
-    except Exception as e:
-        log.error(f"Setup failed: {e}")
-        raise SystemExit(1)
-
-
-@cli.group()
-@click.pass_context
-def repos(ctx: click.Context) -> None:
-    """Manage cached eos/eboot repositories."""
-    pass
-
-
-@repos.command("status")
-@click.pass_obj
-def repos_status(log: Logger) -> None:
-    """Show all repos, URLs, branches, and paths."""
-    from ebuild.deps.manager import DepsManager
-
-    log.header("ebuild — Repo Status")
-    mgr = DepsManager()
-    entries = mgr.status()
-
-    for info in entries:
-        log.step(f"{info['name']}")
-        log.info(f"  URL:    {info['url']}")
-        log.info(f"  Branch: {info['branch']}")
-        if info.get("config_path"):
-            log.info(f"  Linked: {info['config_path']}")
-        if info.get("cached"):
-            log.info(f"  Cached: {info['cache_location']}")
-            log.info(f"  Git:    {info.get('git_branch', '?')} @ {info.get('git_commit', '?')}")
-        else:
-            log.info("  Cached: no")
-
-
-@repos.command("update")
-@click.argument("repo_name", required=False, default=None)
-@click.pass_obj
-def repos_update(log: Logger, repo_name: Optional[str]) -> None:
-    """Git pull latest for one or all repos."""
-    from ebuild.deps.manager import DepsManager
-
-    log.header("ebuild — Repo Update")
-    mgr = DepsManager()
-    results = mgr.update(repo_name)
-
-    for name, result in results.items():
-        if "updated" in result:
-            log.success(f"  {name}: {result}")
-        elif "failed" in result:
-            log.error(f"  {name}: {result}")
-        else:
-            log.info(f"  {name}: {result}")
-
-
-@repos.command("set-url")
-@click.argument("repo_name")
-@click.argument("url")
-@click.pass_obj
-def repos_set_url(log: Logger, repo_name: str, url: str) -> None:
-    """Change the git URL for a repo."""
-    from ebuild.deps.manager import DepsManager
-
-    mgr = DepsManager()
-    mgr.set_url(repo_name, url)
-    log.success(f"Set {repo_name} URL to {url}")
-
-
-@repos.command("set-branch")
-@click.argument("repo_name")
-@click.argument("branch")
-@click.pass_obj
-def repos_set_branch(log: Logger, repo_name: str, branch: str) -> None:
-    """Change the branch/tag for a repo."""
-    from ebuild.deps.manager import DepsManager
-
-    mgr = DepsManager()
-    mgr.set_branch(repo_name, branch)
-    log.success(f"Set {repo_name} branch to {branch}")
-
-
-@repos.command("link")
-@click.argument("repo_name")
-@click.argument("local_path", type=click.Path(exists=True))
-@click.pass_obj
-def repos_link(log: Logger, repo_name: str, local_path: str) -> None:
-    """Link a repo to a local directory (no clone)."""
-    from ebuild.deps.manager import DepsManager
-
-    mgr = DepsManager()
-    mgr.link(repo_name, local_path)
-    log.success(f"Linked {repo_name} → {Path(local_path).resolve()}")
-
-
-@repos.command("unlink")
-@click.argument("repo_name")
-@click.pass_obj
-def repos_unlink(log: Logger, repo_name: str) -> None:
-    """Remove local path override, reverting to cache."""
-    from ebuild.deps.manager import DepsManager
-
-    mgr = DepsManager()
-    mgr.unlink(repo_name)
-    log.success(f"Unlinked {repo_name} — will use cached clone.")
-
-
-# ═══════════════════════════════════════════════════════════════
-#  Board generation command
-# ═══════════════════════════════════════════════════════════════
-
-@cli.command("generate-board")
-@click.option("--mcu", default=None, help="MCU name (e.g., stm32f407, nrf52840).")
-@click.option("--from-kicad", "kicad_file", default=None, type=click.Path(exists=True), help="KiCad schematic (.kicad_sch).")
-@click.option("--from-eagle", "eagle_file", default=None, type=click.Path(exists=True), help="Eagle schematic (.sch).")
-@click.option("--from-bom", "bom_file", default=None, type=click.Path(exists=True), help="BOM CSV file.")
-@click.option("--describe", "description", default=None, help="Text description of hardware.")
-@click.option("--product", default=None, help="Product profile for auto-config (e.g., ble-sensor, gateway).")
-@click.option("--output", "output_dir", default="_generated", help="Output directory for generated configs.")
-@click.option("--eos-schemas", default=None, help="Path to eos/schemas/ for hardware vocabulary.")
-@click.pass_obj
-def generate_board(
-    log: Logger,
-    mcu: Optional[str],
-    kicad_file: Optional[str],
-    eagle_file: Optional[str],
-    bom_file: Optional[str],
-    description: Optional[str],
-    product: Optional[str],
-    output_dir: str,
-    eos_schemas: Optional[str],
-) -> None:
-    """Generate board/boot/build YAML configs from hardware inputs.
-
-    Accepts an MCU name, KiCad schematic, Eagle schematic, BOM CSV,
-    or text description. Generates board.yaml, boot.yaml, build.yaml,
-    eos_product_config.h, and eboot integration files.
-
-    Examples:
-
-        ebuild generate-board --mcu stm32f407 --output ./config/
-
-        ebuild generate-board --from-kicad design.kicad_sch --output ./config/
-
-        ebuild generate-board --from-eagle design.sch --output ./config/
-
-        ebuild generate-board --from-bom parts.csv --output ./config/
-
-        ebuild generate-board --describe "STM32H743 with CAN, SPI flash" --output ./config/
-
-        ebuild generate-board --mcu nrf52840 --product ble-sensor --output ./config/
-    """
-    log.header("ebuild — Board Config Generator")
-
-    try:
-        from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
-        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
-        from ebuild.eos_ai.eos_validator import EosConfigValidator
-        from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
-
-        analyzer = EosHardwareAnalyzer(eos_schemas_path=eos_schemas)
-
-        # Determine input source
-        if kicad_file:
-            log.step(f"Analyzing KiCad schematic: {kicad_file}")
-            profile = analyzer.interpret_kicad(kicad_file)
-        elif eagle_file:
-            log.step(f"Analyzing Eagle schematic: {eagle_file}")
-            profile = analyzer.interpret_file(eagle_file)
-        elif bom_file:
-            log.step(f"Analyzing BOM: {bom_file}")
-            content = Path(bom_file).read_text(encoding="utf-8", errors="replace")
-            profile = analyzer.interpret_bom(content)
-        elif description:
-            log.step("Analyzing text description...")
-            profile = analyzer.interpret_text(description)
-        elif mcu:
-            log.step(f"Generating config for MCU: {mcu}")
-            profile = analyzer.interpret_text(mcu)
-        else:
-            log.error("Provide --mcu, --from-kicad, --from-eagle, --from-bom, or --describe.")
-            raise SystemExit(1)
-
-        # Override MCU if explicitly provided alongside another input
-        if mcu and profile.mcu != mcu:
-            profile.mcu = mcu
-
-        log.info(f"MCU: {profile.mcu or '(unknown)'} ({profile.core})")
-        log.info(f"Arch: {profile.arch or '(unknown)'}")
-        log.info(f"Peripherals: {len(profile.peripherals)} detected")
-        for p in profile.peripherals:
-            log.info(f"  - {p.peripheral_type}: {p.name}")
-
-        # Generate configs
-        log.step("Generating board/boot/build configs...")
-        generator = EosConfigGenerator(output_dir)
-        outputs = generator.generate_all(profile)
-
-        for name, path in outputs.items():
-            log.success(f"  {name}: {path}")
-
-        # Validate
-        log.step("Validating generated configs...")
-        validator = EosConfigValidator()
-        result = validator.validate_all(output_dir)
-        log.info(result.summary())
 
         # Generate eboot integration files
         log.step("Generating eboot integration files...")
