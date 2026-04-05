@@ -1,0 +1,52 @@
+# Sample Hardware Design: nRF52840 BLE Sensor Node
+# MCU: nRF52840 (ARM Cortex-M4F, 64MHz)
+# Use this to test ebuild analyze for a BLE/RTOS board
+
+board_name: ble-sensor-node-v1
+revision: "A"
+
+mcu:
+  part: nRF52840-QIAA
+  family: nRF52
+  core: cortex-m4
+  clock: 64 MHz
+  flash: 1MB internal flash
+  ram: 256KB SRAM
+  voltage: 1.8V-3.6V
+  features: [fpu, ble5, zigbee, thread, usb, nfc, crypto]
+
+peripherals:
+  - UART0: P0.06/P0.08 (debug console, 115200 baud)
+  - SPI0: P0.26/P0.27/P0.28 (BME680 environmental sensor)
+  - I2C0: P0.11/P0.12 (LIS3DH accelerometer)
+  - BLE: nRF radio (BLE 5.0, Long Range, 2Mbps PHY)
+  - ADC: P0.02/P0.03 (battery voltage, light sensor)
+  - PWM: P0.13 (status LED, RGB)
+  - GPIO: P0.14 (button input, active low)
+  - Watchdog: WDT (8 second timeout)
+  - RTC: 32.768kHz LFXO crystal
+  - USB: nRF USB device (CDC ACM for debug)
+  - NFC: NFC-A tag (Type 2, for commissioning)
+
+memory_map:
+  flash_base: 0x00000000
+  flash_size: 0x100000    # 1MB
+  ram_base: 0x20000000
+  ram_size: 0x40000       # 256KB
+
+boot:
+  softdevice: S140 (BLE stack, occupies first 156KB)
+  recovery_pin: P0.14 (button, active low)
+  led_status: P0.13
+  watchdog: 8000ms
+
+power:
+  main_supply: CR2477 coin cell (3V, 1000mAh)
+  expected_battery_life: 2 years
+  sleep_current: 1.9uA (System OFF)
+
+use_case: |
+  Ultra-low-power BLE sensor node. Reads temperature, humidity,
+  pressure (BME680) and acceleration (LIS3DH). Advertises over
+  BLE 5.0 Long Range. NFC tap for provisioning. 2-year battery
+  life on coin cell. OTA DFU via BLE.

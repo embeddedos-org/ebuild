@@ -1,0 +1,49 @@
+# Sample Hardware Design: Raspberry Pi 4 Linux Gateway
+# SoC: BCM2711 (ARM Cortex-A72, 1.5GHz quad-core)
+# Use this to test ebuild analyze for a Linux-capable board
+
+board_name: rpi4-gateway
+revision: "B"
+
+mcu:
+  part: BCM2711
+  family: BCM2xxx
+  core: cortex-a72
+  clock: 1500 MHz
+  flash: 0 (boots from SD card)
+  ram: 4GB LPDDR4
+  voltage: 5V (USB-C)
+  features: [neon, vfp, crypto, gpu]
+
+peripherals:
+  - UART0: GPIO14/GPIO15 (debug console, 115200 baud)
+  - SPI0: GPIO10/GPIO9/GPIO11 (general purpose)
+  - I2C1: GPIO2/GPIO3 (HAT EEPROM + sensors)
+  - USB: 2x USB3.0 + 2x USB2.0 (via VL805 PCIe)
+  - ETH: Gigabit Ethernet (BCM54213PE PHY)
+  - WiFi: BCM43455 (802.11ac dual-band + BLE 5.0)
+  - HDMI: 2x micro-HDMI (4Kp60)
+  - GPIO: 40-pin header (28 GPIO)
+  - PWM: GPIO12/GPIO13 (2 channels)
+  - Camera: CSI-2 (15-pin FPC)
+  - Display: DSI (15-pin FPC)
+
+memory_map:
+  ram_base: 0x00000000
+  ram_size: 0x100000000   # 4GB
+  peripheral_base: 0xFE000000
+  gpu_mem: 256MB (shared)
+
+boot:
+  method: SD card (FAT32 boot partition + ext4 rootfs)
+  bootloader: start4.elf → u-boot → Linux
+  device_tree: bcm2711-rpi-4-b.dtb
+
+power:
+  main_supply: 5V 3A USB-C
+  gpio_voltage: 3.3V
+
+use_case: |
+  Linux gateway / edge computing device. Runs full EoS Linux
+  with networking services, GPIO control, camera input.
+  WiFi + Ethernet dual-homed. OTA updates via A/B partitioning.

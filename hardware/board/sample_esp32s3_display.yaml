@@ -1,0 +1,56 @@
+# Sample Hardware Design: ESP32-S3 Smart Display
+# MCU: ESP32-S3 (Xtensa LX7 dual-core, 240MHz)
+# Use this to test ebuild analyze for an ESP32/WiFi board
+
+board_name: smart-display-v1
+revision: "A"
+
+mcu:
+  part: ESP32-S3-WROOM-1
+  family: ESP32
+  core: xtensa-lx7
+  clock: 240 MHz
+  flash: 16MB QSPI flash (external)
+  ram: 512KB SRAM + 8MB PSRAM
+  voltage: 3.3V
+  features: [wifi6, ble5, usb_otg, ai_accelerator, lcd_cam_interface]
+
+peripherals:
+  - UART0: GPIO43/GPIO44 (debug console, 115200 baud)
+  - SPI2: GPIO36/GPIO35/GPIO37 (ILI9488 3.5" LCD, 480x320)
+  - I2C0: GPIO8/GPIO9 (GT911 capacitive touch controller)
+  - I2S0: GPIO15/GPIO16/GPIO17 (MAX98357A audio amplifier)
+  - WiFi: built-in (802.11 b/g/n/ax, 2.4GHz)
+  - BLE: built-in (BLE 5.0)
+  - USB: GPIO19/GPIO20 (USB OTG device/host)
+  - ADC: GPIO1 (ambient light sensor)
+  - PWM: GPIO38 (LCD backlight brightness)
+  - GPIO: GPIO0 (boot button), GPIO21 (user LED)
+  - Camera: DVP interface (OV2640 2MP camera module)
+  - SD: SPI mode (GPIO10/GPIO11/GPIO12/GPIO13)
+  - Display: SPI LCD + touch
+
+memory_map:
+  flash_base: 0x00000000
+  flash_size: 0x1000000   # 16MB
+  ram_base: 0x3FC88000
+  ram_size: 0x80000       # 512KB
+  psram_base: 0x3C000000
+  psram_size: 0x800000    # 8MB
+
+boot:
+  recovery_pin: GPIO0 (boot button, active low)
+  led_status: GPIO21
+  watchdog: 10000ms
+
+power:
+  main_supply: 5V USB-C
+  regulators:
+    - LDO 3.3V (AMS1117-3.3)
+  battery: optional Li-Po (with TP4056 charger)
+
+use_case: |
+  Smart display with WiFi + BLE connectivity. 3.5" color LCD
+  with capacitive touch. Audio output for voice assistant.
+  Camera for visual AI. SD card for media storage. OTA updates
+  via WiFi. Home automation control panel.
