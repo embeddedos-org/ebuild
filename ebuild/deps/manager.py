@@ -23,7 +23,6 @@ from ebuild.deps import (
     DEFAULT_EBOOT_REPO_URL,
     DEFAULT_EOS_REPO_URL,
     EBUILD_CONFIG_PATH,
-    EBUILD_HOME,
     EBUILD_REPOS_DIR,
     ensure_ebuild_home,
 )
