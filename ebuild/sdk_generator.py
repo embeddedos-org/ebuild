@@ -173,7 +173,8 @@ def generate_sdk(target, output_dir, hardware_file=None):
     env = []
     env.append("#!/bin/sh")
     env.append("# EoS SDK Environment for " + target)
-    env.append('export EOS_SDK_ROOT="' + os.path.abspath(sdk_dir).replace("\\", "/") + '"')
+    abs_sdk_dir = os.path.abspath(sdk_dir).replace("\\", "/")
+    env.append(f'export EOS_SDK_ROOT="{abs_sdk_dir}"')
     env.append('export EOS_SDK_SYSROOT="$EOS_SDK_ROOT/sysroot"')
     env.append('export EOS_SDK_TARGET="' + target + '"')
     env.append('export EOS_SDK_ARCH="' + arch + '"')
@@ -181,7 +182,8 @@ def generate_sdk(target, output_dir, hardware_file=None):
     env.append('export CXX="' + triplet + '-g++"')
     env.append('export CMAKE_TOOLCHAIN_FILE="$EOS_SDK_ROOT/toolchain.cmake"')
     env.append('export PKG_CONFIG_PATH="$EOS_SDK_SYSROOT/usr/lib/pkgconfig"')
-    env.append('echo "EoS SDK for ' + target + ' (' + info["vendor"] + " " + info["soc"] + ') initialized"')
+    msg = f'echo "EoS SDK for {target} ({info["vendor"]} {info["soc"]}) initialized"'
+    env.append(msg)
     with open(os.path.join(sdk_dir, "environment-setup"), "w") as f:
         f.write("\n".join(env) + "\n")
     if os.name != "nt":
@@ -198,7 +200,7 @@ def generate_sdk(target, output_dir, hardware_file=None):
     bat.append('set "CXX=' + triplet + '-g++"')
     bat.append('set "CMAKE_TOOLCHAIN_FILE=%EOS_SDK_ROOT%\\toolchain.cmake"')
     bat.append('set "PKG_CONFIG_PATH=%EOS_SDK_SYSROOT%\\usr\\lib\\pkgconfig"')
-    bat.append('echo EoS SDK for ' + target + ' (' + info["vendor"] + " " + info["soc"] + ') initialized')
+    bat.append(f'echo EoS SDK for {target} ({info["vendor"]} {info["soc"]}) initialized')
     with open(os.path.join(sdk_dir, "environment-setup.bat"), "w") as f:
         f.write("\r\n".join(bat) + "\r\n")
     # sdk-info.txt
@@ -273,7 +275,8 @@ def generate_sdk(target, output_dir, hardware_file=None):
         eboot_cmake.append("set(EBOOT_BARE_METAL ON)")
     else:
         eboot_cmake.append("set(EBOOT_BARE_METAL OFF)")
-    eboot_cmake.append('set(EBOOT_BOARD_DIR "${CMAKE_CURRENT_LIST_DIR}/../eboot/boards/' + eboot_board + '")')
+    line = 'set(EBOOT_BOARD_DIR "${CMAKE_CURRENT_LIST_DIR}/../eboot/boards/'
+    eboot_cmake.append(line + eboot_board + '")')
     with open(os.path.join(eboot_dir, "eboot_board.cmake"), "w") as f:
         f.write("\n".join(eboot_cmake) + "\n")
 
@@ -323,7 +326,8 @@ def generate_sdk(target, output_dir, hardware_file=None):
 
 def list_targets():
     print("Supported EoS SDK targets:\n")
-    print("  %-15s %-10s %-10s %-12s %-15s %s" % ("Target", "Arch", "Vendor", "SoC", "CPU", "Class"))
+    header = "  %-15s %-10s %-10s %-12s %-15s %s"
+    print(header % ("Target", "Arch", "Vendor", "SoC", "CPU", "Class"))
     print("  " + "-"*15 + " " + "-"*10 + " " + "-"*10 + " " + "-"*12 + " " + "-"*15 + " " + "-"*10)
     for name in sorted(TARGET_ARCH.keys()):
         i = TARGET_ARCH[name]

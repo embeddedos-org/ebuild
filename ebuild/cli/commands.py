@@ -14,7 +14,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
 
 import click
 import yaml
@@ -23,14 +26,14 @@ from ebuild import __version__
 from ebuild.build.ninja_backend import NinjaBackend, PackagePaths
 from ebuild.build.toolchain import resolve_toolchain
 from ebuild.cli.logger import Logger
-from ebuild.core.config import ConfigError, PackageDep, load_config, ProjectConfig
+from ebuild.core.config import ConfigError, load_config, ProjectConfig
 from ebuild.core.graph import CycleError, build_dependency_graph
 from ebuild.packages.builder import BuildError, PackageBuilder
 from ebuild.packages.cache import PackageCache
 from ebuild.packages.fetcher import FetchError, PackageFetcher
 from ebuild.packages.lockfile import Lockfile
-from ebuild.packages.recipe import PackageRecipe, RecipeError
-from ebuild.packages.registry import PackageRegistry, create_registry
+from ebuild.packages.recipe import RecipeError
+from ebuild.packages.registry import create_registry
 from ebuild.packages.resolver import PackageResolver, ResolveError
 
 
@@ -1440,9 +1443,9 @@ def new(log: Logger, project_name: str, template_name: str, board_name: str,
         log.success(f"  {output_path.relative_to(parent)}")
 
     log.success(f"\nProject created: {project_dir}")
-    log.info(f"\nNext steps:")
+    log.info("\nNext steps:")
     log.info(f"  cd {project_name}")
-    log.info(f"  ebuild build")
+    log.info("  ebuild build")
 
 
 @cli.command("generate-boot")
