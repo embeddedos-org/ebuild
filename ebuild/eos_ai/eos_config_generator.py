@@ -12,7 +12,7 @@ Generates validated YAML configs for:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict
 
 import yaml
 
@@ -119,9 +119,8 @@ class EosConfigGenerator:
     def generate_build_yaml(self, profile: HardwareProfile) -> Path:
         """Generate ebuild build.yaml for the project."""
         toolchain = "arm-none-eabi" if profile.arch == "arm" else "gcc"
-        rtos = "freertos"
         if profile.has_peripheral("ble"):
-            rtos = "zephyr"
+            pass
 
         build = {
             "project": {
@@ -151,9 +150,9 @@ class EosConfigGenerator:
         """Generate an eos product profile header."""
         lines = [
             f"/* Auto-generated EoS product config for {profile.mcu} */",
-            f"#ifndef EOS_GENERATED_CONFIG_H",
-            f"#define EOS_GENERATED_CONFIG_H",
-            f"",
+            "#ifndef EOS_GENERATED_CONFIG_H",
+            "#define EOS_GENERATED_CONFIG_H",
+            "",
             f'#define EOS_PRODUCT_NAME    "{profile.mcu.lower()}"',
             f'#define EOS_MCU             "{profile.mcu}"',
             f'#define EOS_ARCH            "{profile.arch}"',
@@ -162,7 +161,7 @@ class EosConfigGenerator:
             f"#define EOS_CLOCK_HZ         {profile.clock_hz}",
             f"#define EOS_FLASH_SIZE       {profile.flash_size}",
             f"#define EOS_RAM_SIZE         {profile.ram_size}",
-            f"",
+            "",
         ]
 
         enables = profile.get_eos_enables()

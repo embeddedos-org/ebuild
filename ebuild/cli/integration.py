@@ -22,7 +22,6 @@ import click
 
 from ebuild.cli.logger import Logger
 from ebuild.system.rootfs import RootfsBuilder
-from ebuild.system.image import ImageBuilder
 
 
 # Default sibling repo names and their build configs
@@ -498,7 +497,6 @@ def register_commands(cli_group: click.Group) -> None:
         Creates toolchain.cmake, environment-setup, sysroot, and
         eBoot board config for the specified hardware target.
         """
-        import sys
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from ebuild.sdk_generator import generate_sdk, list_targets as do_list
 
@@ -526,7 +524,6 @@ def register_commands(cli_group: click.Group) -> None:
         Bundles source code, SDK, cross-compiled libraries, eApps
         binaries, bootable image, and manifest into a single ZIP.
         """
-        import sys
         sys.path.insert(0, str(Path(__file__).parent.parent))
         from ebuild.deliverable_packager import package_deliverable
 
