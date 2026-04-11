@@ -9,7 +9,6 @@ Runs standalone: python -m pytest tests/ or python tests/test_eos_ai.py
 """
 
 import sys
-import os
 import tempfile
 import shutil
 from pathlib import Path
@@ -21,7 +20,7 @@ if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from ebuild.eos_ai.eos_hw_analyzer import (
-    EosHardwareAnalyzer, HardwareProfile, PeripheralInfo, PinMapping, MemoryRegion
+    EosHardwareAnalyzer, HardwareProfile, PeripheralInfo
 )
 
 
