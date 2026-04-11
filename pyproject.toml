@@ -13,7 +13,7 @@ license = {text = "MIT"}
 dependencies = [
     "click>=8.0",
     "pyyaml>=6.0",
-    "ninja>=1.11",
+    "ninja>=1.13.0",
 ]
 
 [project.optional-dependencies]
