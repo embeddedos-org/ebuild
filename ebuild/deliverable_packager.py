@@ -14,7 +14,11 @@ Every build releases:
 
 Output: eos-{target}-v{version}-deliverable.zip
 """
-import os, json, shutil, zipfile, sys
+import os
+import json
+import shutil
+import zipfile
+import sys
 from datetime import datetime, timezone
 
 try:

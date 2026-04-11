@@ -13,7 +13,7 @@ Takes validated boot.yaml and produces:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import yaml
 
@@ -123,7 +123,7 @@ class EosBootIntegrator:
         """Generate image packing shell script."""
         image = boot.get("image", {})
         hash_algo = image.get("hash_algo", "sha256")
-        sign_algo = image.get("sign_algo", "ed25519")
+        image.get("sign_algo", "ed25519")
 
         lines = [
             "#!/bin/bash",

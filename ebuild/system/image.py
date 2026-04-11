@@ -9,7 +9,6 @@ Cross-platform: uses Python stdlib where possible, shell tools as fallback.
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import tarfile

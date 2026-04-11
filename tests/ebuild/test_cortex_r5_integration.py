@@ -786,7 +786,7 @@ class TestEndToEndPipeline:
     def test_project_generator_resolves_manifest(self):
         """generate-project → manifest → correct eboot board + eos toolchain."""
         from ebuild.eos_ai.eos_hw_analyzer import (
-            EosHardwareAnalyzer, HardwareProfile, PeripheralInfo,
+            HardwareProfile, PeripheralInfo,
         )
         from ebuild.eos_ai.eos_project_generator import EosProjectGenerator
 
@@ -909,7 +909,7 @@ class TestEndToEndPipeline:
         from ebuild.eos_ai.eos_project_generator import EosProjectGenerator
 
         for mcu_key in ("tms570", "rm57", "rm46"):
-            props = EosHardwareAnalyzer.MCU_DATABASE[mcu_key]
+            EosHardwareAnalyzer.MCU_DATABASE[mcu_key]
             eboot_board = EosProjectGenerator.MCU_TO_EBOOT_BOARD.get(mcu_key)
             assert eboot_board is not None, f"No eboot board for {mcu_key}"
             board_dir = _EBOOT_ROOT / "boards" / eboot_board
@@ -1063,7 +1063,7 @@ if __name__ == "__main__":
     print(f"\n{'=' * 60}")
     print(f"Cortex-R5 Integration Tests: {passed}/{total} passed, {failed} failed")
     if errors:
-        print(f"\nFailed tests:")
+        print("\nFailed tests:")
         for e in errors:
             print(f"  FAIL: {e}")
     print(f"{'=' * 60}")
