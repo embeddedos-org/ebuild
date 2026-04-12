@@ -216,80 +216,6 @@ class EosProjectGenerator:
         "gr712rc": "sparc",
         "erc32": "sparc",
         "ultrasparc": "sparc",
-        # --- New ARM ---
-        "stm32f0": "cortex_m0", "stm32f030": "cortex_m0",
-        "stm32l0": "cortex_m0plus", "stm32l072": "cortex_m0plus",
-        "stm32f1": "cortex_m3", "stm32f103": "cortex_m3",
-        "lpc55": "cortex_m23", "lpc55s06": "cortex_m23",
-        "stm32l5": "cortex_m33", "stm32l562": "cortex_m33",
-        "corstone300": "cortex_m55", "ra8m1": "cortex_m85",
-        "rm46": "cortex_r4", "cortex_r52": "cortex_r52",
-        "sama5d3": "cortex_a5", "sama5d36": "cortex_a5",
-        "zynq7020": "cortex_a9", "omap5": "cortex_a15", "omap5432": "cortex_a15",
-        "imx8x": "cortex_a35", "rk3568": "cortex_a55", "rk3588": "cortex_a76",
-        "lpc2148": "arm7tdmi", "lpc2368": "arm7tdmi",
-        "at91sam9": "arm9", "at91sam9g25": "arm9", "bcm2835": "arm11",
-        # --- Microchip ---
-        "atmega": "avr", "attiny": "avr", "at32uc3": "avr32",
-        "pic16f": "pic16", "pic18f": "pic18", "pic24f": "pic24",
-        "dspic33": "dspic", "pic32mx": "pic32", "pic32mz": "pic32",
-        # --- TI ---
-        "msp430": "msp430", "tms320f28": "c28x", "tms320c67": "c6000", "am335x_pru": "pru",
-        # --- Renesas/Infineon ---
-        "rl78": "rl78", "rx65": "rx", "rx72": "rx",
-        "tc397": "tricore", "tc375": "tricore", "xc2267": "c166",
-        # --- FPGA ---
-        "microblaze": "microblaze", "nios2": "nios2", "mor1kx": "openrisc", "lm32": "lm32",
-        # --- DSP ---
-        "adsp_bf": "blackfin", "adsp_21": "sharc", "sdm845": "hexagon",
-        "ceva_xm": "ceva", "hifi5": "xtensa_hifi",
-        # --- Misc ---
-        "arc_em": "arc", "stc89": "8051", "efm8": "8051",
-        "esp32c3": "esp32c3", "esp32s3": "esp32s3",
-        # --- Server/exotic ---
-        "mips64": "mips64", "ultrasparc_t": "sparc64", "power9": "ppc64",
-        "loongson": "loongarch", "pa87": "parisc", "itanium": "ia64",
-        "alpha21": "alpha", "ibm_z": "s390", "etrax": "cris", "csr8675": "kalimba",
-        # --- ARM Cortex-M expansion ---
-        "stm32f0": "cortex_m0",
-        "stm32f030": "cortex_m0",
-        "stm32l0": "cortex_m0plus",
-        "stm32l072": "cortex_m0plus",
-        "stm32f1": "cortex_m3",
-        "stm32f103": "cortex_m3",
-        "lpc55": "cortex_m23",
-        "lpc55s06": "cortex_m23",
-        "stm32l5": "cortex_m33",
-        "stm32l562": "cortex_m33",
-        "corstone300": "cortex_m55",
-        "ra8m1": "cortex_m85",
-        # --- ARM Cortex-R/A ---
-        "rm46": "cortex_r4",
-        "cortex_r52": "cortex_r52",
-        "sama5d3": "cortex_a5",
-        "sama5d36": "cortex_a5",
-        "zynq7020": "cortex_a9",
-        "omap5": "cortex_a15",
-        "omap5432": "cortex_a15",
-        "imx8x": "cortex_a35",
-        "rk3568": "cortex_a55",
-        "rk3588": "cortex_a76",
-        # --- Legacy ARM ---
-        "lpc2148": "arm7tdmi",
-        "lpc2368": "arm7tdmi",
-        "at91sam9": "arm9",
-        "at91sam9g25": "arm9",
-        "bcm2835": "arm11",
-        # --- Microchip ---
-        "atmega": "avr",
-        "attiny": "avr",
-        "at32uc3": "avr32",
-        "pic16f": "pic16",
-        "pic18f": "pic18",
-        "pic24f": "pic24",
-        "dspic33": "dspic",
-        "pic32mx": "pic32",
-        "pic32mz": "pic32",
         # --- TI ---
         "msp430": "msp430",
         "tms320f28": "c28x",
@@ -320,7 +246,6 @@ class EosProjectGenerator:
         "esp32c3": "esp32c3",
         "esp32s3": "esp32s3",
         # --- Server/exotic ---
-        "mips64": "mips64",
         "ultrasparc_t": "sparc64",
         "power9": "ppc64",
         "loongson": "loongarch",
@@ -371,8 +296,10 @@ class EosProjectGenerator:
     # Architectures that may have BMC
     BMC_ARCHS = {"x86_64", "arm64", "powerpc", "sparc64"}
     # MCU families that have multicore
-    MULTICORE_MCUS = {"stm32mp1", "stm32h7", "am64x", "rp2040", "t1040", "p2020",
-                      "esp32", "nrf52840", "sifive_u", "fu740", "imx8m", "bcm2711", "rpi4"}
+    MULTICORE_MCUS = {
+        "stm32mp1", "stm32h7", "am64x", "rp2040", "t1040", "p2020",
+        "esp32", "nrf52840", "sifive_u", "fu740", "imx8m", "bcm2711", "rpi4"
+    }
 
     # Map features/peripheral combos → product profile
     PRODUCT_MAP: Dict[str, List[str]] = {
@@ -1270,7 +1197,8 @@ set(EBLDR_BOARD "{board}" CACHE STRING "Target board")
 set(EBLDR_INCLUDE_DIR ${{CMAKE_CURRENT_SOURCE_DIR}}/include)
 
 if(CMAKE_CROSSCOMPILING)
-    add_compile_options(-Wall -Wextra -Os -ffunction-sections -fdata-sections -fno-common)
+    add_compile_options(-Wall -Wextra -Os -ffunction-sections)
+    add_compile_options(-fdata-sections -fno-common)
     add_link_options(-Wl,--gc-sections)
 elseif(MSVC)
     add_compile_options(/W3)
@@ -1566,10 +1494,10 @@ against the latest upstream repos.
             "services/os": "OS services — watchdog, storage, system management",
             "services/ota": "Over-the-air updates — firmware download and apply",
             "services/motor": "Motor control — stepper, DC, servo motor drivers",
-            "services/sensor": "Sensor framework — calibration, filtering, multi-sensor",
+            "services/sensor": "Sensor framework — calibration and filtering",
             "services/filesystem": "Filesystem — flash-based file storage",
             "services/rtos": "RTOS security — task isolation, MPU configuration",
-            "services/linux": "Linux security — namespace, seccomp, capability management",
+            "services/linux": "Linux security — namespace and seccomp",
             "services/datacenter": "Datacenter services — BMC, rack management",
             "net": "Networking — TCP/IP, BLE, WiFi abstraction",
             "power": "Power management — sleep modes, voltage regulation",
