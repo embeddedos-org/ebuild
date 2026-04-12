@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import sys
 from enum import Enum
-from typing import Optional
 
 
 class Color(Enum):
