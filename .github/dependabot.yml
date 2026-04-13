@@ -1,10 +1,9 @@
+# Dependabot disabled — dependency updates are managed manually.
+# To re-enable, set open-pull-requests-limit to a positive number.
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+      interval: "monthly"
+    open-pull-requests-limit: 0
