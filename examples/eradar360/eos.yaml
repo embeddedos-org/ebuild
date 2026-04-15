@@ -1,0 +1,295 @@
+# ═══════════════════════════════════════════════════════════════
+# eRadar360 / Aegis One — Full ebuild Pipeline Configuration
+# ═══════════════════════════════════════════════════════════════
+#
+# This file ties the eRadar360 hardware CAD files to ebuild's
+# build pipeline, generating a bootable firmware image.
+#
+# Usage:
+#   cd examples/eradar360
+#   ebuild pipeline --board rk3588s --hardware ../../hardware/board/eradar360.yaml
+#
+# Or step-by-step:
+#   1. ebuild analyze --file ../../hardware/board/eradar360.yaml -o _build/configs
+#   2. ebuild build
+#   3. ebuild firmware --board rk3588s
+#   4. ebuild system --format ext4 --size 128
+#   5. ebuild package --output eradar360-v1.0.0.img
+#
+# CAD Source Files (Products-HW-designs/eRadar360_CAD/):
+#   - eradar360.net          → KiCad netlist (component + pin data)
+#   - bom.csv                → Bill of materials (65+ components)
+#   - pcb_stackup.txt        → 10-layer PCB stackup
+#   - decoupling_cap_map.csv → Capacitor placement map
+#   - antenna_design.md      → SIW phased array specs
+#   - bring_up_guide.md      → Board test procedures
+# ═══════════════════════════════════════════════════════════════
+
+project:
+  name: eradar360
+  version: "1.0.0"
+  description: "Next-gen driver awareness system with V2X, AI, and 360° phased-array radar"
+  license: proprietary
+  board: eradar360-v1
+
+workspace:
+  backend: ninja
+  build_dir: _build
+
+# ─── Hardware Source (input to ebuild analyze) ───────────────
+hardware:
+  board_yaml: ../../hardware/board/eradar360.yaml
+  cad_sources:
+    netlist: ../../../Products-HW-designs/eRadar360_CAD/eradar360.net
+    bom: ../../../Products-HW-designs/eRadar360_CAD/bom.csv
+    stackup: ../../../Products-HW-designs/eRadar360_CAD/pcb_stackup.txt
+    decoupling: ../../../Products-HW-designs/eRadar360_CAD/decoupling_cap_map.csv
+
+# ─── Toolchains ──────────────────────────────────────────────
+toolchains:
+  main:
+    target: aarch64-linux-gnu
+    compiler: gcc
+    arch: arm64
+    prefix: aarch64-linux-gnu-
+    cflags: ["-O2", "-Wall", "-march=armv8.2-a+dotprod"]
+
+  coprocessor:
+    target: arm-none-eabi
+    compiler: gcc
+    arch: arm
+    prefix: arm-none-eabi-
+    cflags: ["-mcpu=cortex-m7", "-mthumb", "-mfpu=fpv5-d16", "-mfloat-abi=hard", "-Os"]
+
+# ─── Build Targets ───────────────────────────────────────────
+targets:
+  # ── Main Application (RK3588S / Linux userspace) ──
+  - name: eradar360-app
+    type: executable
+    toolchain: main
+    sources:
+      - src/main.c
+      - src/app/*.c
+    includes:
+      - include/
+    depends: [libradar, libv2x, libai, libdisplay, libgps, liblaser, libobd]
+    ldflags: ["-lpthread", "-lm", "-ldl"]
+
+  # ── Radar Signal Processing ──
+  - name: libradar
+    type: static_library
+    toolchain: main
+    sources:
+      - src/radar/radar_core.c
+      - src/radar/fft_processor.c
+      - src/radar/beam_steering.c
+      - src/radar/awr2944_driver.c
+      - src/radar/signal_classifier.c
+    includes:
+      - include/radar/
+    cflags: ["-O3", "-ffast-math"]
+
+  # ── V2X Message Parser ──
+  - name: libv2x
+    type: static_library
+    toolchain: main
+    sources:
+      - src/v2x/v2x_core.c
+      - src/v2x/dsrc_parser.c
+      - src/v2x/cv2x_parser.c
+      - src/v2x/bsm_decoder.c
+      - src/v2x/tekton3_driver.c
+    includes:
+      - include/v2x/
+
+  # ── AI Threat Classifier (NPU) ──
+  - name: libai
+    type: static_library
+    toolchain: main
+    sources:
+      - src/ai/threat_classifier.c
+      - src/ai/signal_fingerprint.c
+      - src/ai/npu_inference.c
+      - src/ai/model_loader.c
+    includes:
+      - include/ai/
+      - external/rknn_api/include/
+    ldflags: ["-lrknn_api"]
+
+  # ── AMOLED Display + UI ──
+  - name: libdisplay
+    type: static_library
+    toolchain: main
+    sources:
+      - src/display/display_core.c
+      - src/display/threat_map.c
+      - src/display/direction_arrows.c
+      - src/display/mipi_dsi_driver.c
+    includes:
+      - include/display/
+
+  # ── GPS + Cloud Database ──
+  - name: libgps
+    type: static_library
+    toolchain: main
+    sources:
+      - src/gps/gps_core.c
+      - src/gps/neo_m9n_driver.c
+      - src/gps/cloud_sync.c
+      - src/gps/threat_database.c
+    includes:
+      - include/gps/
+
+  # ── Laser Detection ──
+  - name: liblaser
+    type: static_library
+    toolchain: main
+    sources:
+      - src/laser/laser_core.c
+      - src/laser/apd_processor.c
+      - src/laser/pulse_detector.c
+    includes:
+      - include/laser/
+    cflags: ["-O3", "-ffast-math"]
+
+  # ── OBD-II Vehicle Interface ──
+  - name: libobd
+    type: static_library
+    toolchain: main
+    sources:
+      - src/obd/obd_core.c
+      - src/obd/elm327_driver.c
+      - src/obd/can_parser.c
+      - src/obd/vehicle_context.c
+    includes:
+      - include/obd/
+
+  # ── STM32H7B3 Co-Processor Firmware ──
+  - name: eradar360-coprocessor
+    type: executable
+    toolchain: coprocessor
+    sources:
+      - src/coprocessor/main.c
+      - src/coprocessor/sensor_fusion.c
+      - src/coprocessor/laser_adc.c
+      - src/coprocessor/obd_bridge.c
+      - src/coprocessor/gps_parser.c
+    includes:
+      - include/coprocessor/
+    ldflags: ["-T", "linker/stm32h7b3.ld", "-nostartfiles", "-lm"]
+
+# ─── System Image Configuration ─────────────────────────────
+system:
+  kind: linux
+  hostname: eradar360
+  init: busybox
+  image_format: ext4
+  image_size_mb: 128
+  output: eradar360-firmware-v1.0.0.img
+
+  users:
+    - name: root
+      shell: /bin/sh
+
+  kernel:
+    defconfig: rockchip_linux_defconfig
+    extra_config:
+      - CONFIG_SPI_ROCKCHIP=y
+      - CONFIG_I2C_RK3X=y
+      - CONFIG_SERIAL_8250_DW=y
+      - CONFIG_DRM_ROCKCHIP=y
+      - CONFIG_DRM_PANEL_SIMPLE=y
+      - CONFIG_ROCKCHIP_RKNPU=m
+      - CONFIG_CAN=y
+      - CONFIG_CAN_MCP251X=m
+
+  packages:
+    - name: zlib
+    - name: mbedtls
+
+  # Device tree overlay for eRadar360 peripherals
+  device_tree:
+    base: rk3588s-evb
+    overlays:
+      - eradar360-spi-radar.dtso
+      - eradar360-mipi-display.dtso
+      - eradar360-i2c-sensors.dtso
+      - eradar360-uart-v2x.dtso
+
+  # Files to install into the rootfs
+  install:
+    - src: _build/eradar360-app
+      dst: /usr/bin/eradar360
+    - src: models/threat_classifier.rknn
+      dst: /usr/share/eradar360/models/
+    - src: config/eradar360.conf
+      dst: /etc/eradar360/
+    - src: assets/splash.raw
+      dst: /usr/share/eradar360/
+
+# ─── Firmware Flash Configuration ────────────────────────────
+firmware:
+  board: rk3588s
+  flash_tool: rkdeveloptool
+  partitions:
+    - name: bootloader
+      offset: 0x0
+      size: 4MB
+      image: u-boot-spl.bin
+    - name: uboot
+      offset: 0x400000
+      size: 4MB
+      image: u-boot.itb
+    - name: kernel
+      offset: 0x800000
+      size: 32MB
+      image: Image.gz
+    - name: dtb
+      offset: 0x2800000
+      size: 1MB
+      image: rk3588s-eradar360.dtb
+    - name: rootfs
+      offset: 0x2900000
+      size: 128MB
+      image: eradar360-firmware-v1.0.0.img
+
+  # Co-processor (STM32H7B3) firmware update via I2C bootloader
+  coprocessor:
+    target: stm32h7b3
+    flash_tool: stm32flash
+    binary: _build/eradar360-coprocessor.bin
+    interface: i2c0
+    address: 0x50
+
+# ─── Pipeline Steps ──────────────────────────────────────────
+pipeline:
+  steps:
+    # Step 1: Analyze hardware CAD → generate board/boot/build configs
+    - name: analyze
+      command: ebuild analyze --file ../../hardware/board/eradar360.yaml -o _build/configs
+      description: "Parse board YAML + KiCad netlist → generate EoS configs"
+
+    # Step 2: Build co-processor firmware (ARM Cortex-M7)
+    - name: build-coprocessor
+      command: ebuild build --target eradar360-coprocessor
+      description: "Cross-compile STM32H7B3 sensor fusion firmware"
+
+    # Step 3: Build all libraries + main app (ARM64 Linux)
+    - name: build-app
+      command: ebuild build --target eradar360-app
+      description: "Cross-compile main application + all libraries"
+
+    # Step 4: Build Linux kernel with eRadar360 device tree
+    - name: build-kernel
+      command: ebuild firmware --board rk3588s
+      description: "Build Linux kernel + device tree for RK3588S"
+
+    # Step 5: Assemble rootfs + create system image
+    - name: build-image
+      command: ebuild system --format ext4 --size 128
+      description: "Create ext4 rootfs image with app, models, configs"
+
+    # Step 6: Package final deliverable
+    - name: package
+      command: ebuild package --output eradar360-v1.0.0-release.zip
+      description: "Bundle firmware, SDK, docs into release package"
