@@ -1,0 +1,129 @@
+# eRadar360 / Aegis One — Hardware Board Description
+# SoC: Rockchip RK3588S (ARM Cortex-A76/A55, 6 TOPS NPU)
+# Use: ebuild analyze hardware/board/eradar360.yaml
+
+board_name: eradar360-v1
+revision: "A"
+
+mcu:
+  part: RK3588S
+  family: RK3588
+  core: cortex-a76
+  clock: 2400 MHz
+  flash: 256MB QSPI NOR (Macronix MX25U25645G)
+  ram: 1GB DDR4-3200 (Samsung K4A8G165WC)
+  voltage: 0.85V core / 1.8V I/O / 3.3V peripherals
+  features: [npu_6tops, mali_g610, pcie3, usb3, mipi_dsi, spi, i2c, uart, hdmi]
+
+peripherals:
+  # Radar subsystem
+  - SPI0: front radar (TI AWR2944, 77GHz FMCW, 4TX/4RX, BGA-232)
+  - SPI1: rear radar (TI AWR2944, 77GHz FMCW, 4TX/4RX, BGA-232)
+  # V2X communication
+  - UART3: V2X transceiver (Autotalks TEKTON3, DSRC 802.11p + C-V2X PC5)
+  # Display
+  - MIPI_DSI: 4" AMOLED display (Samsung AMS395GE04, 480x800, 600 nits)
+  # Sensor fusion co-processor
+  - I2C0: sensor hub (STM32H7B3, ARM Cortex-M7, 280MHz)
+  # GPS
+  - I2C0: GNSS receiver (u-blox NEO-M9N, GPS/GLONASS/Galileo/BeiDou)
+  # Laser detection
+  - ADC0-4: 5x InGaAs APD laser sensors (Hamamatsu G12183-010K via OPA857 TIA)
+  # OBD-II vehicle interface
+  - UART4: OBD-II interpreter (ELM327 + MCP2551 CAN transceiver)
+  # Connectivity
+  - SDIO: Wi-Fi 6 + Bluetooth 5.3 (Qualcomm QCA6174A)
+  # Audio
+  - I2S: 2W class-D amplifier (TI TPA2012D2) + 3.5mm jack
+  # User input
+  - GPIO: 3x tactile buttons (MENU, MUTE, MARK)
+  # Debug
+  - UART2: debug console (115200 baud)
+  - JTAG: 10-pin Cortex debug header (J6)
+
+memory_map:
+  flash_base: 0x00000000
+  flash_size: 0x2000000     # 256MB NOR flash
+  ram_base: 0x00200000
+  ram_size: 0x40000000      # 1GB DDR4
+  spi0_base: 0xFE610000     # SPI0 controller (front radar)
+  spi1_base: 0xFE620000     # SPI1 controller (rear radar)
+  uart2_base: 0xFEB50000    # UART2 debug
+  uart3_base: 0xFEB60000    # UART3 V2X
+  i2c0_base: 0xFEA90000    # I2C0 bus
+  mipi_dsi_base: 0xFDE20000 # MIPI-DSI display controller
+  npu_base: 0xFDAB0000      # RKNPU (6 TOPS)
+
+boot:
+  recovery_pin: GPIO0_A0 (active low, pull-up)
+  led_status: GPIO0_A1 (green status LED)
+  watchdog: 10000ms
+  bootloader: U-Boot (SPL + ATF)
+
+power:
+  main_supply: 5V USB-C (3A max) or 12V OBD-II
+  regulators:
+    - BUCK1 3.3V (TPS65219, 1.5A — digital logic, GPS, CAN, V2X)
+    - BUCK2 1.8V (TPS65219, 1A — DDR4, MIPI I/O, radar I/O)
+    - BUCK3 0.85V (TPS65219, 4A — RK3588S CPU + NPU + GPU core)
+    - BUCK4 1.1V (TPS65219, 800mA — AWR2944 x2 radar core)
+    - BOOST 12V (TPS61046, 200mA — OLED ELVDD)
+  total_power: 10W max (all subsystems active)
+  sleep_power: 0.5W (STM32 + 3.3V + 5V only)
+
+connectors:
+  - USB-C (power + data, J1)
+  - 3.5mm TRRS audio jack (J2)
+  - OBD-II SAE J1962 male (J3, 12V vehicle power + CAN bus)
+  - 40-pin FPC (OLED display, J4)
+  - SMA female (V2X antenna, J5)
+  - 10-pin 1.27mm JTAG (debug, J6)
+  - U.FL coax (GPS antenna, J7)
+
+antennas:
+  front_radar:
+    type: SIW phased array
+    elements: 8x8 (64)
+    substrate: Rogers RO4003C
+    gain: 24 dBi
+    steering: ±45° azimuth, ±30° elevation
+    frequency: 33.4-36.0 GHz (Ka-band)
+  rear_radar:
+    type: SIW phased array
+    elements: 4x4 (16)
+    substrate: Rogers RO4003C
+    gain: 18 dBi
+    steering: ±30° azimuth
+    frequency: 33.4-36.0 GHz (Ka-band)
+  k_band:
+    type: 2x2 microstrip patch
+    gain: 12 dBi
+    frequency: 24.05-24.25 GHz
+  x_band:
+    type: single patch + LNA
+    gain: 7 dBi
+    frequency: 10.5-10.55 GHz
+  gps:
+    type: ceramic patch (Taoglas AP.25F)
+    gain: 4 dBi
+  v2x:
+    type: external SMA (5.9 GHz DSRC/C-V2X)
+
+pcb:
+  layers: 10
+  material: Rogers RO4003C (RF layers 1-2) + Isola 370HR (layers 3-10)
+  dimensions: 120mm x 85mm
+  thickness: 1.6mm
+  surface_finish: ENIG
+  impedance: 50Ω single-ended, 100Ω differential
+
+use_case: |
+  Next-generation driver awareness system (radar detector + V2X + AI).
+  Dual SIW phased-array antennas provide 360° Ka/K/Ku/X-band coverage
+  with electronic beam steering. V2X chip receives law enforcement
+  broadcasts from smart infrastructure before radar is detectable.
+  6 TOPS NPU fingerprints radar signatures by pulse pattern for 97%
+  false-alert suppression. OBD-II integration adds vehicle context
+  (speed, cruise state) to eliminate irrelevant alerts. GPS enables
+  cloud-shared threat database. 4" AMOLED shows directional threat map.
+  Target retail price: $699, BOM cost: ~$330.
