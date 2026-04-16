@@ -111,7 +111,14 @@ def _install_packages(
         fetcher.fetch(recipe, cache.src_dir(recipe))
 
         log.step(f"  Building {recipe.name} v{recipe.version}...")
-        dep_dirs = [install_dirs[dep] for dep in recipe.dependencies if dep in install_dirs]
+        dep_dirs = []
+        for dep in recipe.dependencies:
+            if dep not in install_dirs:
+                raise BuildError(
+                    f"Dependency '{dep}' of '{recipe.name}' was not built. "
+                    "Check that all recipes are available."
+                )
+            dep_dirs.append(install_dirs[dep])
         install_dir = builder.build(recipe, dep_install_dirs=dep_dirs)
         install_dirs[recipe.name] = install_dir
         log.success(f"  {recipe.name} v{recipe.version} — built ✓")
@@ -261,12 +268,12 @@ def _run_cmake_build(profile, board, source_dir, build_dir, log):
     # Point cmake to generated config headers
     gen_include = build_dir / "include" / "generated"
     if gen_include.exists():
-        cmake_defines["EOS_GENERATED_INCLUDE_DIR"] = str(gen_include).replace("\\", "/")
+        cmake_defines["EOS_GENERATED_INCLUDE_DIR"] = gen_include.as_posix()
 
     # Point to eboot cmake defs if present
     eboot_cmake = build_dir / "configs" / "eboot_config.cmake"
     if eboot_cmake.exists():
-        cmake_defines["EBOOT_CONFIG_FILE"] = str(eboot_cmake).replace("\\", "/")
+        cmake_defines["EBOOT_CONFIG_FILE"] = eboot_cmake.as_posix()
 
     log.step("[6/6] Building with cmake...")
     log.info("  Defines: " + str(len(cmake_defines)) + " cmake variables")
