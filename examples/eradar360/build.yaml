@@ -1,0 +1,115 @@
+# eRadar360 / Aegis One — Build Configuration
+# Usage: ebuild build
+# This configures the full firmware build for the eRadar360 platform
+
+name: eradar360-firmware
+version: "1.0.0"
+
+toolchain:
+  compiler: gcc
+  arch: arm64
+  prefix: aarch64-linux-gnu-
+
+targets:
+  # Main application — runs on RK3588S (Linux userspace)
+  - name: eradar360-app
+    type: executable
+    sources: ["src/app/*.c", "src/app/*.cpp"]
+    include_dirs: ["include", "include/radar", "include/v2x", "include/ai"]
+    cflags: ["-O2", "-Wall", "-march=armv8.2-a+dotprod"]
+    ldflags: ["-lpthread", "-lm", "-ldl"]
+    deps: [libradar, libv2x, libai, libdisplay, libgps, liblaser]
+
+  # Radar signal processing library
+  - name: libradar
+    type: static_library
+    sources: ["src/radar/*.c"]
+    include_dirs: ["include/radar"]
+    cflags: ["-O3", "-march=armv8.2-a+dotprod", "-ffast-math"]
+
+  # V2X DSRC/C-V2X message parser
+  - name: libv2x
+    type: static_library
+    sources: ["src/v2x/*.c"]
+    include_dirs: ["include/v2x"]
+    cflags: ["-O2", "-Wall"]
+
+  # AI threat classifier (NPU inference engine)
+  - name: libai
+    type: static_library
+    sources: ["src/ai/*.c", "src/ai/*.cpp"]
+    include_dirs: ["include/ai", "external/rknn_api/include"]
+    cflags: ["-O2", "-Wall"]
+    ldflags: ["-lrknn_api"]
+
+  # AMOLED display driver + UI renderer
+  - name: libdisplay
+    type: static_library
+    sources: ["src/display/*.c"]
+    include_dirs: ["include/display"]
+    cflags: ["-O2"]
+
+  # GPS + cloud database client
+  - name: libgps
+    type: static_library
+    sources: ["src/gps/*.c"]
+    include_dirs: ["include/gps"]
+    cflags: ["-O2"]
+
+  # Laser detection signal processor
+  - name: liblaser
+    type: static_library
+    sources: ["src/laser/*.c"]
+    include_dirs: ["include/laser"]
+    cflags: ["-O2", "-ffast-math"]
+
+  # STM32H7B3 co-processor firmware (cross-compiled ARM Cortex-M7)
+  - name: eradar360-coprocessor
+    type: executable
+    sources: ["src/coprocessor/*.c"]
+    include_dirs: ["include/coprocessor"]
+    cflags: ["-mcpu=cortex-m7", "-mthumb", "-mfpu=fpv5-d16", "-mfloat-abi=hard", "-Os"]
+    ldflags: ["-T", "linker/stm32h7b3.ld", "-nostartfiles", "-lm"]
+    toolchain_override:
+      compiler: gcc
+      arch: arm
+      prefix: arm-none-eabi-
+
+system:
+  hostname: eradar360
+  init: busybox
+  image_format: ext4
+  image_size_mb: 128
+
+  users:
+    - name: root
+      shell: /bin/sh
+
+  kernel:
+    source: /path/to/linux
+    defconfig: rockchip_linux_defconfig
+    extra_config:
+      - CONFIG_SPI_ROCKCHIP=y
+      - CONFIG_I2C_RK3X=y
+      - CONFIG_DRM_ROCKCHIP=y
+      - CONFIG_ROCKCHIP_RKNPU=m
+      - CONFIG_CAN=y
+      - CONFIG_CAN_MCP251X=m
+      - CONFIG_GPS_UBX=m
+
+  packages:
+    - name: zlib
+    - name: mbedtls
+
+firmware:
+  rtos: none
+  board: rk3588s
+  flash_tool: rkdeveloptool
+
+pipeline:
+  steps:
+    - analyze: hardware/board/eradar360.yaml
+    - build: eradar360-coprocessor
+    - build: eradar360-app
+    - flash_coprocessor: stm32h7b3
+    - package: eradar360-firmware-v${version}.img
