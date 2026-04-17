@@ -71,19 +71,6 @@ class DependencyGraph:
         Uses Kahn's algorithm. Raises CycleError if a cycle exists.
         """
         in_degree: Dict[str, int] = {n: 0 for n in self._nodes}
-        for node, deps in self._adj.items():
-            for dep in deps:
-                in_degree.setdefault(node, 0)
-                in_degree.setdefault(dep, 0)
-
-        # in_degree[x] = number of nodes that depend on x?
-        # Actually we want: in_degree[x] = number of dependencies x has
-        # For Kahn's we need: in_degree[x] = number of edges pointing INTO x
-        # Edge: dependent -> dependency means "dependent needs dependency"
-        # For build order, dependency must come first.
-        # Re-interpret: edges as dependency -> dependent (reverse adj for Kahn's)
-
-        in_degree = {n: 0 for n in self._nodes}
         reverse_adj: Dict[str, Set[str]] = defaultdict(set)
 
         for dependent, deps in self._adj.items():

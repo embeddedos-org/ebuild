@@ -91,7 +91,10 @@ class RootfsBuilder:
                 passwd_lines.append(f"{name}:x:{uid}:{uid}:{name}:{home}:{shell}\n")
                 group_lines.append(f"{name}:x:{uid}:\n")
                 shadow_lines.append(f"{name}::0:0:99999:7:::\n")
-                (self.rootfs_dir / home.lstrip("/")).mkdir(parents=True, exist_ok=True)
+                safe_home = os.path.normpath(home.lstrip("/"))
+                if ".." in safe_home.split(os.sep):
+                    raise RootfsError(f"Invalid home path for user {name!r}: {home!r}")
+                (self.rootfs_dir / safe_home).mkdir(parents=True, exist_ok=True)
                 uid += 1
 
         (self.rootfs_dir / "etc" / "passwd").write_text("".join(passwd_lines))

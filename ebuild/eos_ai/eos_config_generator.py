@@ -19,6 +19,23 @@ import yaml
 from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
 
 
+_FLASH_BASE_MAP = {
+    "nrf": "0x00000000",
+    "rp2040": "0x10000000",
+    "esp32": "0x00000000",
+}
+
+
+def _flash_base_for(profile: "HardwareProfile") -> str:
+    """Return the correct flash base address for this MCU."""
+    key = (profile.mcu or "").lower()
+    family = (profile.mcu_family or "").lower()
+    for prefix, base in _FLASH_BASE_MAP.items():
+        if key.startswith(prefix) or family.startswith(prefix):
+            return base
+    return "0x08000000"
+
+
 class EosConfigGenerator:
     """Generates build/boot/OS configs from a HardwareProfile."""
 
@@ -67,7 +84,7 @@ class EosConfigGenerator:
     def generate_boot_yaml(self, profile: HardwareProfile) -> Path:
         """Generate eboot-compatible boot configuration."""
         flash = profile.flash_size or 1024 * 1024
-        stage0_size = min(16 * 1024, flash // 32)
+        stage0_size = max(8 * 1024, min(16 * 1024, flash // 32))
         stage1_size = min(64 * 1024, flash // 8)
         bootctl_size = 4096
         slot_size = (flash - stage0_size - stage1_size - bootctl_size * 2) // 2
@@ -76,7 +93,7 @@ class EosConfigGenerator:
             "boot": {
                 "board": profile.mcu.lower() or "custom",
                 "arch": profile.arch,
-                "flash_base": "0x08000000",
+                "flash_base": _flash_base_for(profile),
                 "flash_size": flash,
                 "layout": {
                     "stage0": {"offset": "0x00000000", "size": stage0_size},
@@ -118,9 +135,15 @@ class EosConfigGenerator:
 
     def generate_build_yaml(self, profile: HardwareProfile) -> Path:
         """Generate ebuild build.yaml for the project."""
-        toolchain = "arm-none-eabi" if profile.arch == "arm" else "gcc"
-        if profile.has_peripheral("ble"):
-            pass
+        _TOOLCHAIN_PREFIX = {
+            "arm": "arm-none-eabi",
+            "arm64": "aarch64-linux-gnu",
+            "aarch64": "aarch64-linux-gnu",
+            "riscv64": "riscv64-linux-gnu",
+            "x86_64": "x86_64-linux-gnu",
+            "mips": "mipsel-linux-gnu",
+        }
+        toolchain = _TOOLCHAIN_PREFIX.get(profile.arch, "gcc")
 
         build = {
             "project": {
