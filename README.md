@@ -1,5 +1,7 @@
 # ⚙️ ebuild — EoS Embedded Build System
 
+[![CI](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Version](https://img.shields.io/github/v/tag/embeddedos-org/ebuild?label=version)](https://github.com/embeddedos-org/ebuild/releases/latest)
 
 > **⚠️ Not Gentoo ebuilds.** This is the **EmbeddedOS Build Tool** — a unified build system for the [EoS embedded OS](https://github.com/embeddedos-org/eos). Not related to [Gentoo's ebuild format](https://wiki.gentoo.org/wiki/Ebuild).
