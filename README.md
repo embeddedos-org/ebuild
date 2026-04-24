@@ -451,6 +451,30 @@ ebuild/
 
 ---
 
+## Security
+
+ebuild handles security-sensitive operations including firmware signing and LLM API access:
+
+- **Firmware signing** — `pack_image.sh` reads signing keys from file paths passed as arguments; private keys are never embedded in generated scripts
+- **LLM integration** — API keys are loaded exclusively from environment variables (`OPENAI_API_KEY`, `EOS_LLM_API_KEY`); no keys are stored in source code or generated configs
+- **Supply chain** — `sbom.json` provides a full Software Bill of Materials; Dependabot and Scorecard workflows run automatically
+- **Build outputs** — generated headers and linker scripts contain only public configuration constants; no secrets are written to build artifacts
+- **CI/CD** — CodeQL analysis, nightly and weekly security scans, and OpenSSF Scorecard are enabled
+
+### Reporting Vulnerabilities
+
+If you discover a security vulnerability, please **do not** open a public issue. Instead, email **security@embeddedos.org** with:
+
+1. Description of the vulnerability
+2. Steps to reproduce
+3. Affected versions
+
+We aim to acknowledge reports within 48 hours and provide a fix within 7 days for critical issues.
+
+See [SECURITY.md](SECURITY.md) for the full security policy.
+
+---
+
 ## Related Repos
 
 | Repo | Description |

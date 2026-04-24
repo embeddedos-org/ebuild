@@ -18,7 +18,7 @@ Usage:
 
     # Or explicit:
     client = LLMClient(provider="ollama", model="llama3")
-    client = LLMClient(provider="openai", model="gpt-4o", api_key="sk-...")
+    client = LLMClient(provider="openai", model="gpt-4o")  # uses OPENAI_API_KEY env var
 
     response = client.analyze(prompt)
 """
