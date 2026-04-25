@@ -1,3 +1,14 @@
+---
+title: "ebuild — Official Reference Guide"
+author: "Srikanth Patchava & EmbeddedOS Contributors"
+date: "April 2026"
+version: "v1.0.0"
+bibliography: references.bib
+csl: ieee.csl
+titlepage: true
+titlepage-background: "cover.png"
+---
+
 # ebuild: The Definitive Reference Guide
 
 ## EmbeddedOS Build System
@@ -99,7 +110,7 @@ Hardware (.kicad_sch / .yaml / .csv / .txt)
  .yaml  .yaml .yaml
     |    |    |
     v    v    v
- eos_   eboot_ eboot_   <-- C headers + linker + cmake
+ eos_   eboot_ eboot_   <-- C headers + linker + cmake [@cmake_docs]
  config flash  memory
  .h     .h     .ld
          |
@@ -115,7 +126,7 @@ Hardware (.kicad_sch / .yaml / .csv / .txt)
 |---|---|
 | **Hardware Analysis** | Parse KiCad, Eagle, YAML, CSV, or text to extract MCU, peripherals, pin assignments |
 | **Config Generation** | Auto-generate 9 configuration files (YAML, C headers, linker scripts, CMake, signing scripts) |
-| **Multi-Backend Build** | Dispatch to CMake, Ninja, Make, Meson, or Cargo backends automatically |
+| **Multi-Backend Build** | Dispatch to CMake, Ninja [@ninja_build], Make, Meson [@meson_build], or Cargo backends automatically |
 | **Cross-Compilation** | Built-in support for ARM, RISC-V, Xtensa, x86, and more via toolchain files |
 | **Project Scaffolding** | Create new projects from 6 templates (bare-metal, BLE, RTOS, Linux, safety-critical, secure-boot) |
 | **Package Management** | Recipe-based package system (FreeRTOS, lwIP, mbedTLS, zlib, LittleFS) |
@@ -686,7 +697,7 @@ ebuild provides CMake toolchain files for all supported architectures:
 | Architecture | Toolchain File | Compiler Prefix |
 |---|---|---|
 | ARM Cortex-M | `toolchains/arm-none-eabi.cmake` | `arm-none-eabi-` |
-| ARM Cortex-A (Linux) | `toolchains/aarch64-linux-gnu.cmake` | `aarch64-linux-gnu-` |
+| ARM Cortex-A (Linux) | `toolchains/aarch64-linux-gnu [@gnu_toolchain].cmake` | `aarch64-linux-gnu-` |
 | RISC-V 32 | `toolchains/riscv32-unknown-elf.cmake` | `riscv32-unknown-elf-` |
 | RISC-V 64 | `toolchains/riscv64-unknown-elf.cmake` | `riscv64-unknown-elf-` |
 | Xtensa (ESP32) | `toolchains/xtensa-esp32-elf.cmake` | `xtensa-esp32-elf-` |
@@ -1338,3 +1349,8 @@ ebuild aligns with: ISO/IEC/IEEE 15288:2023, ISO/IEC 12207, ISO/IEC/IEEE 42010, 
 
 ---
 Part of the [EmbeddedOS Organization](https://embeddedos-org.github.io).
+
+## References
+
+::: {#refs}
+:::

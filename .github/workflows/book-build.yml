@@ -87,7 +87,14 @@ jobs:
       - name: Install pandoc & LaTeX
         run: |
           sudo apt-get update
-          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-fonts-extra
+          sudo apt-get install -y pandoc texlive-xetex texlive-fonts-recommended texlive-fonts-extra texlive-science texlive-latex-extra
+
+      - name: Install Eisvogel template
+        run: |
+          mkdir -p ~/.local/share/pandoc/templates
+          wget -q https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v2.4.0/Eisvogel-2.4.0.tar.gz
+          tar xzf Eisvogel-2.4.0.tar.gz
+          cp eisvogel.latex ~/.local/share/pandoc/templates/eisvogel.latex
 
       - name: Clean source
         run: sed -i 's/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]//g' docs/book/book.md
@@ -112,23 +119,45 @@ jobs:
 
       - name: Generate PDF
         run: |
+          # Use cover image if available
+          COVER_ARGS=""
+          if [ -f docs/book/cover.png ]; then
+            COVER_ARGS="-V titlepage-background=docs/book/cover.png"
+          fi
+          # Use references if available
+          CITE_ARGS=""
+          if [ -f docs/book/references.bib ]; then
+            CITE_ARGS="--citeproc --bibliography=docs/book/references.bib"
+          fi
           pandoc \
             docs/book/book.md \
             -o "docs/book/${{ steps.meta.outputs.pdf_name }}" \
             --pdf-engine=xelatex \
             --from=markdown+smart \
-            -V geometry:margin=1in \
-            -V fontsize=11pt \
-            -V documentclass=report \
+            --template=eisvogel \
+            --listings \
+            $COVER_ARGS \
+            $CITE_ARGS \
+            -V titlepage=true \
+            -V titlepage-color="1a1a2e" \
+            -V titlepage-text-color="ffffff" \
+            -V titlepage-rule-color="58a6ff" \
+            -V titlepage-rule-height=2 \
+            -V page-background-color="ffffff" \
             -V "title=${{ steps.meta.outputs.title }}" \
             -V "subtitle=Version ${{ steps.meta.outputs.version }}" \
             -V "author=Srikanth Patchava \\& EmbeddedOS Contributors" \
             -V "date=$(date +'%B %Y')" \
             -V toc=true \
             -V toc-depth=3 \
+            -V toc-own-page=true \
             -V colorlinks=true \
             -V linkcolor=blue \
             -V urlcolor=blue \
+            -V book=true \
+            -V classoption=oneside \
+            -V fontsize=11pt \
+            -V geometry:margin=1in \
             -V "header-includes=\\usepackage{fancyhdr}\\pagestyle{fancy}\\fancyhead[R]{\\small ${{ steps.meta.outputs.version }}}" \
             --highlight-style=tango \
             --number-sections
