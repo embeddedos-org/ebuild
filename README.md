@@ -488,3 +488,7 @@ Clone just `eos` and it auto-fetches `eBoot` at build time. Use `ebuild` for the
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+
+---
+Part of the [EmbeddedOS Organization](https://embeddedos-org.github.io).
