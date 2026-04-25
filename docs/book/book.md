@@ -15,6 +15,9 @@ titlepage-background: "cover.png"
 
 **Version 0.1.0**
 
+![Figure: ebuild Build Pipeline — from YAML configuration through compilation to flash](images/build-pipeline.png)
+
+
 **Srikanth Patchava & EmbeddedOS Contributors**
 
 **April 2026**
@@ -31,6 +34,9 @@ titlepage-background: "cover.png"
 ## Preface
 
 ebuild is the unified build system for the EmbeddedOS (EoS) ecosystem. Unlike traditional embedded build tools that only compile code, ebuild bridges the gap between hardware design and firmware deployment. It reads your KiCad schematics, Eagle designs, YAML board descriptions, or even plain text hardware descriptions and auto-generates all the configuration files needed to build, flash, and deploy firmware for 73+ embedded targets.
+
+![Figure: ebuild Dependency Resolution Flow — manifest parsing through parallel build](images/dependency-resolution.png)
+
 
 This reference guide covers every aspect of ebuild: from the CLI interface and YAML configuration schema to the hardware analyzer engine, cross-compilation toolchains, package management, SDK generation, and CI/CD integration.
 
