@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ebuild — Unified Build System | EmbeddedOS</title>
+  <meta name="description" content="Unified build system with 18 CLI commands, cross-compilation, SDK generation, package management with YAML recipes, and deployable OS image creation.">
+  <meta name="keywords" content="build system, cli, cross-compilation, sdk, cmake, embedded, package manager">
+  <meta name="author" content="EmbeddedOS Organization">
+  <link rel="canonical" href="https://embeddedos-org.github.io/ebuild/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ebuild — Unified Build System | EmbeddedOS">
+  <meta property="og:description" content="Unified build system with 18 CLI commands, cross-compilation, SDK generation, package management with YAML recipes, and deployable OS image creation.">
+  <meta property="og:url" content="https://embeddedos-org.github.io/ebuild/">
+  <meta property="og:site_name" content="EmbeddedOS">
+  <meta property="og:image" content="https://embeddedos-org.github.io/assets/ebuild-og.png">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="ebuild — Unified Build System | EmbeddedOS">
+  <meta name="twitter:description" content="Unified build system with 18 CLI commands, cross-compilation, SDK generation, package management with YAML recipes, and deployable OS image creation.">
+  <meta name="twitter:image" content="https://embeddedos-org.github.io/assets/ebuild-og.png">
+
+  <!-- JSON-LD Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "ebuild",
+    "alternateName": "Unified Build System",
+    "description": "Unified build system with 18 CLI commands, cross-compilation, SDK generation, package management with YAML recipes, and deployable OS image creation.",
+    "url": "https://embeddedos-org.github.io/ebuild/",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "Linux, macOS, Windows",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "sourceOrganization": {
+      "@type": "Organization",
+      "name": "EmbeddedOS",
+      "url": "https://embeddedos-org.github.io/"
+    },
+    "codeRepository": "https://github.com/embeddedos-org/ebuild"
+  }
+  </script>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="nav-inner">
+      <a href="https://embeddedos-org.github.io/" class="logo">
+        <div class="logo-icon" style="background: linear-gradient(135deg, #1a7a30, #3fb950);">eb</div>
+        EmbeddedOS
+      </a>
+      <div class="nav-links">
+        <a href="https://embeddedos-org.github.io/">Home</a>
+        <a href="https://embeddedos-org.github.io/ebuild/" class="active">Docs</a>
+        <a href="https://github.com/embeddedos-org/ebuild">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Breadcrumb -->
+  <div class="breadcrumb">
+    <a href="https://embeddedos-org.github.io/">EmbeddedOS</a>
+    <span class="sep">/</span>
+    <span>ebuild</span>
+  </div>
+
+  <!-- Hero -->
+  <section class="hero" style="border-left: 4px solid #3fb950;">
+    <div class="hero-content">
+      <h1 style="background: linear-gradient(135deg, #3fb950, var(--purple), var(--pink)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">ebuild — Unified Build System</h1>
+      <p class="subtitle">Unified build system with 18 CLI commands, cross-compilation, SDK generation, package management with YAML recipes, and deployable OS image creation.</p>
+      <div class="hero-badges">
+        <span class="badge badge-green">18 CLI Commands</span>
+        <span class="badge badge-orange">Cross-Compilation</span>
+        <span class="badge badge-blue">SDK Generation</span>
+        <span class="badge badge-purple">Package Manager</span>
+        <span class="badge badge-cyan">OS Images</span>
+      </div>
+      <div class="hero-buttons">
+        <a href="https://github.com/embeddedos-org/ebuild" class="btn btn-primary" style="background: var(--green);">View on GitHub</a>
+        <a href="https://github.com/embeddedos-org/ebuild/releases/tag/v0.2.0-book" class="btn btn-outline">Download Book (PDF)</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section">
+    <h2 class="section-title">Key Features</h2>
+    <p class="section-subtitle">One tool to build, package, and deploy embedded firmware</p>
+    <div class="feature-grid">
+      <div class="feature-card" style="border-top: 3px solid #3fb950;">
+        <h3>18 CLI Commands</h3>
+        <p>Complete command-line interface covering init, build, flash, test, clean, package, deploy, sdk, image, and more — all from a single tool.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #f0883e;">
+        <h3>Cross-Compilation</h3>
+        <p>Seamless cross-compilation with CMake, Make, Meson, and Cargo backends. Auto-detects and configures toolchains for ARM, RISC-V, Xtensa, and more.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #58a6ff;">
+        <h3>Hardware Schematic Analysis</h3>
+        <p>Parse KiCad and Altium schematics to auto-generate pin maps, peripheral configs, and device tree overlays for your custom hardware.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #bc8cff;">
+        <h3>Yocto-Style SDK Generation</h3>
+        <p>Generate self-contained, relocatable SDKs with cross-toolchain, sysroot, and headers for offline development and CI/CD pipelines.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #79c0ff;">
+        <h3>Package Management (YAML)</h3>
+        <p>Declarative YAML recipes for packages with dependency resolution, version pinning, license checking, and reproducible builds.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #f778ba;">
+        <h3>6 Project Templates</h3>
+        <p>Kickstart projects with templates for bare-metal, RTOS, Linux, hybrid, library, and bootloader — each with best-practice structure.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #e3b341;">
+        <h3>OS Image Creation</h3>
+        <p>Build deployable OS images with partition tables, filesystem generation, bootloader integration, and signing — ready for production.</p>
+      </div>
+      <div class="feature-card" style="border-top: 3px solid #f85149;">
+        <h3>Auto-Dependencies</h3>
+        <p>Automatic dependency graph analysis with incremental rebuilds, parallel compilation, and build cache for faster iteration cycles.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <div class="section-alt">
+    <section class="section">
+      <h2 class="section-title">Quick Start</h2>
+      <p class="section-subtitle">Install ebuild and build your first project</p>
+      <pre><code><span style="color: var(--text-muted);"># Clone and install</span>
+git clone https://github.com/embeddedos-org/ebuild.git
+cd ebuild
+pip install -e .
+
+<span style="color: var(--text-muted);"># Build for Raspberry Pi 4 with AI and networking</span>
+ebuild build --target raspi4 --with eai,eni
+
+<span style="color: var(--text-muted);"># Generate deployable image</span>
+ebuild image --format sdcard</code></pre>
+    </section>
+  </div>
+
+  <!-- API Highlights -->
+  <section class="section">
+    <h2 class="section-title">CLI Reference</h2>
+    <p class="section-subtitle">Key commands at a glance</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Command</th>
+          <th>Description</th>
+          <th>Example</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>ebuild init</code></td>
+          <td>Initialize a new project from template</td>
+          <td><code>ebuild init --template rtos</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild build</code></td>
+          <td>Build firmware for target board</td>
+          <td><code>ebuild build --target stm32f4</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild flash</code></td>
+          <td>Flash firmware to connected device</td>
+          <td><code>ebuild flash --port /dev/ttyUSB0</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild sdk</code></td>
+          <td>Generate relocatable SDK</td>
+          <td><code>ebuild sdk --arch arm-cortex-m4</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild package</code></td>
+          <td>Create or install YAML packages</td>
+          <td><code>ebuild package install mqtt</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild image</code></td>
+          <td>Build deployable OS image</td>
+          <td><code>ebuild image --format emmc</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild test</code></td>
+          <td>Run unit and integration tests</td>
+          <td><code>ebuild test --coverage</code></td>
+        </tr>
+        <tr>
+          <td><code>ebuild schematic</code></td>
+          <td>Analyze hardware schematics</td>
+          <td><code>ebuild schematic parse board.kicad</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-grid">
+        <a href="https://embeddedos-org.github.io/eos/">EoS — Embedded OS</a>
+        <a href="https://embeddedos-org.github.io/eBoot/">eBoot — Bootloader</a>
+        <a href="https://embeddedos-org.github.io/ebuild/">ebuild — Build System</a>
+        <a href="https://embeddedos-org.github.io/eIPC/">eIPC — IPC Framework</a>
+        <a href="https://embeddedos-org.github.io/eAI/">eAI — AI Framework</a>
+        <a href="https://github.com/embeddedos-org/eos">GitHub — EoS</a>
+        <a href="https://github.com/embeddedos-org/eBoot">GitHub — eBoot</a>
+        <a href="https://github.com/embeddedos-org/ebuild">GitHub — ebuild</a>
+        <a href="https://github.com/embeddedos-org/eIPC">GitHub — eIPC</a>
+        <a href="https://github.com/embeddedos-org/eAI">GitHub — eAI</a>
+      </div>
+      <div class="footer-bottom">
+        &copy; 2025 EmbeddedOS Organization. Open-source under the MIT License.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
