@@ -97,6 +97,9 @@ This reference guide covers every aspect of ebuild: from the CLI interface and Y
 
 ### 1.1 What Is ebuild?
 
+![Figure: ebuild System Architecture — from build configuration to firmware binary](images/architecture.png)
+
+
 ebuild is a unified build system that takes embedded development from hardware schematic to deployable firmware in a single command. It serves as the build and configuration backbone for the entire EmbeddedOS ecosystem.
 
 ```
