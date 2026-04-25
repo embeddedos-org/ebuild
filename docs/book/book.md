@@ -33,6 +33,9 @@ titlepage-background: "cover.png"
 
 ## Preface
 
+
+![Figure: ebuild — 3D Product Visualization](images/product-3d.png)
+
 ebuild is the unified build system for the EmbeddedOS (EoS) ecosystem. Unlike traditional embedded build tools that only compile code, ebuild bridges the gap between hardware design and firmware deployment. It reads your KiCad schematics, Eagle designs, YAML board descriptions, or even plain text hardware descriptions and auto-generates all the configuration files needed to build, flash, and deploy firmware for 73+ embedded targets.
 
 ![Figure: ebuild Dependency Resolution Flow — manifest parsing through parallel build](images/dependency-resolution.png)
