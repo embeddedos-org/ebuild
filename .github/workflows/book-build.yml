@@ -42,20 +42,20 @@ jobs:
       - name: Check book source
         id: check
         run: |
-          if [ ! -f docs/book/book.md ]; then
+          if [ ! -f book.md ]; then
             echo "has_book=false" >> $GITHUB_OUTPUT
             echo "lines=0" >> $GITHUB_OUTPUT
             echo "images=0" >> $GITHUB_OUTPUT
             echo "tables=0" >> $GITHUB_OUTPUT
-            echo "WARNING: docs/book/book.md not found"
+            echo "WARNING: book.md not found"
             exit 0
           fi
           echo "has_book=true" >> $GITHUB_OUTPUT
-          LINES=$(wc -l < docs/book/book.md)
-          IMAGES=$(grep -c '!\[' docs/book/book.md || echo 0)
-          TABLES=$(grep -c '^|' docs/book/book.md || echo 0)
-          CODE=$(grep -c '```' docs/book/book.md || echo 0)
-          CHAPTERS=$(grep -c '^## ' docs/book/book.md || echo 0)
+          LINES=$(wc -l < book.md)
+          IMAGES=$(grep -c '!\[' book.md || echo 0)
+          TABLES=$(grep -c '^|' book.md || echo 0)
+          CODE=$(grep -c '```' book.md || echo 0)
+          CHAPTERS=$(grep -c '^## ' book.md || echo 0)
           echo "lines=$LINES" >> $GITHUB_OUTPUT
           echo "images=$IMAGES" >> $GITHUB_OUTPUT
           echo "tables=$TABLES" >> $GITHUB_OUTPUT
@@ -104,7 +104,7 @@ jobs:
 
       - name: Clean source
         run: |
-          sed -i 's/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]//g' docs/book/book.md
+          sed -i 's/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]//g' book.md
           echo "Control characters cleaned"
 
       - name: Extract metadata
@@ -114,9 +114,9 @@ jobs:
           echo "repo_name=$REPO_NAME" >> $GITHUB_OUTPUT
           echo "pdf_name=${REPO_NAME}-guide.pdf" >> $GITHUB_OUTPUT
           # Extract title from frontmatter or first heading
-          TITLE=$(grep -m1 '^title:' docs/book/book.md | sed 's/^title: *"*//;s/"*$//' || echo "")
+          TITLE=$(grep -m1 '^title:' book.md | sed 's/^title: *"*//;s/"*$//' || echo "")
           if [ -z "$TITLE" ]; then
-            TITLE=$(head -10 docs/book/book.md | grep "^# " | head -1 | sed 's/^# //')
+            TITLE=$(head -10 book.md | grep "^# " | head -1 | sed 's/^# //')
           fi
           if [ -z "$TITLE" ]; then TITLE="$REPO_NAME — Official Guide"; fi
           echo "title=$TITLE" >> $GITHUB_OUTPUT
@@ -131,6 +131,7 @@ jobs:
 
       - name: Generate PDF
         run: |
+          cd docs/book
           cd docs/book
 
           # Cover image
