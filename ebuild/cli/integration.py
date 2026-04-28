@@ -88,25 +88,16 @@ def _find_repos(workspace: Path) -> Dict[str, Path]:
         pass
 
     # Fall back to sibling directories for any repos not yet found
-
-        if name not in found:
-            repo_dir = workspace / name
-            if repo_dir.is_dir():
-                found[name] = repo_dir
-
-        for name in REPOS:
-            resolved = mgr.get_repo_path(name, project_dir=workspace)
-            if resolved:
-                found[name] = resolved
-    except Exception:
-        pass
-
-    # Fall back to sibling directories for any repos not yet found
+    # Try multiple casings for case-sensitive filesystems (Linux)
+    _CASE_VARIANTS = {"eboot": ["eboot", "eBoot"], "eos": ["eos"], "eni": ["eni", "eNI"],
+                      "eai": ["eai", "eAI"], "eipc": ["eipc", "eIPC"]}
     for name in REPOS:
         if name not in found:
-            repo_dir = workspace / name
-            if repo_dir.is_dir():
-                found[name] = repo_dir
+            for variant in _CASE_VARIANTS.get(name, [name]):
+                repo_dir = workspace / variant
+                if repo_dir.is_dir():
+                    found[name] = repo_dir
+                    break
 
     return found
 

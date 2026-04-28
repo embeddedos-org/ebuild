@@ -17,8 +17,8 @@ EBUILD_REPOS_DIR = EBUILD_HOME / "repos"
 EBUILD_CONFIG_PATH = EBUILD_HOME / "config.yaml"
 
 # Default repo URLs (same as eos_project_generator.py)
-DEFAULT_EOS_REPO_URL = "https://github.com/spatchava/eos.git"
-DEFAULT_EBOOT_REPO_URL = "https://github.com/spatchava/eboot.git"
+DEFAULT_EOS_REPO_URL = "https://github.com/embeddedos-org/eos.git"
+DEFAULT_EBOOT_REPO_URL = "https://github.com/embeddedos-org/eBoot.git"
 
 DEFAULT_CONFIG = {
     "repos": {

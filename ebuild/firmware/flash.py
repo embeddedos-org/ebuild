@@ -86,4 +86,6 @@ def reset(tool: str = "openocd", target: str = "stm32f4") -> None:
     else:
         raise FlashError(f"Reset not supported for tool: {tool}")
 
-    subprocess.run(cmd, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode != 0:
+        raise FlashError(f"Reset failed: {result.stderr.decode()}")

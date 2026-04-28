@@ -1015,6 +1015,58 @@ def firmware(log: Logger, config_path: str, build_dir: str, rtos: str, board: st
         raise SystemExit(1)
 
 
+@cli.command()
+@click.argument("image", type=click.Path(exists=True))
+@click.option("--tool", default="openocd",
+              type=click.Choice(["openocd", "pyocd", "nrfjprog", "esptool", "stflash"]),
+              help="Flash tool to use.")
+@click.option("--target", default="stm32f4", help="Target MCU/board.")
+@click.option("--address", default="0x08000000", help="Flash base address (hex).")
+@click.option("--reset-after", is_flag=True, default=False, help="Reset target after flashing.")
+@click.pass_obj
+def flash(log: Logger, image: str, tool: str, target: str, address: str,
+          reset_after: bool) -> None:
+    """Flash a firmware image to the target device.
+
+    Supports OpenOCD, pyOCD, nrfjprog, esptool, and st-flash.
+
+    Examples:
+
+        ebuild flash firmware.bin --tool openocd --target stm32f4
+
+        ebuild flash app.bin --tool nrfjprog
+
+        ebuild flash firmware.bin --tool esptool --address 0x10000
+
+        ebuild flash firmware.bin --tool pyocd --target nrf52840 --reset-after
+    """
+    log.header("ebuild — Flash")
+
+    try:
+        from ebuild.firmware.flash import flash as do_flash, reset as do_reset, FlashError
+
+        image_path = Path(image)
+        addr = int(address, 0)
+
+        log.step(f"Flashing {image_path.name} to {target} via {tool}...")
+        log.info(f"  Address: {hex(addr)}")
+
+        do_flash(image_path, tool=tool, target=target, address=addr)
+        log.success(f"Flash complete: {image_path.name}")
+
+        if reset_after:
+            log.step("Resetting target...")
+            do_reset(tool=tool, target=target)
+            log.success("Target reset.")
+
+    except FlashError as e:
+        log.error(str(e))
+        raise SystemExit(1)
+    except Exception as e:
+        log.error(f"Flash failed: {e}")
+        raise SystemExit(1)
+
+
 @cli.command("list-packages")
 @click.option(
     "--config", "config_path",
