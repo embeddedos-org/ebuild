@@ -132,7 +132,6 @@ jobs:
       - name: Generate PDF
         run: |
           cd docs/book
-          cd docs/book
 
           # Cover image
           COVER_ARGS=""
