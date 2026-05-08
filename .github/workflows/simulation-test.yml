@@ -16,6 +16,9 @@ concurrency:
 env:
   EOSIM_VERSION: "0.1.0"
 
+permissions:
+  contents: read
+
 jobs:
   simulate:
     name: EoSim ${{ matrix.platform }}

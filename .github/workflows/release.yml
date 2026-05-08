@@ -10,6 +10,10 @@ permissions:
   contents: write
   id-token: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   validate:
     name: Validate
@@ -23,6 +27,35 @@ jobs:
         run: |
           pip install -e ".[dev]"
           python -m pytest tests/ -v --tb=short
+
+  cibuildwheel:
+    name: cibuildwheel (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-22.04-arm, windows-latest, macos-13, macos-14]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install cibuildwheel
+        run: pip install cibuildwheel==2.21.3
+      - name: Build wheels
+        env:
+          CIBW_BUILD: "cp310-* cp311-* cp312-*"
+          CIBW_SKIP: "*-musllinux_*"
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse || \
+            (echo "::warning::cibuildwheel failed (likely no C-extension); building pure-Python wheel" && \
+             pip install build && \
+             python -m build --wheel --outdir wheelhouse)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
 
   cross-compile:
     name: Cross-Compile (${{ matrix.arch }})
@@ -43,54 +76,79 @@ jobs:
             cc: riscv64-linux-gnu-gcc
     steps:
       - uses: actions/checkout@v4
+      - name: Detect CMake build presence
+        id: cm
+        run: |
+          if [ -f CMakeLists.txt ]; then
+            echo "has_cmake=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_cmake=false" >> $GITHUB_OUTPUT
+          fi
       - name: Install cross-compiler
+        if: steps.cm.outputs.has_cmake == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build ${{ matrix.pkg }}
       - name: Extract version
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-      - name: Cross-compile core
         run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+      - name: Cross-compile core
+        if: steps.cm.outputs.has_cmake == 'true'
+        run: |
+          set -e
           cmake -B build -G Ninja \
             -DCMAKE_C_COMPILER=${{ matrix.cc }} \
             -DCMAKE_SYSTEM_NAME=Linux \
             -DEOS_BUILD_TESTS=OFF
-          cmake --build build || true
+          cmake --build build
           mkdir -p staging
-          find build -name "*.a" -exec cp {} staging/ \; 2>/dev/null || true
+          find build -name "*.a" -exec cp {} staging/ \;
           tar czf ebuild-${{ steps.version.outputs.version }}-${{ matrix.arch }}.tar.gz -C staging .
       - uses: actions/upload-artifact@v4
+        if: steps.cm.outputs.has_cmake == 'true'
         with:
           name: ebuild-${{ matrix.arch }}
           path: "*.tar.gz"
 
   pypi:
-    name: Publish to PyPI
+    name: Publish to PyPI (OIDC)
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [validate, cibuildwheel]
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build & publish
+      - name: Build sdist
         run: |
-          pip install build twine
-          python -m build
-          twine check dist/*
-      - name: Upload to PyPI
-        if: startsWith(github.ref, 'refs/tags/v')
-        continue-on-error: true
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/*
+          pip install build
+          python -m build --sdist
+      - name: Download wheels
+        uses: actions/download-artifact@v4
+        with:
+          pattern: wheels-*
+          path: wheelhouse
+          merge-multiple: true
+      - name: Stage dist
+        run: |
+          mkdir -p dist
+          find dist -mindepth 1 -delete
+          mv wheelhouse/*.whl dist/ 2>/dev/null || true
+          ls -lh dist/
+      - name: Publish to PyPI (trusted publishing)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          skip-existing: true
 
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [validate, cross-compile, pypi]
+    needs: [validate, cibuildwheel, pypi]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -100,72 +158,95 @@ jobs:
         run: |
           TAG=${GITHUB_REF#refs/tags/}
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-      - uses: actions/setup-python@v5
+          echo "version=${TAG#v}" >> $GITHUB_OUTPUT
+      - name: Download wheels
+        uses: actions/download-artifact@v4
         with:
-          python-version: "3.12"
-      - name: Build dist
-        run: |
-          pip install build
-          python -m build
-      - name: Download artifacts
+          pattern: wheels-*
+          path: wheelhouse
+          merge-multiple: true
+      - name: Download cross artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: ebuild-*
           merge-multiple: true
-      - name: Generate checksums
-        run: sha256sum *.tar.gz dist/*.whl dist/*.tar.gz > SHA256SUMS.txt 2>/dev/null || true
-      - name: Generate SBOM (CycloneDX v1.5)
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build sdist
         run: |
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-          UUID=$(cat /proc/sys/kernel/random/uuid 2>/dev/null || echo "00000000-0000-0000-0000-$(date +%s)")
-          cat > sbom.cdx.json << EOF
-          {
-            "bomFormat": "CycloneDX",
-            "specVersion": "1.5",
-            "serialNumber": "urn:uuid:${UUID}",
-            "version": 1,
-            "metadata": {
-              "timestamp": "${TIMESTAMP}",
-              "component": {
-                "type": "application",
-                "name": "ebuild",
-                "version": "${{ steps.version.outputs.tag }}",
-                "supplier": { "name": "embeddedos-org" },
-                "licenses": [{ "license": { "id": "MIT" } }]
-              }
-            },
-            "components": []
-          }
-          EOF
+          pip install build
+          python -m build --sdist
+      - name: Stage release files
+        run: |
+          mkdir -p dist
+          mv wheelhouse/*.whl dist/ 2>/dev/null || true
+          ls -lh dist/
+          ls -lh *.tar.gz 2>/dev/null || true
+      - name: Generate checksums
+        run: |
+          (
+            cd dist && sha256sum *
+          ) > SHA256SUMS.txt
+          sha256sum *.tar.gz 2>/dev/null >> SHA256SUMS.txt || true
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+          artifact-name: sbom.cdx.json
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: sbom.spdx.json
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
       - name: Sign artifacts
         run: |
-          for f in *.tar.gz dist/*.whl; do
-            [ -f "$f" ] && cosign sign-blob --yes --bundle "${f}.sig.bundle" "$f" 2>/dev/null || true
+          set -e
+          for f in dist/* *.tar.gz; do
+            [ -f "$f" ] || continue
+            cosign sign-blob --yes --bundle "${f}.sig.bundle" "$f"
           done
-      - name: Check release does not already exist
-        run: |
-          if gh release view "${{ steps.version.outputs.tag }}" &>/dev/null; then
-            echo "::error::Release already exists."
-            exit 1
-          fi
+      - name: Idempotent release create-or-update
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — will update artifacts."
+          else
+            gh release create "$TAG" --title "ebuild $TAG" --generate-notes \
+              $([ "${{ contains(steps.version.outputs.tag, 'rc') || contains(steps.version.outputs.tag, 'beta') }}" = "true" ] && echo "--prerelease")
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: "ebuild ${{ steps.version.outputs.tag }}"
           generate_release_notes: true
+          fail_on_unmatched_files: false
           body: |
-            ### Release Integrity
-            - `SHA256SUMS.txt` — checksums
-            - `sbom.cdx.json` — CycloneDX SBOM (v1.5)
-            - `*.sig.bundle` — Sigstore cosign signatures
+            ## ebuild ${{ steps.version.outputs.tag }}
+
+            Python wheels via cibuildwheel for Linux (manylinux x64/arm64),
+            Windows (x64), macOS (x64/arm64). Cross-compiled C-core artifacts
+            for aarch64/arm/riscv64.
+
+            ### Integrity & supply-chain
+            - `SHA256SUMS.txt`
+            - `sbom.cdx.json` — CycloneDX SBOM
+            - `sbom.spdx.json` — SPDX SBOM
+            - `*.sig.bundle` — Sigstore cosign keyless signatures
           files: |
-            *.tar.gz
             dist/*
+            *.tar.gz
+            *.sig.bundle
             SHA256SUMS.txt
             sbom.cdx.json
+            sbom.spdx.json
           prerelease: ${{ contains(steps.version.outputs.tag, 'rc') || contains(steps.version.outputs.tag, 'beta') }}

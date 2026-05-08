@@ -5,6 +5,13 @@ on:
     - cron: "0 3 * * *"  # 3 AM UTC daily
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   full-test-suite:
     name: Full Test Suite

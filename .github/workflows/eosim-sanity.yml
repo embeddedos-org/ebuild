@@ -8,6 +8,13 @@ on:
 env:
   EOSIM_VERSION: "0.1.0"
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   install-validate:
     name: Install & Validate (${{ matrix.os }}, Python ${{ matrix.python-version }})
