@@ -61,3 +61,6 @@ Desktop.ini
 *.tar.bz2
 # Auto-generated
 *.pyc
+build-*/
+node_modules/
+target/
