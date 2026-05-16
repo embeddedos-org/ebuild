@@ -1,0 +1,32 @@
+site_name: ebuild
+site_description: EmbeddedOS — ebuild documentation
+site_url: https://embeddedos-org.github.io/ebuild/
+repo_url: https://github.com/embeddedos-org/ebuild
+repo_name: embeddedos-org/ebuild
+edit_uri: edit/master/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: indigo
+    - scheme: slate
+      primary: indigo
+
+docs_dir: docs
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - codehilite
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
