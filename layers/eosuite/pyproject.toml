@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eosuite"
-version = "3.0.0"
+version = "3.0.1"
 description = "Super Lightweight Terminal Suite with 29+ built-in tools"
 readme = "README.md"
 license = {text = "MIT"}
