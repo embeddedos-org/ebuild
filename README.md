@@ -1,5 +1,14 @@
 # ⚙️ ebuild — EoS Embedded Build System
 
+<!-- begin: org-uniform badges (audit-2026-05) -->
+[![CI](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/embeddedos-org/ebuild/actions/workflows/codeql.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/embeddedos-org/ebuild/badge)](https://securityscorecards.dev/viewer/?uri=github.com/embeddedos-org/ebuild)
+[![Release](https://img.shields.io/github/v/tag/embeddedos-org/ebuild?label=release&sort=semver)](https://github.com/embeddedos-org/ebuild/releases)
+[![License](https://img.shields.io/github/license/embeddedos-org/ebuild)](LICENSE)
+<!-- end: org-uniform badges (audit-2026-05) -->
+
+
 [![CI](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml/badge.svg)](https://github.com/embeddedos-org/ebuild/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![Version](https://img.shields.io/github/v/tag/embeddedos-org/ebuild?label=version)](https://github.com/embeddedos-org/ebuild/releases/latest)
@@ -485,6 +494,19 @@ See [SECURITY.md](SECURITY.md) for the full security policy.
 | **ebuild** (this repo) | Build system, hardware analyzer, SDK generator |
 
 Clone just `eos` and it auto-fetches `eBoot` at build time. Use `ebuild` for the full CLI tooling.
+
+<!-- begin: release-model (audit-2026-05) -->
+## Release model
+
+`master` is the line of development; every PR lands here. `release` is a
+rolling pointer to the latest released `vX.Y.Z` tag, updated automatically
+by [`.github/workflows/sync-release-branch.yml`](.github/workflows/sync-release-branch.yml).
+Tags are immutable.
+
+See [embeddedos-org/.github/STANDARDS.md](https://github.com/embeddedos-org/.github/blob/master/STANDARDS.md)
+for the org-wide tag scheme, release model, and the compliance frameworks
+every product targets.
+<!-- end: release-model (audit-2026-05) -->
 
 ## License
 
