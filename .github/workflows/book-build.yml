@@ -37,7 +37,7 @@ jobs:
       images: ${{ steps.check.outputs.images }}
       tables: ${{ steps.check.outputs.tables }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check book source
         id: check
@@ -74,7 +74,7 @@ jobs:
       pdf_size: ${{ steps.verify.outputs.pdf_size }}
       pdf_pages: ${{ steps.verify.outputs.pdf_pages }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install pandoc 3.x & LaTeX
         run: |
