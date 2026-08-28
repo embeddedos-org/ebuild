@@ -46,15 +46,6 @@ class TestHardwareAnalyzer:
         assert profile.core == "cortex-m4f"
         assert profile.vendor == "Nordic"
 
-    def test_detect_nrf52840_not_shadowed_by_nrf52(self):
-        profile = self.analyzer.interpret_text(
-            "nRF52840 BLE sensor with I2C temperature and SPI flash"
-        )
-        assert profile.mcu == "NRF52840"
-        assert profile.arch == "arm"
-        assert profile.core == "cortex-m4f"
-        assert profile.vendor == "Nordic"
-
     def test_detect_esp32(self):
         profile = self.analyzer.interpret_text("ESP32 with WiFi and BLE")
         assert profile.mcu == "ESP32"

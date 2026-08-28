@@ -76,18 +76,9 @@ not enough, because ebuild invokes `python -m ninja`.
 ```bash
 ebuild info             # show what ebuild parsed from build.yaml
 ebuild build            # resolve and build (auto-detects the backend)
-ebuild build -j 4       # build independent packages concurrently
 ebuild clean            # remove build artifacts
 ebuild --version
 ```
-
-`-j/--jobs` controls how many **packages** are built at once. Dependency order
-is always honoured — a package starts only once everything it depends on has
-finished — so `-j` only overlaps packages that are genuinely independent of one
-another. It defaults to `1`, which builds strictly in dependency order. Note
-that each package's own build may already run parallel compile jobs, so a large
-`-j` can oversubscribe the machine. See
-[docs/dependency-management.md](docs/dependency-management.md#parallel-package-builds).
 
 Additional commands: `configure`, `install`, `add`, `list-packages`,
 `pipeline`, `system`, `firmware`, `flash`, `new`, `generate-project`,
