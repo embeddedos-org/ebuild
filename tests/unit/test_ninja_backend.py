@@ -40,9 +40,12 @@ class TestNinjaBackendSharedLibrary(unittest.TestCase):
 
         shared_flag = "-dynamiclib" if sys.platform == "darwin" else "-shared"
         self.assertIn(shared_flag, ninja)
-        # It must use the `link` rule (compiler driver), not `ar_rule`.
+        # It must go through a compiler-driver rule, not the `ar` archiver.
+        # link_shared is that rule, and it carries the shared-object flag, so
+        # the flag is never repeated in the edge's ldflags.
         lib_line = next(line for line in ninja.splitlines() if "libmylib" in line and line.startswith("build"))
-        self.assertIn(": link ", lib_line)
+        self.assertIn(": link_shared ", lib_line)
+        self.assertNotIn(": ar_rule", lib_line)
 
     def test_shared_library_gets_lib_dirs_and_libs(self):
         target = TargetConfig(
@@ -62,8 +65,15 @@ class TestNinjaBackendSharedLibrary(unittest.TestCase):
         ninja = self._generate("static", target)
 
         self.assertIn(": ar_rule", ninja)
-        self.assertNotIn("-shared", ninja)
-        self.assertNotIn("-dynamiclib", ninja)
+
+        # The link_shared *rule* is always declared in the preamble, so the
+        # bare string "-shared" appears in every generated file. What must be
+        # absent is any build *edge* that uses it.
+        edges = [line for line in ninja.splitlines() if line.startswith("build ")]
+        self.assertTrue(edges, "no build edges were generated")
+        for edge in edges:
+            self.assertNotIn(": link_shared ", edge)
+            self.assertNotIn(": link ", edge)
 
 
 if __name__ == "__main__":

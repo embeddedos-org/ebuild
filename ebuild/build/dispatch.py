@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -73,6 +74,19 @@ def _run_or_log(
     return subprocess.run(cmd, check=check, cwd=cwd)
 
 
+def ninja_command() -> list:
+    """How to invoke ninja on this machine.
+
+    A real ninja on PATH is preferred; `python -m ninja` only works when the
+    PyPI `ninja` wheel is installed, so hardcoding it made a machine with
+    ninja properly installed fail with "No module named ninja".
+    """
+    exe = shutil.which("ninja")
+    if exe:
+        return [exe]
+    return [sys.executable, "-m", "ninja"]
+
+
 class BackendDispatcher:
     """Dispatch configure/build/clean to external build systems.
 
@@ -100,7 +114,7 @@ class BackendDispatcher:
             dry_run: If True, log commands instead of executing them.
 
         Raises:
-            ValueError: If the backend is not recognized.
+            RuntimeError: If the backend is not recognized.
         """
         config = config or {}
         self.build_dir.mkdir(parents=True, exist_ok=True)
@@ -121,14 +135,8 @@ class BackendDispatcher:
         elif backend == "cargo":
             pass  # Cargo does not have a separate configure step
 
-        elif backend in ("make", "kbuild", "ninja"):
+        elif backend in ("make", "kbuild"):
             pass  # No separate configure step
-
-        else:
-            raise ValueError(
-                f"Unknown build backend '{backend}'. "
-                f"Supported backends: {', '.join(sorted(ALL_BACKENDS))}"
-            )
 
         else:
             raise RuntimeError(
@@ -154,7 +162,7 @@ class BackendDispatcher:
             dry_run: If True, log commands instead of executing them.
 
         Raises:
-            ValueError: If the backend is not recognized.
+            RuntimeError: If the backend is not recognized.
         """
         config = config or {}
 
@@ -185,7 +193,7 @@ class BackendDispatcher:
             _run_or_log(cmd, dry_run)
 
         else:
-            raise ValueError(
+            raise RuntimeError(
                 f"Unknown build backend '{backend}'. "
                 f"Supported backends: {', '.join(sorted(ALL_BACKENDS))}"
             )
@@ -203,7 +211,7 @@ class BackendDispatcher:
             dry_run: If True, log commands instead of executing them.
 
         Raises:
-            ValueError: If the backend is not recognized.
+            RuntimeError: If the backend is not recognized.
         """
         if backend == "cmake":
             _run_or_log(
@@ -232,12 +240,12 @@ class BackendDispatcher:
             )
         elif backend == "ninja":
             _run_or_log(
-                [sys.executable, "-m", "ninja", "-C", str(self.build_dir), "-t", "clean"],
+                ninja_command() + ["-C", str(self.build_dir), "-t", "clean"],
                 dry_run,
                 check=False,
             )
         else:
-            raise ValueError(
+            raise RuntimeError(
                 f"Unknown build backend '{backend}'. "
                 f"Supported backends: {', '.join(sorted(ALL_BACKENDS))}"
             )

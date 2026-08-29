@@ -65,21 +65,25 @@ class TestDetectBackend:
 
 
 class TestUnknownBackend:
-    """Unknown backends must raise ValueError rather than silently skip."""
+    """Unknown backends must raise rather than silently skip.
+
+    All three methods raise RuntimeError for this one condition, so a caller
+    can guard the whole dispatcher with a single ``except RuntimeError``.
+    """
 
     def test_configure_unknown_raises(self, tmp_path):
         d = BackendDispatcher(tmp_path, tmp_path / "build")
-        with pytest.raises(ValueError, match="Unknown build backend 'bazel'"):
+        with pytest.raises(RuntimeError, match="bazel"):
             d.configure("bazel")
 
     def test_build_unknown_raises(self, tmp_path):
         d = BackendDispatcher(tmp_path, tmp_path / "build")
-        with pytest.raises(ValueError, match="Unknown build backend"):
+        with pytest.raises(RuntimeError, match="Unknown build backend"):
             d.build("gradle")
 
     def test_clean_unknown_raises(self, tmp_path):
         d = BackendDispatcher(tmp_path, tmp_path / "build")
-        with pytest.raises(ValueError, match="Unknown build backend"):
+        with pytest.raises(RuntimeError, match="Unknown build backend"):
             d.clean("scons")
 
 

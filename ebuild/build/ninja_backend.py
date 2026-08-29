@@ -9,6 +9,7 @@ Generates build.ninja and compile_commands.json from a ProjectConfig.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -28,6 +29,14 @@ class PackagePaths:
 # present (or explicitly disabled with -fno-*) we must not add -fPIC again.
 _PIC_FLAGS = {"-fPIC", "-fpic", "-fPIE", "-fpie", "-fno-pic", "-fno-PIC",
               "-fno-pie", "-fno-PIE"}
+
+
+def _shared_flag() -> str:
+    """The compiler flag that builds a shared object on this platform.
+
+    macOS links dynamic libraries with -dynamiclib; ELF platforms use -shared.
+    """
+    return "-dynamiclib" if sys.platform == "darwin" else "-shared"
 
 
 class NinjaBackend:
@@ -104,6 +113,24 @@ class NinjaBackend:
 
         return cflags
 
+    def _object_path(self, target, src: str) -> Path:
+        """Object file for one source within one target.
+
+        Called from two places and defined in neither, so every ninja build
+        raised AttributeError before this existed.
+
+        Namespaced by target name: a source shared by two targets must produce
+        two distinct objects. Ninja rejects two edges writing the same output,
+        and the targets may compile it with different cflags.
+
+        The source's directory structure is flattened into the filename rather
+        than mirrored beneath the build directory. Mirroring lets a source from
+        outside the project -- ``../shared/util.c`` -- place its object outside
+        the build directory too, where ``clean`` will not find it.
+        """
+        flat = re.sub(r"[^A-Za-z0-9_.-]", "_", str(src).replace("\\", "/"))
+        return self.build_dir / "obj" / target.name / f"{flat}.o"
+
     def _write_ninja(self) -> None:
         """Write the build.ninja file."""
         ninja_path = self.build_dir / "build.ninja"
@@ -124,7 +151,7 @@ class NinjaBackend:
             "  description = LINK $out",
             "",
             "rule link_shared",
-            "  command = $cc -shared $ldflags $in -o $out $libs",
+            f"  command = $cc {_shared_flag()} $ldflags $in -o $out $libs",
             "  description = LINK_SHARED $out",
             "",
             "rule ar_rule",
@@ -190,11 +217,11 @@ class NinjaBackend:
                 if target.target_type == "static_library":
                     lines.append(f"build {out}: ar_rule {' '.join(obj_files)}")
                 else:
-                    # Shared libraries need the platform's "build a shared
-                    # object" flag and the same -L/-l wiring executables get,
-                    # neither of which the generic `link` rule provides.
+                    # Shared libraries need the same -L/-l wiring executables
+                    # get, which the rule preamble alone does not supply. The
+                    # shared-object flag itself lives in the link_shared rule,
+                    # so it must not be repeated here.
                     ldflags = list(target.ldflags)
-                    ldflags.insert(0, "-dynamiclib" if sys.platform == "darwin" else "-shared")
                     libs = []
                     for pkg_name in target.uses:
                         pkg = self.package_paths.get(pkg_name)
@@ -204,7 +231,7 @@ class NinjaBackend:
                             for lib in pkg.libraries:
                                 libs.append(f"-l{lib}")
 
-                    lines.append(f"build {out}: link {' '.join(obj_files)}")
+                    lines.append(f"build {out}: link_shared {' '.join(obj_files)}")
                     if ldflags:
                         lines.append(f"  ldflags = {' '.join(ldflags)}")
                     if libs:
