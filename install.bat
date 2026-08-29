@@ -52,10 +52,10 @@ if %ERRORLEVEL% equ 0 (
 )
 
 REM Step 4: Find the Scripts directory and add to PATH
-for /f "delims=" %%i in ('%PYTHON% -c "import site; print(site.getusersitepackages().replace(chr(92)+chr(39)lib'+chr(92)+'site-packages', chr(92)+'Scripts'))"') do set SCRIPTS_DIR=%%i
+for /f "delims=" %%i in ('%PYTHON% -c "import sysconfig; print(sysconfig.get_path('scripts', scheme='nt_user'))"') do set SCRIPTS_DIR=%%i
 
 if not exist "%SCRIPTS_DIR%\ebuild.exe" (
-    for /f "delims=" %%i in ('%PYTHON% -c "import sys; import os; print(os.path.join(os.path.dirname(sys.executable), chr(39)Scripts'))"') do set SCRIPTS_DIR=%%i
+    for /f "delims=" %%i in ('%PYTHON% -c "import sysconfig; print(sysconfig.get_path('scripts'))"') do set SCRIPTS_DIR=%%i
 )
 
 if exist "%SCRIPTS_DIR%\ebuild.exe" (
