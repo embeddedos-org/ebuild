@@ -306,3 +306,101 @@ class BackendDispatcher:
             returncode=proc.returncode,
             found_none=found_none,
         )
+
+
+@dataclass
+class TestOutcome:
+    """What a backend's test run reported.
+
+    ok is the runner's verdict. passed/failed are None when the runner printed
+    no summary this parser recognises; they are never guessed from ok, because
+    a green exit says nothing about how many tests ran.
+    """
+
+    # pytest collects any class named Test*; this is a result object, not a
+    # test case, and without the opt-out every run of a suite that imports it
+    # emits a PytestCollectionWarning.
+    __test__ = False
+
+    ok: bool
+    ran: bool
+    passed: Optional[int] = None
+    failed: Optional[int] = None
+    output: str = ""
+    returncode: Optional[int] = None
+    reason: str = ""
+    found_none: bool = False
+
+    @property
+    def counts_known(self) -> bool:
+        return self.passed is not None or self.failed is not None
+
+    def summary(self) -> str:
+        if not self.ran:
+            return self.reason or "no tests were run"
+        if self.found_none:
+            return "the runner found no tests"
+        if not self.counts_known:
+            return "runner exited %s; it printed no summary this parser recognises" % (
+                self.returncode,)
+        return "%d passed, %d failed" % (self.passed or 0, self.failed or 0)
+
+
+# Each backend's own summary line. Anchored to the phrasing the tool prints so
+# a format change shows up as unknown counts rather than as a wrong number.
+_COUNT_PATTERNS = {
+    # ctest: "100% tests passed, 0 tests failed out of 17"
+    "cmake": re.compile(
+        r"tests passed,\s*(?P<failed>\d+)\s+tests? failed out of\s*(?P<total>\d+)"),
+    # meson: "Ok:  12   Fail:  0"
+    "meson": re.compile(
+        r"^Ok:\s*(?P<passed>\d+).*?^Fail:\s*(?P<failed>\d+)", re.S | re.M),
+    # cargo: "test result: ok. 12 passed; 0 failed; 0 ignored"
+    "cargo": re.compile(
+        r"test result:.*?(?P<passed>\d+) passed;\s*(?P<failed>\d+) failed"),
+}
+
+
+def _parse_test_counts(backend: str, output: str):
+    """(passed, failed) from a runner's summary, or (None, None)."""
+    pattern = _COUNT_PATTERNS.get(backend)
+    if pattern is None:
+        # make has no standard summary format. Rather than invent one, report
+        # the counts as unknown and let the exit status carry the verdict.
+        return None, None
+
+    match = pattern.search(output)
+    if not match:
+        return None, None
+
+    groups = match.groupdict()
+    failed = int(groups["failed"])
+    if "passed" in groups and groups["passed"] is not None:
+        return int(groups["passed"]), failed
+    # ctest reports failures out of a total; passed is the remainder.
+    return int(groups["total"]) - failed, failed
+
+
+# Phrases each runner prints when it had nothing to run. ctest's is the one
+# that matters: it pairs the message with a zero exit status.
+_NO_TESTS_MARKERS = {
+    "cmake": ("No tests were found",),
+    "meson": ("No tests defined",),
+    "cargo": ("running 0 tests",),
+}
+
+
+def _found_no_tests(backend: str, output: str,
+                    passed: Optional[int], failed: Optional[int]) -> bool:
+    """True when the runner completed having executed nothing.
+
+    Checked two ways because neither alone is reliable: the marker phrase
+    catches ctest, which prints no summary at all in this case, and the counts
+    catch a runner that reports a well-formed summary totalling zero.
+    """
+    for marker in _NO_TESTS_MARKERS.get(backend, ()):
+        if marker in output:
+            return True
+    if passed is not None and failed is not None:
+        return passed + failed == 0
+    return False
