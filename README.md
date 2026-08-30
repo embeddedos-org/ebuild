@@ -32,8 +32,11 @@ Observed in the source tree:
   NuttX.
 - **Package graph** — install and list project packages
   (`ebuild add`, `ebuild list-packages`).
-- **Firmware & flashing** — build RTOS firmware and flash images to targets
-  (`ebuild firmware`, `ebuild flash`; `ebuild/firmware/`).
+- **Firmware, flashing & console** — build RTOS firmware, flash images to
+  targets, and watch them run (`ebuild firmware`, `ebuild flash`,
+  `ebuild monitor`; `ebuild/firmware/`).
+- **Testing** — run the project's tests through the detected backend and report
+  the runner's own counts (`ebuild test`).
 - **System images** — root filesystem, kernel, and disk-image assembly
   (`ebuild system`; `ebuild/system/`).
 - **Project scaffolding** — generate projects and boards from templates
@@ -77,6 +80,7 @@ not enough, because ebuild invokes `python -m ninja`.
 ebuild info             # show what ebuild parsed from build.yaml
 ebuild build            # resolve and build (auto-detects the backend)
 ebuild build -j 4       # build independent packages concurrently
+ebuild test             # run the project's tests
 ebuild clean            # remove build artifacts
 ebuild --version
 ```
@@ -88,6 +92,42 @@ another. It defaults to `1`, which builds strictly in dependency order. Note
 that each package's own build may already run parallel compile jobs, so a large
 `-j` can oversubscribe the machine. See
 [docs/dependency-management.md](docs/dependency-management.md#parallel-package-builds).
+
+### The golden path
+
+Eight commands from nothing to a running board:
+
+```bash
+ebuild setup                            # fetch eos and eboot
+ebuild new hello-eos
+cd hello-eos
+ebuild configure --board <board>
+ebuild build
+ebuild test
+ebuild flash
+ebuild monitor                          # serial console; Ctrl-C to exit
+```
+
+`ebuild test` reports the counts the underlying runner printed, and reports
+nothing when the runner printed no summary it recognises — a number inferred
+from a zero exit status would be a guess presented as a measurement.
+
+It also treats a run that executed **no tests** as a failure. `ctest` exits `0`
+when it finds nothing to run, so trusting the exit status alone would report a
+green suite for a project containing no tests at all.
+
+`ebuild monitor` reads the console baud rate from `board.console.baud` or
+`monitor.baud` in `build.yaml`, falling back to 115200. It auto-selects the
+serial port only when exactly one is present; with several it lists them and
+asks, rather than attaching to the wrong board. `ebuild monitor --list` shows
+what the host can see.
+
+```yaml
+# build.yaml
+board:
+  console:
+    baud: 9600
+```
 
 Additional commands: `configure`, `install`, `add`, `list-packages`,
 `pipeline`, `system`, `firmware`, `flash`, `new`, `generate-project`,

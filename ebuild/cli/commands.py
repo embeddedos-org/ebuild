@@ -1977,3 +1977,151 @@ def generate_board(
     except Exception as e:
         log.error(f"Board generation failed: {e}")
         raise SystemExit(1)
+
+
+@cli.command()
+@click.option("--config", "config_path", default="build.yaml",
+              help="Path to the project configuration.")
+@click.option("--build-dir", default="build", help="Build output directory.")
+@click.option("--backend", default=None,
+              help="Override the backend instead of using the configured one.")
+@click.pass_obj
+def test(log: Logger, config_path: str, build_dir: str,
+         backend: Optional[str]) -> None:
+    """Build and run the project's tests.
+
+    Step 6 of the golden path, and the step that makes a first firmware run
+    verified rather than merely completed.
+
+    Examples:
+
+        ebuild test
+
+        ebuild test --backend cmake --build-dir build
+    """
+    log.header("ebuild — Test")
+
+    try:
+        from ebuild.build.dispatch import BackendDispatcher, detect_backend
+
+        log.step("Loading configuration...")
+        cfg = load_config(config_path)
+        log.info(f"Project: {cfg.name} v{cfg.version}")
+
+        resolved_backend = backend or cfg.backend
+        if resolved_backend == "auto":
+            resolved_backend = detect_backend(cfg.source_dir)
+            log.info(f"Auto-detected backend: {resolved_backend}")
+
+        build_path = Path(build_dir)
+        dispatcher = BackendDispatcher(cfg.source_dir, build_path)
+
+        log.step(f"Running tests ({resolved_backend})...")
+        outcome = dispatcher.test(
+            backend=resolved_backend,
+            config=cfg.backend_config,
+        )
+
+        if outcome.output:
+            click.echo(outcome.output.rstrip())
+
+        if not outcome.ran:
+            log.error(outcome.reason or "tests did not run")
+            raise SystemExit(1)
+
+        # The counts are reported exactly as the runner printed them, and are
+        # withheld when it printed none. Deriving "N passed" from a zero exit
+        # status would let a suite that never ran a single test report success,
+        # which is precisely the reassurance this command must not give.
+        if outcome.found_none:
+            log.error("The runner completed without executing a single test.")
+            log.info("  A green result here would mean nothing; treating it as a "
+                     "failure.")
+            raise SystemExit(1)
+
+        if outcome.counts_known:
+            log.info(f"  {outcome.passed} passed, {outcome.failed} failed")
+        else:
+            log.warning("  the runner printed no summary this parser recognises; "
+                     "reporting its exit status only")
+
+        if not outcome.ok:
+            log.error(f"Tests failed ({outcome.summary()}).")
+            raise SystemExit(1)
+
+        log.success(f"Tests passed ({outcome.summary()}).")
+
+    except SystemExit:
+        raise
+    except FileNotFoundError as e:
+        log.error(str(e))
+        raise SystemExit(1)
+    except Exception as e:
+        log.error(f"Test run failed: {e}")
+        raise SystemExit(1)
+
+
+@cli.command()
+@click.option("--port", default=None,
+              help="Serial port. Auto-selected when exactly one is present.")
+@click.option("--baud", default=None, type=int,
+              help="Baud rate. Defaults to the project's board setting, else 115200.")
+@click.option("--config", "config_path", default="build.yaml",
+              help="Project configuration to read the console baud rate from.")
+@click.option("--list", "list_only", is_flag=True, default=False,
+              help="List the serial ports the host can see and exit.")
+@click.pass_obj
+def monitor(log: Logger, port: Optional[str], baud: Optional[int],
+            config_path: str, list_only: bool) -> None:
+    """Open a serial console on the target.
+
+    Step 8 of the golden path. Ctrl-C ends the session.
+
+    Examples:
+
+        ebuild monitor
+
+        ebuild monitor --port /dev/ttyUSB0 --baud 9600
+
+        ebuild monitor --list
+    """
+    log.header("ebuild — Monitor")
+
+    try:
+        from ebuild.firmware.monitor import (
+            MonitorError, available_ports, baud_from_config,
+            monitor as run_monitor, resolve_port,
+        )
+
+        if list_only:
+            ports = available_ports()
+            if not ports:
+                log.warning("No serial ports found.")
+                return
+            log.step(f"{len(ports)} serial port(s):")
+            for p in ports:
+                log.info(f"  {p}")
+            return
+
+        device = resolve_port(port)
+        rate = baud if baud is not None else baud_from_config(config_path)
+
+        log.step(f"Opening {device} at {rate} baud. Ctrl-C to exit.")
+        forwarded = run_monitor(port=device, baud=rate)
+
+        # A session that saw nothing is worth saying out loud: it is the
+        # difference between "the board is quiet" and "the console is attached
+        # to the wrong port", and they look identical on screen.
+        if forwarded == 0:
+            log.warning(f"Session ended; no output was received from {device}.")
+        else:
+            log.success(f"Session ended; {forwarded} bytes received.")
+
+    except SystemExit:
+        raise
+    except MonitorError as e:
+        log.error(str(e))
+        raise SystemExit(1)
+    except Exception as e:
+        log.error(f"Monitor failed: {e}")
+        raise SystemExit(1)

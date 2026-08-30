@@ -6,6 +6,10 @@ __pycache__/
 *.egg
 dist/
 build/
+# ...but ebuild/build/ is the backend package, not build output. Without
+# this a new module added there is silently untracked: git status shows
+# nothing at all, so it works locally and is simply absent from the repo.
+!ebuild/build/
 .eggs/
 *.whl
 

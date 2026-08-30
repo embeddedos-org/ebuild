@@ -10,8 +10,10 @@ CMake, Make, Meson, Cargo, Kbuild.
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -247,3 +249,60 @@ class BackendDispatcher:
             )
         else:
             raise _unknown_backend(backend, "cleaned")
+
+
+    def test(
+        self,
+        backend: str,
+        config: Optional[Dict[str, Any]] = None,
+    ) -> "TestOutcome":
+        """Run the backend's test step and report what its runner printed.
+
+        Counts come from parsing the runner's own summary, never from the exit
+        status. A command that reported "N passed" because the process happened
+        to exit 0 would go green for a suite that never ran a single test, which
+        is the failure mode this whole command exists to prevent. When no
+        summary can be parsed the counts stay None and only ok/ran are
+        meaningful — reported honestly as unknown rather than filled in.
+        """
+        config = config or {}
+
+        if backend == "cmake":
+            cmd = ["ctest", "--test-dir", str(self.build_dir), "--output-on-failure"]
+        elif backend == "meson":
+            cmd = ["meson", "test", "-C", str(self.build_dir)]
+        elif backend == "cargo":
+            cmd = ["cargo", "test"]
+        elif backend in ("make", "kbuild"):
+            make_cmd = "nmake" if sys.platform == "win32" else "make"
+            cmd = [make_cmd, "-C", str(self.source_dir), "test"]
+        else:
+            return TestOutcome(ok=False, ran=False, output="",
+                               reason="no test runner for the '%s' backend" % backend)
+
+        cwd = str(self.source_dir) if backend == "cargo" else None
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd)
+        except FileNotFoundError:
+            return TestOutcome(
+                ok=False, ran=False, output="",
+                reason="%s is not installed or not on PATH" % cmd[0])
+
+        output = (proc.stdout or "") + (proc.stderr or "")
+        passed, failed = _parse_test_counts(backend, output)
+        found_none = _found_no_tests(backend, output, passed, failed)
+
+        # ctest exits 0 when it finds nothing to run, and prints "No tests were
+        # found!!!". Taken at face value that is a green test command for a
+        # project with no tests at all — the single most misleading result this
+        # command could produce, and the reason it treats an empty run as a
+        # failure rather than a pass.
+        return TestOutcome(
+            ok=proc.returncode == 0 and not found_none,
+            ran=True,
+            passed=passed,
+            failed=failed,
+            output=output,
+            returncode=proc.returncode,
+            found_none=found_none,
+        )
