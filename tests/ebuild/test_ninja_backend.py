@@ -45,7 +45,9 @@ def test_shared_library_uses_shared_link_rule(tmp_path):
     NinjaBackend(config, tmp_path / "build", toolchain).generate()
 
     ninja_file = (tmp_path / "build" / "build.ninja").read_text(encoding="utf-8")
-    assert "rule link_shared\n  command = $cc -shared" in ninja_file
+    # Darwin spells the flag -dynamiclib; the CI matrix covers macos-13.
+    shared_flag = "-dynamiclib" if sys.platform == "darwin" else "-shared"
+    assert f"rule link_shared\n  command = $cc {shared_flag}" in ninja_file
     assert "build " in ninja_file
     assert ": link_shared " in ninja_file
 

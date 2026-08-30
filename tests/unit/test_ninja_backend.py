@@ -40,9 +40,10 @@ class TestNinjaBackendSharedLibrary(unittest.TestCase):
 
         shared_flag = "-dynamiclib" if sys.platform == "darwin" else "-shared"
         self.assertIn(shared_flag, ninja)
-        # It must use the `link` rule (compiler driver), not `ar_rule`.
+        # It must go through a compiler-driver link rule, not `ar_rule`.
         lib_line = next(line for line in ninja.splitlines() if "libmylib" in line and line.startswith("build"))
-        self.assertIn(": link ", lib_line)
+        self.assertNotIn(": ar_rule", lib_line)
+        self.assertIn(": link_shared ", lib_line)
 
     def test_shared_library_gets_lib_dirs_and_libs(self):
         target = TargetConfig(

@@ -123,15 +123,24 @@ class NinjaBackend:
             "  command = $cc $ldflags $in -o $out $libs",
             "  description = LINK $out",
             "",
-            "rule link_shared",
-            "  command = $cc -shared $ldflags $in -o $out $libs",
-            "  description = LINK_SHARED $out",
-            "",
             "rule ar_rule",
             "  command = $ar rcs $out $in",
             "  description = AR $out",
             "",
         ]
+
+        # The flag that turns a link into a shared object is spelled
+        # differently on Darwin. Emit the rule only when something needs it,
+        # so a purely static project's build.ninja does not carry a rule for
+        # a link it never performs.
+        shared_flag = "-dynamiclib" if sys.platform == "darwin" else "-shared"
+        if any(t.target_type == "shared_library" for t in self.config.targets):
+            lines += [
+                "rule link_shared",
+                f"  command = $cc {shared_flag} $ldflags $in -o $out $libs",
+                "  description = LINK_SHARED $out",
+                "",
+            ]
 
         toolchain_ldflags = self._get_toolchain_ldflags()
 
@@ -190,11 +199,10 @@ class NinjaBackend:
                 if target.target_type == "static_library":
                     lines.append(f"build {out}: ar_rule {' '.join(obj_files)}")
                 else:
-                    # Shared libraries need the platform's "build a shared
-                    # object" flag and the same -L/-l wiring executables get,
-                    # neither of which the generic `link` rule provides.
+                    # link_shared carries the platform's "build a shared
+                    # object" flag; the -L/-l wiring is the same as for
+                    # executables and still goes through ldflags/libs.
                     ldflags = list(target.ldflags)
-                    ldflags.insert(0, "-dynamiclib" if sys.platform == "darwin" else "-shared")
                     libs = []
                     for pkg_name in target.uses:
                         pkg = self.package_paths.get(pkg_name)
@@ -204,7 +212,7 @@ class NinjaBackend:
                             for lib in pkg.libraries:
                                 libs.append(f"-l{lib}")
 
-                    lines.append(f"build {out}: link {' '.join(obj_files)}")
+                    lines.append(f"build {out}: link_shared {' '.join(obj_files)}")
                     if ldflags:
                         lines.append(f"  ldflags = {' '.join(ldflags)}")
                     if libs:
