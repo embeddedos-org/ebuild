@@ -42,7 +42,12 @@ class PackageDep:
 
 @dataclass
 class TargetConfig:
-    """A single build target (executable, static_library, or shared_library)."""
+    """A single build target.
+
+    A ``test`` target links exactly like an ``executable``; the type exists so
+    ``ebuild test`` can tell which binaries it is meant to run without
+    guessing from the target's name.
+    """
 
     name: str
     target_type: str
@@ -54,7 +59,10 @@ class TargetConfig:
     depends: List[str] = field(default_factory=list)
     uses: List[str] = field(default_factory=list)
 
-    VALID_TYPES = ("executable", "static_library", "shared_library")
+    VALID_TYPES = ("executable", "test", "static_library", "shared_library")
+
+    #: Target types that produce a runnable binary rather than an archive.
+    EXECUTABLE_TYPES = ("executable", "test")
 
     def validate(self) -> None:
         if not self.name:

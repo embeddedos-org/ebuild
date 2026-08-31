@@ -1,0 +1,24 @@
+# Upstream pins for the vendored snapshots under core/.
+#
+# core/eos/ and core/eboot/ are copies of other repositories in this
+# organisation, not original source. ADR-019 in the eos repository records the
+# decision to replace them with real pinned dependencies. Until that lands, this
+# file is the pin and scripts/check_vendor_drift.py enforces it.
+#
+# baseline_drift is the number of files that already differed from the pinned
+# revision when the guard was introduced. It is grandfathered so the guard could
+# be merged without blocking work already in flight, and it must only ever go
+# down. Reconciling a file means sending the change upstream or reverting it
+# here — see ADR-019 decision item 3. Raising this number to make CI pass
+# defeats the entire point of the file.
+
+vendored:
+  - path: core/eos
+    repository: https://github.com/embeddedos-org/eos.git
+    revision: 5544c98df94ff460c3a074fb4280c614b784b464
+    baseline_drift: 44
+
+  - path: core/eboot
+    repository: https://github.com/embeddedos-org/eBoot.git
+    revision: 39b09253450b3789b66f64ff0465b03b7910295d
+    baseline_drift: 46

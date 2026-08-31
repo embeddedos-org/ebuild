@@ -24,12 +24,12 @@ DEFAULT_CONFIG = {
     "repos": {
         "eos": {
             "url": DEFAULT_EOS_REPO_URL,
-            "branch": "main",
+            "branch": "master",
             "path": None,
         },
         "eboot": {
             "url": DEFAULT_EBOOT_REPO_URL,
-            "branch": "main",
+            "branch": "master",
             "path": None,
         },
     },

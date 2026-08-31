@@ -64,3 +64,6 @@ Desktop.ini
 build-*/
 node_modules/
 target/
+
+# ebuild build output (the default --build-dir)
+_build/

@@ -27,6 +27,23 @@ TIER_3 = {"cargo"}
 ALL_BACKENDS = {"cmake", "make", "meson", "cargo", "kbuild", "ninja"}
 
 
+def ninja_command():
+    """Return the argv prefix that runs ninja on this machine.
+
+    Prefer a `ninja` executable on PATH -- that is what a developer who
+    followed any ordinary install guide has, and what CMake and Meson already
+    use. Fall back to the `ninja` PyPI wheel only when no binary is present.
+
+    ebuild used to invoke `sys.executable -m ninja` unconditionally, so a
+    machine with ninja correctly installed still failed with "No module named
+    ninja" on the first build of a new project.
+    """
+    import shutil
+
+    exe = shutil.which("ninja")
+    return [exe] if exe else [sys.executable, "-m", "ninja"]
+
+
 def detect_backend(source_dir: Path) -> str:
     """Auto-detect the build system from project files.
 
@@ -143,8 +160,7 @@ class BackendDispatcher:
                 f"BackendDispatcher cannot configure backend '{backend}'. "
                 "This dispatcher only handles cmake, meson, and cargo "
                 "(make/kbuild need no configure step). ebuild's own ninja "
-                "backend is invoked directly and requires 'targets' in "
-                "build.yaml -- add targets or choose another backend."
+                "backend is generated and invoked by the CLI, not here."
             )
 
     def build(

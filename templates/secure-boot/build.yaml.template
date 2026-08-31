@@ -16,4 +16,16 @@ targets:
       - src/main.c
     includes:
       - src/
+    uses:
+      - eos
+    depends: []
+
+  - name: test_{{PROJECT_NAME}}
+    type: test
+    sources:
+      - tests/test_main.c
+    includes:
+      - src/
+    uses:
+      - eos
     depends: []

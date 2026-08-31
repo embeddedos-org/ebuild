@@ -176,7 +176,7 @@ class NinjaBackend:
                     lines.append(f"  cflags = {' '.join(cflags)}")
                 lines.append("")
 
-            if target.target_type == "executable":
+            if target.target_type in ("executable", "test"):
                 ldflags = toolchain_ldflags + list(target.ldflags)
                 libs = []
                 dep_archives = []

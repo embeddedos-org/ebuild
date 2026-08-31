@@ -1,0 +1,57 @@
+name: Vendored core drift
+
+# core/eos/ and core/eboot/ are snapshots of other repositories in this
+# organisation. Fixes merged upstream never reach them, so they drift silently.
+# This job makes that drift visible and fails when it grows.
+#
+# See core/UPSTREAM.yaml for the pins, and ADR-019 in the eos repository for the
+# decision to replace the snapshots with real dependencies.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'core/**'
+      - 'scripts/check_vendor_drift.py'
+      - '.github/workflows/vendor-drift.yml'
+  schedule:
+    # Weekly, so upstream moving on its own is noticed even when nothing here changes.
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: Compare core/ against pinned upstreams
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check vendored snapshots
+        run: python3 scripts/check_vendor_drift.py --list
+
+      - name: Explain a failure
+        if: failure()
+        run: |
+          echo "::notice::A file under core/eos or core/eboot now differs from its"
+          echo "::notice::pinned upstream in a way it did not before."
+          echo "::notice::"
+          echo "::notice::Fix it in one of these two ways:"
+          echo "::notice::  1. The change belongs upstream — open a PR against"
+          echo "::notice::     embeddedos-org/eos or embeddedos-org/eBoot, merge it, then"
+          echo "::notice::     bump the revision in core/UPSTREAM.yaml."
+          echo "::notice::  2. The change was unintended — revert it here."
+          echo "::notice::"
+          echo "::notice::Raising baseline_drift is not one of the two ways."

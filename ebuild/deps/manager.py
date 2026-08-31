@@ -118,7 +118,7 @@ class DepsManager:
         Args:
             repo_name: ``"eos"`` or ``"eboot"``.
             url: Git URL override. Falls back to config → default.
-            branch: Branch/tag override. Falls back to config → ``"main"``.
+            branch: Branch/tag override. Falls back to config → ``"master"``.
             path: If given, register this local path instead of cloning.
             shallow: Use ``--depth 1`` for faster clones (default *True*).
 
@@ -143,7 +143,7 @@ class DepsManager:
 
         # Clone to cache
         effective_url = repo_cfg.get("url") or self._default_url(repo_name)
-        effective_branch = repo_cfg.get("branch") or "main"
+        effective_branch = repo_cfg.get("branch") or "master"
 
         dest = self.cache_dir / repo_name
         if dest.exists():
@@ -279,7 +279,7 @@ class DepsManager:
             info: Dict[str, Any] = {
                 "name": name,
                 "url": repo_cfg.get("url", self._default_url(name)),
-                "branch": repo_cfg.get("branch", "main"),
+                "branch": repo_cfg.get("branch", "master"),
                 "config_path": repo_cfg.get("path"),
                 "cached": cached.is_dir(),
                 "cache_location": str(cached) if cached.is_dir() else None,

@@ -19,9 +19,9 @@ def _toolchain():
 
 class TestNinjaBackendSharedLibrary(unittest.TestCase):
     """A shared_library target must link with the platform's shared-object
-    flag and get the same -L/-l wiring as executables. Previously it fell
-    through to the generic `link` rule with no flags and no libs at all,
-    silently producing a broken artifact."""
+    flag and get the same -L/-l wiring as executables. Previously it used the
+    link_shared rule but emitted no ldflags and no libs line at all, so any
+    -L/-l from `uses` and any target ldflags were silently dropped."""
 
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()

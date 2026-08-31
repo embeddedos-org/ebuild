@@ -20,6 +20,8 @@ targets:
       - src/
     cflags: ["-mcpu=cortex-r5", "-mfloat-abi=hard", "-mfpu=vfpv3-d16", "-Os"]
     ldflags: ["-nostartfiles"]
+    uses:
+      - eos
     depends: []
 
 firmware:
@@ -27,3 +29,13 @@ firmware:
   core: {{CORE}}
   tick_rate: 1000
   watchdog_ms: 100
+
+  - name: test_{{PROJECT_NAME}}
+    type: test
+    sources:
+      - tests/test_main.c
+    includes:
+      - src/
+    uses:
+      - eos
+    depends: []
