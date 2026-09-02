@@ -153,6 +153,17 @@ class TestBoardCapacity:
     def test_a_board_config_without_memory_falls_back(self):
         assert board_capacity("stm32f4", {"board_name": "x"})[0] == 1024 * 1024
 
+    def test_a_partial_override_fills_the_rest_from_the_reference_part(self):
+       """A board YAML that only overrides RAM (say, because it was fitted
+       with extra SRAM) should not lose the reference flash figure for the
+       same part."""
+       cfg = {"memory": {"ram_size": 320 * 1024}}
+       assert board_capacity("stm32f4", cfg) == (1024 * 1024, 320 * 1024)
+
+
+       cfg = {"memory": {"flash_size": "0x40000"}}
+       assert board_capacity("stm32f4", cfg) == (262144, 192 * 1024)
+
 
 class TestReport:
     def test_percentages_appear_only_with_a_known_capacity(self):

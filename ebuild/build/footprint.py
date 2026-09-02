@@ -201,25 +201,29 @@ def measure(artifact: Path, size_tool: Optional[str] = None) -> Footprint:
 
 
 def board_capacity(board: Optional[str],
-                   board_config: Optional[dict] = None
-                   ) -> Tuple[Optional[int], Optional[int]]:
-    """Flash and RAM capacity for a board, or (None, None) when unknown.
+                  board_config: Optional[dict] = None
+                  ) -> Tuple[Optional[int], Optional[int]]:
+   """Flash and RAM capacity for a board, or (None, None) when unknown.
 
-    A project's own board YAML wins over the reference table: `memory.flash_size`
-    and `memory.ram_size` are what the hardware descriptions in `hardware/board/`
-    already use.
-    """
-    if board_config:
-        memory = board_config.get("memory") or {}
-        flash = _as_bytes(memory.get("flash_size"))
-        ram = _as_bytes(memory.get("ram_size"))
-        if flash or ram:
-            return flash, ram
-    if board:
-        found = _REFERENCE_CAPACITY.get(board.lower())
-        if found:
-            return found
-    return None, None
+
+   A project's own board YAML wins over the reference table: `memory.flash_size`
+   and `memory.ram_size` are what the hardware descriptions in `hardware/board/`
+   already use.
+   """
+   reference = _REFERENCE_CAPACITY.get(board.lower()) if board else None
+   if board_config:
+       memory = board_config.get("memory") or {}
+       flash = _as_bytes(memory.get("flash_size"))
+       ram = _as_bytes(memory.get("ram_size"))
+       if flash or ram:
+           if flash is None and reference:
+               flash = reference[0]
+           if ram is None and reference:
+               ram = reference[1]
+           return flash, ram
+   if reference:
+       return reference
+   return None, None
 
 
 def _as_bytes(value) -> Optional[int]:
