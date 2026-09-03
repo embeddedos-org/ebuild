@@ -10,6 +10,7 @@ provides the default configuration template for ``config.yaml``.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Dict
 
 # Default location for ebuild's persistent state
 EBUILD_HOME = Path.home() / ".ebuild"
@@ -21,7 +22,7 @@ DEFAULT_EOS_REPO_URL = "https://github.com/embeddedos-org/eos.git"
 DEFAULT_EBOOT_REPO_URL = "https://github.com/embeddedos-org/eBoot.git"
 DEFAULT_EFIRMWARE_REPO_URL = "https://github.com/embeddedos-org/eFirmware.git"
 
-DEFAULT_CONFIG = {
+DEFAULT_CONFIG: Dict[str, Any] = {
     "repos": {
         # Both repos default to master; neither has a main. Cloning the
         # branch named here is what `ebuild setup` does first, so "main"

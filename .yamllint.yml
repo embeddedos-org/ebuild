@@ -1,0 +1,11 @@
+extends: default
+
+ignore: |
+  .venv/
+  core/
+
+rules:
+  line-length: disable
+  truthy:
+    check-keys: false
+  document-start: disable

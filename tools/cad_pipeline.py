@@ -22,7 +22,7 @@ import sys
 import os
 import json
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List
 
 # ── Data models ───────────────────────────────────────────────────────────────
 

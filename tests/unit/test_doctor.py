@@ -16,7 +16,6 @@ consulted.
 
 import json
 
-import pytest
 from click.testing import CliRunner
 
 from ebuild.cli.commands import cli
@@ -29,7 +28,6 @@ from ebuild.system.doctor import (
     exit_code,
     format_report,
     host_checks,
-    run_all,
     toolchain_checks,
 )
 

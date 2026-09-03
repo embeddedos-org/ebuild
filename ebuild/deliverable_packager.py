@@ -26,7 +26,9 @@ try:
     from ebuild.sdk_generator import TARGET_ARCH, get_target_info
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from sdk_generator import TARGET_ARCH, get_target_info
+    # Imported from ebuild.sdk_generator in the try above as well; mypy
+    # cannot see that only one branch runs, so it flags this as a redefinition.
+    from sdk_generator import TARGET_ARCH, get_target_info  # type: ignore[no-redef]
 
 SOURCE_REPOS = {
     "eos":     {"dirs": ["core","hal","kernel","drivers","debug","services","systems",
