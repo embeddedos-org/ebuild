@@ -12,13 +12,13 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | ID | Task | Owner | Mode | Status | Depends on |
 |----|------|-------|------|--------|------------|
 | T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
-| T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | todo | none |
 
 ## Completed
 
 | ID | Task | Owner | Verified by | Evidence |
 |----|------|-------|-------------|----------|
 | T-001 | Make initramfs creation portable and self-contained | backend | independent reviewer | Focused archive tests: **5 passed, 1 skipped** (symlink creation unavailable on this Windows host). Independent `bsdtar` extraction validated hard-link identity and payload. Full Python suite: **288 passed, 2 skipped, 1 unrelated failure** in the pre-existing Windows Ninja path assertion, recorded as T-002. QEMU boot was not run on Windows. |
+| T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | self (see PR #110 review, finding 2) | Was deferred out of T-002 for reviewability, then folded back in once `executable_output_path()` existed: `ebuild/cli/commands.py` now calls it at the `package` artifact lookup instead of `Path(build_dir) / name`. Covered by `tests/unit/test_package_efw.py::TestCommandPacks::test_it_finds_the_windows_suffixed_artifact`, which forces `_exe_suffix()` to `.exe` so it exercises the Windows path on any host, and also caught the fix's ripple effect on the suite's own real-Windows host: existing `test_package_efw.py` fixtures wrote an unsuffixed stand-in binary, which the fixed lookup could no longer find natively (`_exe_suffix()` returns `.exe` there unforced), so those fixtures now build the artifact through `executable_output_path()` too. Full suite run on this Windows host: **559 passed, 6 skipped, 0 failed**. |
 
 ---
 

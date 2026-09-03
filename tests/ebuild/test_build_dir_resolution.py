@@ -274,6 +274,12 @@ def test_gcc_probe_does_not_raise_when_gcc_cannot_start(monkeypatch):
     assert _gcc_is_missing() is True
 
 
+def test_gcc_probe_reports_missing_when_which_finds_nothing(monkeypatch):
+    """The common case on a bare Windows host: no gcc on PATH at all."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert _gcc_is_missing() is True
+
+
 @pytest.mark.skipif(
     _gcc_is_missing(),
     reason="needs a working gcc to link the executable",

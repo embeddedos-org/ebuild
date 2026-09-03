@@ -174,13 +174,19 @@ class TestTestTargetType:
         On Windows the edge is ``t_smoke.exe`` because gcc appends ``.exe``.
         Asking ninja to build ``t_smoke`` is an unknown target, and looking
         for the unsuffixed path then reports "built, but no binary".
+
+        ``_exe_suffix()`` is forced to ``.exe`` rather than switching on
+        ``sys.platform``, so this exercises the Windows path — and fails
+        against the pre-fix code — on any host the suite runs on.
         """
-        import sys
         from types import SimpleNamespace
 
+        from ebuild.build import ninja_backend
         from ebuild.build.ninja_backend import NinjaBackend
         from ebuild.cli import commands
         from ebuild.core.config import ProjectConfig
+
+        monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
 
         cfg = ProjectConfig(
             name="p", version="1", source_dir=tmp_path,
@@ -191,8 +197,7 @@ class TestTestTargetType:
         NinjaBackend(cfg, build,
                      SimpleNamespace(cc="cc", cxx="c++", ar="ar")).generate()
 
-        suffix = ".exe" if sys.platform == "win32" else ""
-        expected = build / f"t_smoke{suffix}"
+        expected = build / "t_smoke.exe"
         expected.write_bytes(b"")
 
         monkeypatch.setattr(commands, "_configure_ninja_backend",

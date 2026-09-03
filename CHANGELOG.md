@@ -9,6 +9,11 @@
   unsuffixed path. Ninja reported an unknown target and the runner reported
   "built, but no binary". Both steps now use `executable_output_path()`
   (`ebuild/build/ninja_backend.py`, `ebuild/cli/commands.py`).
+- **`ebuild package` now finds the Windows binary too.** It looked up
+  `<build_dir>/<name>` directly instead of through `executable_output_path()`,
+  so on Windows it reported "No built artifact" after a build that had
+  succeeded. Now uses the same helper as `ebuild test`
+  (`ebuild/cli/commands.py`).
 - **`pytest` collection no longer aborts on Windows without gcc.**
   `tests/ebuild/test_build_dir_resolution.py` evaluated
   `subprocess.run(["gcc", "--version"])` in a `skipif`. When gcc is not

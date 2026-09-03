@@ -2530,7 +2530,7 @@ def package(log: Logger, config_path: str, build_dir: str,
         log.error("No executable target in build.yaml — nothing to package.")
         raise SystemExit(1)
 
-    artifact = Path(build_dir) / binaries[0].name
+    artifact = executable_output_path(Path(build_dir), binaries[0].name)
     if not artifact.is_file():
         log.error(f"No built artifact at {artifact}. Run 'ebuild build' first.")
         raise SystemExit(1)
