@@ -26,9 +26,12 @@ try:
     from ebuild.eos_ai.eos_validator import EosConfigValidator
     from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
 except ImportError:
-    EosConfigGenerator = None
-    EosConfigValidator = None
-    EosBootIntegrator = None
+    # When pyyaml is absent these stay None and callers test for truthiness.
+    # mypy cannot type a name that is a class when the import succeeds and
+    # None when it does not.
+    EosConfigGenerator = None  # type: ignore[misc]
+    EosConfigValidator = None  # type: ignore[misc]
+    EosBootIntegrator = None  # type: ignore[misc]
 
 __all__ = [
     "EosHardwareAnalyzer",

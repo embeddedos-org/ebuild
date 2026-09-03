@@ -25,7 +25,6 @@ That is worse than having no test command, because it actively reassures.
 
 import sys
 
-import pytest
 import yaml
 from click.testing import CliRunner
 

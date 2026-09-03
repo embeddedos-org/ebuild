@@ -4,13 +4,11 @@
 """Tests for ebuild.build.dispatch — backend detection, dispatch, dry-run."""
 
 import logging
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from ebuild.build.dispatch import (
-    ALL_BACKENDS,
     BackendDispatcher,
     BackendError,
     UnknownBackendError,

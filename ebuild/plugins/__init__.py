@@ -41,7 +41,9 @@ def discover_plugins() -> List[PluginBase]:
         if hasattr(entry_points, "select"):
             eps = entry_points.select(group="ebuild.plugins")
         else:
-            eps = entry_points.get("ebuild.plugins", [])
+            # Before 3.10 entry_points() returned a dict; the current stubs
+            # only model EntryPoints, which has no .get, hence the ignore.
+            eps = entry_points.get("ebuild.plugins", [])  # type: ignore[attr-defined]
 
         for ep in eps:
             try:
