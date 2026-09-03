@@ -137,3 +137,43 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+
+  # ── Required check ────────────────────────────────────────────────────────
+  # One job that succeeds only if every other job in this workflow did, so
+  # branch protection has a single stable name to require. #87 asks for a
+  # required check on master; this is the name to point it at.
+  #
+  # Requiring the jobs themselves does not work here. `test` is a 3x3 matrix,
+  # so its checks arrive as nine generated names that change whenever the
+  # matrix does, and a required name that no longer appears blocks every PR
+  # until someone edits the branch protection. `release` is skipped on every
+  # pull request, and a required check that is skipped never reports.
+  #
+  # `if: always()` matters: without it the gate is skipped whenever an earlier
+  # job fails, and a skipped required check leaves the PR waiting for a status
+  # that will never arrive -- the failure would present as a hang, not a red X.
+  #
+  # A non-success result of any kind fails the gate, `skipped` included. A job
+  # that did not run did not verify anything, so treating it as a pass is the
+  # same fail-open shape this repository has been removing elsewhere.
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-22.04
+    needs: [test, build]
+    if: always()
+    steps:
+      - name: Every job in this workflow must have succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          printf '%s\n' "$RESULTS"
+          bad=$(printf '%s' "$RESULTS" | jq -r '
+            to_entries[]
+            | select(.value.result != "success")
+            | "  \(.key): \(.value.result)"')
+          if [ -n "$bad" ]; then
+            echo "::error::CI Gate failed. These jobs did not succeed:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "All jobs succeeded."
