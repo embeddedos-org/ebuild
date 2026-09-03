@@ -209,7 +209,8 @@ board:
 
 ## Step 7: Add Project Generator Mapping
 
-Edit `ebuild/eos_ai/eos_project_generator.py`:
+Edit `ebuild/sdk_generator.py` (the Tier-1 table; `ebuild/eos_ai/eos_project_generator.py`
+only holds an alias importing it from there):
 
 ```python
 MCU_TO_EBOOT_BOARD = {
