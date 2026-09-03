@@ -513,8 +513,9 @@ def _report_footprint(cfg: "ProjectConfig", build_path: Path, log: Logger) -> No
     if not binaries:
         return
 
-    artifact = build_path / binaries[0].name
+    artifact = executable_output_path(build_path, binaries[0].name)
     if not artifact.is_file():
+        log.debug(f"no artifact at {artifact}; skipping footprint")
         return
 
     prefix = getattr(cfg.toolchain, "target", None) or "host"

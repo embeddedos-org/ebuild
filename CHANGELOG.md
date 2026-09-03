@@ -14,6 +14,13 @@
   so on Windows it reported "No built artifact" after a build that had
   succeeded. Now uses the same helper as `ebuild test`
   (`ebuild/cli/commands.py`).
+- **`ebuild build`'s flash/RAM report went silent on Windows.**
+  `_report_footprint` also looked up `<build_dir>/<name>` directly, so on
+  Windows the artifact was never found and the function returned with no
+  diagnostic — the report just never appeared, with no indication it was
+  skipped rather than not applicable. Now uses `executable_output_path()`
+  and logs at debug level when it has nothing to measure
+  (`ebuild/cli/commands.py`).
 - **`pytest` collection no longer aborts on Windows without gcc.**
   `tests/ebuild/test_build_dir_resolution.py` evaluated
   `subprocess.run(["gcc", "--version"])` in a `skipif`. When gcc is not

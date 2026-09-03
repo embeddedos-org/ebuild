@@ -36,6 +36,7 @@ import pytest
 from click.testing import CliRunner
 
 from ebuild.cli import commands
+from tests.conftest import gcc_is_missing
 
 
 pytestmark = pytest.mark.needs_yaml
@@ -242,23 +243,9 @@ def test_configure_and_build_from_outside_agree_on_the_build_dir(
 
 # ── end to end, with a real compiler ────────────────────────
 
-
-def _gcc_is_missing() -> bool:
-    """True when this host cannot run gcc.
-
-    ``subprocess.run(['gcc', ...])`` raises FileNotFoundError on Windows
-    when gcc is not installed. Evaluating that in ``skipif`` is not a skip:
-    it aborts collection of this file and, with default pytest, the suite.
-    """
-    gcc = shutil.which("gcc")
-    if gcc is None:
-        return True
-    try:
-        return subprocess.run(
-            [gcc, "--version"], capture_output=True
-        ).returncode != 0
-    except OSError:
-        return True
+# `gcc_is_missing()` lives in tests/conftest.py, shared with
+# tests/unit/test_footprint.py -- both need to know whether the host can
+# link a real binary before running a skipif against it.
 
 
 def test_gcc_probe_does_not_raise_when_gcc_cannot_start(monkeypatch):
@@ -271,17 +258,17 @@ def test_gcc_probe_does_not_raise_when_gcc_cannot_start(monkeypatch):
         raise FileNotFoundError(2, "The system cannot find the file specified")
 
     monkeypatch.setattr(subprocess, "run", boom)
-    assert _gcc_is_missing() is True
+    assert gcc_is_missing() is True
 
 
 def test_gcc_probe_reports_missing_when_which_finds_nothing(monkeypatch):
     """The common case on a bare Windows host: no gcc on PATH at all."""
     monkeypatch.setattr(shutil, "which", lambda name: None)
-    assert _gcc_is_missing() is True
+    assert gcc_is_missing() is True
 
 
 @pytest.mark.skipif(
-    _gcc_is_missing(),
+    gcc_is_missing(),
     reason="needs a working gcc to link the executable",
 )
 def test_end_to_end_build_from_outside_produces_the_binary(tmp_path, monkeypatch):
