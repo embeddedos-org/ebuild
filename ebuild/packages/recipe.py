@@ -82,6 +82,7 @@ class PackageRecipe:
                 f"Package '{self.name}': plaintext http:// is not accepted for "
                 f"'{self.url}'. Use https://."
             )
+
         if self.build_system not in self.VALID_BUILD_SYSTEMS:
             raise RecipeError(
                 f"Package '{self.name}': invalid build system '{self.build_system}'. "
@@ -89,7 +90,45 @@ class PackageRecipe:
             )
 
 
-def _parse_recipe(raw: Dict[str, Any], source_path: Optional[Path] = None) -> PackageRecipe:
+def _parse_string_list(
+    raw: Dict[str, Any],
+    field_name: str,
+    fallback_field: Optional[str] = None,
+) -> List[str]:
+    """Parse a recipe field that must be a list of strings.
+
+    Args:
+        raw: Raw recipe mapping loaded from YAML.
+        field_name: Preferred field name.
+        fallback_field: Optional legacy/alternate field name used when the
+            preferred field is absent.
+
+    Returns:
+        A copy of the validated list.
+
+    Raises:
+        RecipeError: If the field is not a list or contains non-string items.
+    """
+    if field_name in raw:
+        value = raw[field_name]
+    elif fallback_field is not None and fallback_field in raw:
+        value = raw[fallback_field]
+    else:
+        value = []
+
+    if not isinstance(value, list):
+        raise RecipeError(f"'{field_name}' must be a list.")
+
+    if not all(isinstance(item, str) for item in value):
+        raise RecipeError(f"'{field_name}' must contain only strings.")
+
+    return list(value)
+
+
+def _parse_recipe(
+    raw: Dict[str, Any],
+    source_path: Optional[Path] = None,
+) -> PackageRecipe:
     """Parse a raw YAML dict into a PackageRecipe."""
     recipe = PackageRecipe(
         name=raw.get("package", raw.get("name", "")),
@@ -97,14 +136,19 @@ def _parse_recipe(raw: Dict[str, Any], source_path: Optional[Path] = None) -> Pa
         url=raw.get("url", ""),
         checksum=raw.get("checksum", ""),
         build_system=raw.get("build", raw.get("build_system", "cmake")),
-        dependencies=raw.get("dependencies", raw.get("depends", [])),
-        patches=raw.get("patches", []),
-        configure_args=raw.get("configure_args", []),
-        build_args=raw.get("build_args", []),
-        install_args=raw.get("install_args", []),
+        dependencies=_parse_string_list(
+            raw,
+            "dependencies",
+            fallback_field="depends",
+        ),
+        patches=_parse_string_list(raw, "patches"),
+        configure_args=_parse_string_list(raw, "configure_args"),
+        build_args=_parse_string_list(raw, "build_args"),
+        install_args=_parse_string_list(raw, "install_args"),
         description=raw.get("description", ""),
         license=raw.get("license", ""),
     )
+
     recipe.validate()
     return recipe
 
@@ -123,6 +167,7 @@ def load_recipe(recipe_path: str | Path) -> PackageRecipe:
         FileNotFoundError: If the file doesn't exist.
     """
     recipe_path = Path(recipe_path)
+
     if not recipe_path.exists():
         raise FileNotFoundError(f"Recipe file not found: {recipe_path}")
 
@@ -138,6 +183,8 @@ def load_recipe(recipe_path: str | Path) -> PackageRecipe:
 def load_recipe_from_string(content: str) -> PackageRecipe:
     """Load a package recipe from a YAML string."""
     raw = yaml.safe_load(content)
+
     if not isinstance(raw, dict):
         raise RecipeError("Invalid recipe format: expected a YAML mapping.")
+
     return _parse_recipe(raw)
