@@ -15,6 +15,7 @@ the two tools disagree about what "flash" means:
 """
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -57,13 +58,20 @@ class TestAccounting:
 
 
 class TestMeasure:
+    @pytest.mark.skipif(
+        shutil.which("gcc") is None,
+        reason="needs a working gcc to link the executable",
+    )
     def test_measures_a_real_binary(self, tmp_path):
         src = tmp_path / "m.c"
         src.write_text("static char buf[4096];\nint main(void){return buf[0];}\n")
         # gcc on Windows appends .exe when -o names no extension, so the
         # path measured here has to carry it or there is nothing to measure.
         exe = tmp_path / ("m.exe" if os.name == "nt" else "m")
-        subprocess.run(["gcc", str(src), "-o", str(exe)], check=True)
+        try:
+            subprocess.run(["gcc", str(src), "-o", str(exe)], check=True)
+        except FileNotFoundError:
+            pytest.skip("needs a working gcc to link the executable")
 
         fp = measure(exe)
         assert fp.text > 0
