@@ -26,6 +26,7 @@ An absolute --build-dir was already unambiguous, which is why it worked.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
@@ -242,8 +243,39 @@ def test_configure_and_build_from_outside_agree_on_the_build_dir(
 # ── end to end, with a real compiler ────────────────────────
 
 
+def _gcc_is_missing() -> bool:
+    """True when this host cannot run gcc.
+
+    ``subprocess.run(['gcc', ...])`` raises FileNotFoundError on Windows
+    when gcc is not installed. Evaluating that in ``skipif`` is not a skip:
+    it aborts collection of this file and, with default pytest, the suite.
+    """
+    gcc = shutil.which("gcc")
+    if gcc is None:
+        return True
+    try:
+        return subprocess.run(
+            [gcc, "--version"], capture_output=True
+        ).returncode != 0
+    except OSError:
+        return True
+
+
+def test_gcc_probe_does_not_raise_when_gcc_cannot_start(monkeypatch):
+    """Collection must stay a skip, not an ERROR, if gcc is absent."""
+    monkeypatch.setattr(
+        shutil, "which", lambda name: r"C:\missing\gcc.exe"
+    )
+
+    def boom(*args, **kwargs):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert _gcc_is_missing() is True
+
+
 @pytest.mark.skipif(
-    subprocess.run(["gcc", "--version"], capture_output=True).returncode != 0,
+    _gcc_is_missing(),
     reason="needs a working gcc to link the executable",
 )
 def test_end_to_end_build_from_outside_produces_the_binary(tmp_path, monkeypatch):

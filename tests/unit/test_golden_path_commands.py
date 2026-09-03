@@ -168,6 +168,50 @@ class TestTestTargetType:
         assert ": link " in edge
         assert ": ar_rule" not in edge
 
+    def test_native_runner_asks_ninja_for_the_linked_binary(self, tmp_path, monkeypatch):
+        """`ebuild test` must name the same output NinjaBackend linked.
+
+        On Windows the edge is ``t_smoke.exe`` because gcc appends ``.exe``.
+        Asking ninja to build ``t_smoke`` is an unknown target, and looking
+        for the unsuffixed path then reports "built, but no binary".
+        """
+        import sys
+        from types import SimpleNamespace
+
+        from ebuild.build.ninja_backend import NinjaBackend
+        from ebuild.cli import commands
+        from ebuild.core.config import ProjectConfig
+
+        cfg = ProjectConfig(
+            name="p", version="1", source_dir=tmp_path,
+            targets=[TargetConfig(name="t_smoke", target_type="test",
+                                  sources=["t.c"])],
+        )
+        build = tmp_path / "b"
+        NinjaBackend(cfg, build,
+                     SimpleNamespace(cc="cc", cxx="c++", ar="ar")).generate()
+
+        suffix = ".exe" if sys.platform == "win32" else ""
+        expected = build / f"t_smoke{suffix}"
+        expected.write_bytes(b"")
+
+        monkeypatch.setattr(commands, "_configure_ninja_backend",
+                            lambda *a, **k: None)
+
+        runs = []
+
+        def fake_run(argv, *a, **k):
+            runs.append([str(x) for x in argv])
+            return SimpleNamespace(returncode=0)
+
+        monkeypatch.setattr(commands.subprocess, "run", fake_run)
+
+        commands._run_native_tests(
+            cfg, list(cfg.targets), build, _SilentLog(), None)
+
+        assert runs, "expected ninja to be invoked"
+        assert str(expected) in runs[0], runs[0]
+
 
 @pytest.mark.ebuild
 class TestExternalTestRunners:

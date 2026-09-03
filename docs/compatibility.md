@@ -103,6 +103,7 @@ Download from [ARM Developer](https://developer.arm.com/downloads/-/gnu-rm) and 
 | Limitation | Affected | Workaround |
 |-----------|----------|------------|
 | eOSuite excluded on Windows | `--with eosuite` | Use WSL2 or Linux VM |
+| `ebuild package` looks for `_build/<name>` rather than `_build/<name>.exe` | Windows | Tracked as T-003 |
 | EIPC Go build separate from CMake | `layers/eipc/` | Build EIPC separately with `make` |
 | ESP32 requires ESP-IDF | `--target esp32` | Install ESP-IDF v5.x first |
 | MIPS toolchain not in most distros | `--target malta` | Build from source or use Docker |

@@ -11,7 +11,8 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 
 | ID | Task | Owner | Mode | Status | Depends on |
 |----|------|-------|------|--------|------------|
-| T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | todo | none |
+| T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
+| T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | todo | none |
 
 ## Completed
 

@@ -26,7 +26,11 @@ import click
 import yaml
 
 from ebuild import __version__
-from ebuild.build.ninja_backend import NinjaBackend, PackagePaths
+from ebuild.build.ninja_backend import (
+    NinjaBackend,
+    PackagePaths,
+    executable_output_path,
+)
 from ebuild.build.toolchain import resolve_toolchain
 from ebuild.cli.integration import register_commands as _register_integration_commands
 from ebuild.cli.logger import Logger
@@ -2609,11 +2613,14 @@ def _run_native_tests(
     from ebuild.build.dispatch import ninja_command
 
     # Ninja addresses targets by their output path, and `ebuild build` drives
-    # it with -f from the project root, so the same form is used here.
+    # it with -f from the project root, so the same form is used here. The
+    # path must include the platform suffix: on Windows the edge is
+    # ``<name>.exe``, and asking ninja to build ``<name>`` is an unknown
+    # target.
     argv = (
         ninja_command()
         + ["-f", str(build_path / "build.ninja")]
-        + [str(build_path / t.name) for t in selected]
+        + [str(executable_output_path(build_path, t.name)) for t in selected]
     )
     result = subprocess.run(argv)
     if result.returncode != 0:
@@ -2622,7 +2629,7 @@ def _run_native_tests(
 
     failures: List[str] = []
     for target in selected:
-        binary = build_path / target.name
+        binary = executable_output_path(build_path, target.name)
         if not binary.is_file():
             log.error(f"{target.name}: built, but no binary at {binary}")
             failures.append(target.name)
