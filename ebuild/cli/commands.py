@@ -650,7 +650,7 @@ def _run_pipeline_steps(
     from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
     from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
     from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
-    from ebuild.sdk_generator import generate_sdk
+    from ebuild.sdk_generator import generate_sdk_from_profile
 
     configs_dir = build_dir / "configs"
     sdk_dir = build_dir / "sdk"
@@ -700,10 +700,18 @@ def _run_pipeline_steps(
         log.success("  " + name + ": " + str(path))
 
     # Step 4: Generate SDK (toolchain.cmake, environment-setup, eboot target config)
+    # Drive the SDK from the detected profile, not just the board name — otherwise
+    # any MCU absent from the small target table silently regressed to an x86_64 SDK.
     log.step("[4/6] Generating SDK...")
-    target_name = board.lower()
-    generate_sdk(target_name, str(sdk_dir))
-    log.success("  SDK generated in " + str(sdk_dir))
+    _, toolchain_ok, eboot_board = generate_sdk_from_profile(profile, str(sdk_dir), target=board)
+    if not toolchain_ok:
+        raise RuntimeError("no cross-toolchain ships for " + board + "; the SDK fell back "
+                           "to the host x86_64 compiler. Run `ebuild sdk --list`.")
+    if eboot_board is None:
+        log.warning("  no eBoot board for " + board + ": eboot/eboot_board.cmake carries a "
+                    "FATAL_ERROR; a build that needs the board will fail by name.")
+    else:
+        log.success("  SDK generated in " + str(sdk_dir))
 
     # Step 5: Copy generated headers to build include path
     log.step("[5/6] Copying headers to build include path...")
