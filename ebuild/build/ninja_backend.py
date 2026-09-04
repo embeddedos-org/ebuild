@@ -51,7 +51,11 @@ def executable_output_path(build_dir: Path, target_name: str) -> Path:
 
     Returns:
         ``build_dir / target_name`` on POSIX, or that path with ``.exe``
-        appended on Windows, matching the compiler driver's output.
+        appended on Windows -- the same path the Ninja edge in
+        ``_write_ninja`` already names via ``_exe_suffix()``. A consumer
+        that rebuilds this path independently instead of calling this
+        function can silently drop the suffix and go looking for a binary
+        the edge never produced.
 
     Example:
         >>> from pathlib import Path

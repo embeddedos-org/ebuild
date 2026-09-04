@@ -3,12 +3,14 @@
 ## [Unreleased]
 
 ### Fixed
-- **`ebuild test` now finds Windows test binaries.** Native `type: test`
-  targets are linked as `<name>.exe` on Windows (gcc appends the suffix),
-  but `ebuild test` asked ninja to build `<name>` and then looked for that
-  unsuffixed path. Ninja reported an unknown target and the runner reported
-  "built, but no binary". Both steps now use `executable_output_path()`
-  (`ebuild/build/ninja_backend.py`, `ebuild/cli/commands.py`).
+- **`ebuild test` now finds Windows test binaries.** The Ninja edge for a
+  native `type: test` target already carried the platform suffix
+  (`_exe_suffix()` names it `<name>.exe` on Windows), but `ebuild test`
+  rebuilt the path itself without that suffix, asked ninja to build
+  `<name>`, and then looked for that unsuffixed path. Ninja reported an
+  unknown target and the runner reported "built, but no binary". Both
+  steps now go through the same `executable_output_path()` the edge itself
+  uses (`ebuild/build/ninja_backend.py`, `ebuild/cli/commands.py`).
 - **`ebuild package` now finds the Windows binary too.** It looked up
   `<build_dir>/<name>` directly instead of through `executable_output_path()`,
   so on Windows it reported "No built artifact" after a build that had

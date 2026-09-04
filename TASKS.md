@@ -14,9 +14,17 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
 | T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
 | T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
+| T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | todo | none |
 
 ### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
 
+- **T-002**: `ebuild/cli/commands.py:2624` and `:2633` (the Ninja target-list
+  argv and the binary that gets executed in `_run_native_tests`) both use
+  `executable_output_path()` instead of rebuilding the path themselves.
+  Covered by
+  `tests/unit/test_golden_path_commands.py::TestTestTargetType::test_native_runner_asks_ninja_for_the_linked_binary`,
+  which forces `_exe_suffix()` to `.exe`; confirmed to fail against the
+  pre-fix argv construction and pass against the fix.
 - **T-003**: Was deferred out of T-002 for reviewability, then folded back in
   once `executable_output_path()` existed: `ebuild/cli/commands.py` now calls
   it at the `package` artifact lookup instead of `Path(build_dir) / name`.
