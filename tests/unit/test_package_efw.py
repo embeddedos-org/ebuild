@@ -31,6 +31,7 @@ from ebuild.build.firmware_image import (
     pack,
     verify,
 )
+from ebuild.build.ninja_backend import executable_output_path
 from ebuild.cli.commands import cli
 
 
@@ -164,7 +165,8 @@ class TestCommand:
         }))
         if built:
             (tmp_path / "_build").mkdir()
-            (tmp_path / "_build" / "node").write_bytes(b"\x7fELF" + b"\x00" * 64)
+            executable_output_path(tmp_path / "_build", "node").write_bytes(
+                b"\x7fELF" + b"\x00" * 64)
         return tmp_path
 
     def test_it_refuses_before_a_build(self, tmp_path, monkeypatch):
@@ -244,7 +246,8 @@ class TestCommandPacks:
                          "sources": ["src/main.c"]}],
         }))
         (tmp_path / "_build").mkdir()
-        (tmp_path / "_build" / "node").write_bytes(b"\x7fELF" + b"\x00" * 64)
+        executable_output_path(tmp_path / "_build", "node").write_bytes(
+            b"\x7fELF" + b"\x00" * 64)
         return tmp_path
 
     def _packaged(self, tmp_path, monkeypatch, argv=(), **tool_kw):
@@ -260,6 +263,28 @@ class TestCommandPacks:
         image = tmp_path / "node.efw"
         assert image.is_file()
         assert str(image.stat().st_size) in result.output
+
+    def test_it_finds_the_windows_suffixed_artifact(self, tmp_path, monkeypatch):
+        """On Windows the linked binary is `<name>.exe`; `package` must look
+        for that path rather than the unsuffixed one NinjaBackend never
+        produces there.
+
+        `_exe_suffix()` is forced to `.exe` rather than switching on
+        `sys.platform`, so this exercises the Windows path -- and fails
+        against the pre-fix code, which looked for the unsuffixed name --
+        on any host the suite runs on.
+        """
+        from ebuild.build import ninja_backend
+        monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
+
+        tool = _efwtool_that_packs(tmp_path)
+        monkeypatch.chdir(self._project(tmp_path))
+        assert (tmp_path / "_build" / "node.exe").is_file()
+        monkeypatch.setattr("ebuild.build.firmware_image.shutil.which",
+                            lambda n: str(tool) if n == "efwtool" else None)
+        result = CliRunner().invoke(cli, ["package"])
+        assert result.exit_code == 0, result.output
+        assert (tmp_path / "node.efw").is_file()
 
     def test_the_default_name_comes_from_the_project(self, tmp_path, monkeypatch):
         """Not from the target or the build directory: `--output` is optional,

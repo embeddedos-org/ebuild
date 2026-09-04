@@ -41,6 +41,31 @@ def _exe_suffix() -> str:
     return ".exe" if sys.platform == "win32" else ""
 
 
+def executable_output_path(build_dir: Path, target_name: str) -> Path:
+    """Return the linked binary path NinjaBackend emits for *target_name*.
+
+    Args:
+        build_dir: Directory that contains ``build.ninja`` and the linked
+            outputs.
+        target_name: The ``name`` of an ``executable`` or ``test`` target.
+
+    Returns:
+        ``build_dir / target_name`` on POSIX, or that path with ``.exe``
+        appended on Windows -- the same path the Ninja edge in
+        ``_write_ninja`` already names via ``_exe_suffix()``. A consumer
+        that rebuilds this path independently instead of calling this
+        function can silently drop the suffix and go looking for a binary
+        the edge never produced.
+
+    Example:
+        >>> from pathlib import Path
+        >>> executable_output_path(Path("_build"), "hello").name in (
+        ...     "hello", "hello.exe")
+        True
+    """
+    return Path(build_dir) / (target_name + _exe_suffix())
+
+
 def _shared_flag() -> str:
     """The flag that makes the compiler driver emit a shared object.
 
@@ -230,7 +255,7 @@ class NinjaBackend:
 
                 link_inputs = obj_files + dep_archives
                 out = escape_ninja_path(
-                    self.build_dir / (target.name + _exe_suffix()))
+                    executable_output_path(self.build_dir, target.name))
                 lines.append(
                     f"build {out}: link " f"{' '.join(link_inputs)}"
                 )

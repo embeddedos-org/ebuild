@@ -26,6 +26,7 @@ An absolute --build-dir was already unambiguous, which is why it worked.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
@@ -35,6 +36,7 @@ import pytest
 from click.testing import CliRunner
 
 from ebuild.cli import commands
+from tests.support import gcc_is_missing
 
 
 pytestmark = pytest.mark.needs_yaml
@@ -241,9 +243,32 @@ def test_configure_and_build_from_outside_agree_on_the_build_dir(
 
 # ── end to end, with a real compiler ────────────────────────
 
+# `gcc_is_missing()` lives in tests/support.py, shared with
+# tests/unit/test_footprint.py -- both need to know whether the host can
+# link a real binary before running a skipif against it.
+
+
+def test_gcc_probe_does_not_raise_when_gcc_cannot_start(monkeypatch):
+    """Collection must stay a skip, not an ERROR, if gcc is absent."""
+    monkeypatch.setattr(
+        shutil, "which", lambda name: r"C:\missing\gcc.exe"
+    )
+
+    def boom(*args, **kwargs):
+        raise FileNotFoundError(2, "The system cannot find the file specified")
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert gcc_is_missing() is True
+
+
+def test_gcc_probe_reports_missing_when_which_finds_nothing(monkeypatch):
+    """The common case on a bare Windows host: no gcc on PATH at all."""
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert gcc_is_missing() is True
+
 
 @pytest.mark.skipif(
-    subprocess.run(["gcc", "--version"], capture_output=True).returncode != 0,
+    gcc_is_missing(),
     reason="needs a working gcc to link the executable",
 )
 def test_end_to_end_build_from_outside_produces_the_binary(tmp_path, monkeypatch):

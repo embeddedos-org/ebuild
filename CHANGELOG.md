@@ -3,6 +3,32 @@
 ## [Unreleased]
 
 ### Fixed
+- **`ebuild test` now finds Windows test binaries.** The Ninja edge for a
+  native `type: test` target already carried the platform suffix
+  (`_exe_suffix()` names it `<name>.exe` on Windows), but `ebuild test`
+  rebuilt the path itself without that suffix, asked ninja to build
+  `<name>`, and then looked for that unsuffixed path. Ninja reported an
+  unknown target and the runner reported "built, but no binary". Both
+  steps now go through the same `executable_output_path()` the edge itself
+  uses (`ebuild/build/ninja_backend.py`, `ebuild/cli/commands.py`).
+- **`ebuild package` now finds the Windows binary too.** It looked up
+  `<build_dir>/<name>` directly instead of through `executable_output_path()`,
+  so on Windows it reported "No built artifact" after a build that had
+  succeeded. Now uses the same helper as `ebuild test`
+  (`ebuild/cli/commands.py`).
+- **`ebuild build`'s flash/RAM report went silent on Windows.**
+  `_report_footprint` also looked up `<build_dir>/<name>` directly, so on
+  Windows the artifact was never found and the function returned with no
+  diagnostic — the report just never appeared, with no indication it was
+  skipped rather than not applicable. Now uses `executable_output_path()`
+  and logs at debug level when it has nothing to measure
+  (`ebuild/cli/commands.py`).
+- **`pytest` collection no longer aborts on Windows without gcc.**
+  `tests/ebuild/test_build_dir_resolution.py` evaluated
+  `subprocess.run(["gcc", "--version"])` in a `skipif`. When gcc is not
+  installed, Windows raises `FileNotFoundError` instead of a non-zero
+  returncode, which pytest treats as a collection ERROR and stops the
+  suite. The probe now uses `shutil.which` and catches `OSError`.
 - **A path containing a space produced a silently wrong `build.ninja`.** Paths
   were written into build statements unescaped, but Ninja ends the output list
   at the first unescaped `:` and splits on unescaped spaces. A build directory

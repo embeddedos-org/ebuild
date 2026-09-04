@@ -11,7 +11,44 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 
 | ID | Task | Owner | Mode | Status | Depends on |
 |----|------|-------|------|--------|------------|
-| T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | todo | none |
+| T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
+| T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
+| T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
+| T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | todo | none |
+
+### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
+
+- **T-002**: `ebuild/cli/commands.py:2624` and `:2633` (the Ninja target-list
+  argv and the binary that gets executed in `_run_native_tests`) both use
+  `executable_output_path()` instead of rebuilding the path themselves.
+  Covered by
+  `tests/unit/test_golden_path_commands.py::TestTestTargetType::test_native_runner_asks_ninja_for_the_linked_binary`,
+  which forces `_exe_suffix()` to `.exe`; confirmed to fail against the
+  pre-fix argv construction and pass against the fix.
+- **T-003**: Was deferred out of T-002 for reviewability, then folded back in
+  once `executable_output_path()` existed: `ebuild/cli/commands.py` now calls
+  it at the `package` artifact lookup instead of `Path(build_dir) / name`.
+  Covered by
+  `tests/unit/test_package_efw.py::TestCommandPacks::test_it_finds_the_windows_suffixed_artifact`,
+  which forces `_exe_suffix()` to `.exe` so it exercises the Windows path on
+  any host, and also caught the fix's ripple effect on the suite's own
+  real-Windows host: existing `test_package_efw.py` fixtures wrote an
+  unsuffixed stand-in binary, which the fixed lookup could no longer find
+  natively (`_exe_suffix()` returns `.exe` there unforced), so those
+  fixtures now build the artifact through `executable_output_path()` too.
+- **T-004**: Third of three `build_dir / name` call sites, and the only one
+  with no diagnostic on the early-return path. `ebuild/cli/commands.py:516`
+  now uses `executable_output_path()`, and the bare `return` on a missing
+  artifact now logs at debug level, matching the function's other two early
+  exits. Covered by
+  `tests/unit/test_footprint.py::TestCLIFootprintReport::test_looks_up_the_windows_suffixed_artifact`,
+  which forces `_exe_suffix()` to `.exe` and chdirs into `tmp_path` so the
+  process cwd's own `eos.yaml`/`board.yaml`, if any, cannot change what it
+  measures; confirmed to fail against the pre-fix lookup (no report
+  emitted) and pass against the fix.
+- **Suite result** (single run, both changes present, this Windows host):
+  **560 passed, 6 skipped, exit code 0**. Supersedes any other count quoted
+  for T-003 or T-004 elsewhere in this repo or in PR #110's description.
 
 ## Completed
 
