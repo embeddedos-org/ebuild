@@ -53,7 +53,12 @@ def flash(
 
     if tool == "openocd":
         cmd.extend(["-f", f"target/{target}.cfg"])
-        cmd.extend(["-c", f"program {image_path} {hex(address)} verify reset exit"])
+        # -c's value is a single argv element, but OpenOCD re-parses it as a
+        # Tcl command line: an unquoted space in image_path splits it into
+        # extra "program" arguments instead of one filename. Tcl brace
+        # grouping keeps it one token; subprocess.run (no shell) already
+        # passes braces through literally, so this needs no other escaping.
+        cmd.extend(["-c", f"program {{{image_path}}} {hex(address)} verify reset exit"])
     elif tool == "pyocd":
         cmd.extend([str(image_path), "--target", target, "--base-address", hex(address)])
     elif tool == "nrfjprog":
