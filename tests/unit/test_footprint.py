@@ -58,9 +58,10 @@ class TestAccounting:
 
 class TestMeasure:
     @pytest.mark.skipif(
-        shutil.which("gcc") is None,
-        reason="needs gcc on PATH to build the binary under test",
+        shutil.which("gcc") is None or find_size_tool() is None,
+        reason="needs gcc and a size tool",
     )
+
     def test_measures_a_real_binary(self, tmp_path):
         src = tmp_path / "m.c"
         src.write_text("static char buf[4096];\nint main(void){return buf[0];}\n")
