@@ -10,6 +10,7 @@ locations instead of each command re-cloning into temp directories.
 
 from __future__ import annotations
 
+import copy
 import os
 import subprocess
 import warnings
@@ -70,17 +71,20 @@ class DepsManager:
         if EBUILD_CONFIG_PATH.exists():
             with open(EBUILD_CONFIG_PATH, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            # Merge missing keys from defaults
+            # Merge missing keys from defaults. Deep-copied: setup(),
+            # set_url(), set_branch() and link() mutate these nested dicts
+            # in place, and an aliased default would leak one instance's
+            # edits into DEFAULT_CONFIG for the rest of the process.
             for key, val in DEFAULT_CONFIG.items():
                 if key not in data:
-                    data[key] = val
+                    data[key] = copy.deepcopy(val)
                 elif key == "repos" and isinstance(val, dict):
                     for rname, rval in val.items():
                         if rname not in data["repos"]:
-                            data["repos"][rname] = rval
+                            data["repos"][rname] = copy.deepcopy(rval)
             return data
 
-        self._config = dict(DEFAULT_CONFIG)
+        self._config = copy.deepcopy(DEFAULT_CONFIG)
         self.save_config()
         return self._config
 
