@@ -53,11 +53,18 @@ def flash(
 
     if tool == "openocd":
         cmd.extend(["-f", f"target/{target}.cfg"])
+        image_str = str(image_path)
+        if image_str.count("{") != image_str.count("}"):
+            raise FlashError(
+                f"Image path has unbalanced braces, which OpenOCD's Tcl "
+                f"parser cannot group: {image_path}"
+            )
         # -c's value is a single argv element, but OpenOCD re-parses it as a
         # Tcl command line: an unquoted space in image_path splits it into
         # extra "program" arguments instead of one filename. Tcl brace
         # grouping keeps it one token; subprocess.run (no shell) already
-        # passes braces through literally, so this needs no other escaping.
+        # passes braces through literally, so this needs no other escaping
+        # for spaces or backslashes.
         cmd.extend(["-c", f"program {{{image_path}}} {hex(address)} verify reset exit"])
     elif tool == "pyocd":
         cmd.extend([str(image_path), "--target", target, "--base-address", hex(address)])
