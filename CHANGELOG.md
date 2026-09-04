@@ -3,6 +3,13 @@
 ## [Unreleased]
 
 ### Fixed
+- **`ebuild flash --tool openocd` split an image path containing a space into
+  extra arguments.** The path was interpolated straight into the `-c`
+  argument's `program <path> <addr> verify reset exit` string; OpenOCD's own
+  Tcl interpreter re-parses that string and splits on unescaped whitespace, so
+  `ebuild flash "my firmware.bin"` sent OpenOCD `program my` as the filename.
+  The path is now wrapped in Tcl brace-grouping (`{...}`) so OpenOCD treats it
+  as one token regardless of embedded spaces (`ebuild/firmware/flash.py`).
 - **A path containing a space produced a silently wrong `build.ninja`.** Paths
   were written into build statements unescaped, but Ninja ends the output list
   at the first unescaped `:` and splits on unescaped spaces. A build directory
