@@ -26,6 +26,7 @@ An absolute --build-dir was already unambiguous, which is why it worked.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import textwrap
 from pathlib import Path
@@ -243,7 +244,7 @@ def test_configure_and_build_from_outside_agree_on_the_build_dir(
 
 
 @pytest.mark.skipif(
-    subprocess.run(["gcc", "--version"], capture_output=True).returncode != 0,
+    shutil.which("gcc") is None,
     reason="needs a working gcc to link the executable",
 )
 def test_end_to_end_build_from_outside_produces_the_binary(tmp_path, monkeypatch):
