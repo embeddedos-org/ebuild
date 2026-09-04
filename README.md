@@ -101,16 +101,16 @@ Additional commands: `configure`, `install`, `add`, `list-packages`,
 when it printed nothing recognisable — a number inferred from a zero exit status
 is a guess presented as a measurement.
 
-Projects that declare `type: test` targets in `build.yaml` are built and run
-directly (no ctest/cargo/meson). On Windows those binaries are named
-`<target>.exe`, matching the Ninja edge; `ebuild test` now asks ninja for that
-path rather than the unsuffixed name.
-
 It also treats a run that executed **no tests** as a failure. `ctest` exits `0`
 when it finds nothing to run, and a `CMakeLists.txt` with `enable_testing()` and
 no `add_test()` still produces a `CTestTestfile.cmake` — so the runner is found,
 ctest prints `No tests were found!!!`, and trusting the exit status would report
 a green suite for a project with no tests at all.
+
+Projects that declare `type: test` targets in `build.yaml` are built and run
+directly (no ctest/cargo/meson). On Windows those binaries are named
+`<target>.exe`, matching the Ninja edge; `ebuild test` now asks ninja for that
+path rather than the unsuffixed name.
 
 ## Test
 

@@ -171,9 +171,10 @@ class TestTestTargetType:
     def test_native_runner_asks_ninja_for_the_linked_binary(self, tmp_path, monkeypatch):
         """`ebuild test` must name the same output NinjaBackend linked.
 
-        On Windows the edge is ``t_smoke.exe`` because gcc appends ``.exe``.
-        Asking ninja to build ``t_smoke`` is an unknown target, and looking
-        for the unsuffixed path then reports "built, but no binary".
+        On Windows the edge is ``t_smoke.exe`` because ``_exe_suffix()``
+        names it that way; a consumer that rebuilds the path without the
+        suffix asks ninja for an unknown target, and looking for the
+        unsuffixed path then reports "built, but no binary".
 
         ``_exe_suffix()`` is forced to ``.exe`` rather than switching on
         ``sys.platform``, so this exercises the Windows path — and fails
