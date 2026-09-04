@@ -36,7 +36,7 @@ import pytest
 from click.testing import CliRunner
 
 from ebuild.cli import commands
-from tests.conftest import gcc_is_missing
+from tests.support import gcc_is_missing
 
 
 pytestmark = pytest.mark.needs_yaml
@@ -243,7 +243,7 @@ def test_configure_and_build_from_outside_agree_on_the_build_dir(
 
 # ── end to end, with a real compiler ────────────────────────
 
-# `gcc_is_missing()` lives in tests/conftest.py, shared with
+# `gcc_is_missing()` lives in tests/support.py, shared with
 # tests/unit/test_footprint.py -- both need to know whether the host can
 # link a real binary before running a skipif against it.
 

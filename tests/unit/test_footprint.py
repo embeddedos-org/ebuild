@@ -32,7 +32,7 @@ from ebuild.build.footprint import (
     measure,
     over_budget,
 )
-from tests.conftest import gcc_is_missing
+from tests.support import gcc_is_missing
 
 
 class TestAccounting:
@@ -223,6 +223,11 @@ class TestCLIFootprintReport:
         `_exe_suffix()` is forced to `.exe` rather than switching on
         `sys.platform`, so this exercises the Windows path -- and fails
         against the pre-fix code -- on any host the suite runs on.
+
+        `_report_footprint` also reads `eos.yaml`/`board.yaml` relative to
+        the process cwd (via `_selected_board`/`_board_config`), which this
+        test does not exercise -- chdir into `tmp_path` so a real cwd
+        carrying either file cannot change what this test measures.
         """
         from types import SimpleNamespace
 
@@ -230,6 +235,7 @@ class TestCLIFootprintReport:
         from ebuild.cli import commands
         from ebuild.core.config import ProjectConfig, TargetConfig
 
+        monkeypatch.chdir(tmp_path)
         monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
         monkeypatch.setattr(
             "ebuild.build.footprint.find_size_tool",
