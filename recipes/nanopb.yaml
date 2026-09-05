@@ -1,0 +1,11 @@
+package: nanopb
+version: "0.4.9.1"
+description: "Protocol Buffers with small code size for microcontrollers"
+license: zlib
+url: https://github.com/nanopb/nanopb/archive/refs/tags/0.4.9.1.tar.gz
+checksum: sha256:4575944a468718ef25f05eb01d994364650b581563089a9841986bb1e460eac3
+build: cmake
+configure_args:
+  - -Dnanopb_BUILD_RUNTIME_ONLY=ON
+  - -DBUILD_STATIC_LIBS=ON
+dependencies: []

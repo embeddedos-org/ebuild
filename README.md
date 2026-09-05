@@ -91,10 +91,10 @@ that each package's own build may already run parallel compile jobs, so a large
 [docs/dependency-management.md](docs/dependency-management.md#parallel-package-builds).
 
 Additional commands: `configure`, `install`, `add`, `list-packages`,
-`pipeline`, `system`, `firmware`, `flash`, `new`, `generate-project`,
-`generate-board`, `generate-boot`, `analyze`, `setup`, and the `repos` group
-(`status`, `update`, `set-url`, `set-branch`, `link`, `unlink`). Run
-`ebuild --help` for the full list.
+`search`, `update-index`, `pipeline`, `system`, `firmware`, `flash`, `new`,
+`generate-project`, `generate-board`, `generate-boot`, `analyze`, `setup`,
+and the `repos` group (`status`, `update`, `set-url`, `set-branch`, `link`,
+`unlink`). Run `ebuild --help` for the full list.
 
 
 `ebuild test` reports the counts the underlying runner printed, and reports none

@@ -272,3 +272,100 @@ poles without thrashing; going much higher mostly adds memory pressure.
 Parallel builds also interleave package log lines. Output from each package is
 written atomically, but the packages themselves are no longer contiguous —
 use `-j 1` when reading a build log closely.
+
+---
+
+## Remote Package Index & Discovery
+
+ebuild provides index-based package discovery and remote recipe synchronization, allowing embedded projects to discover, query, and install external libraries seamlessly.
+
+### Discovering Packages (`ebuild search`)
+
+Search across local project recipes (`./recipes/`), bundled system recipes, and cached remote repository indices:
+
+```bash
+ebuild search json                 # Search by keyword in name, description, or license
+ebuild search --all                # List all available packages across all sources
+ebuild search --json               # Output machine-readable JSON array
+ebuild search --build-system cmake # Filter by build system (cmake, make, meson)
+ebuild search --license MIT        # Filter by license type
+```
+
+Example output:
+
+```
+=== ebuild - Package Search ===
+[info] Found 10 package(s):
+   cjson v1.7.18 [cmake] (MIT) - Ultralightweight JSON parser in ANSI C
+   freertos v11.1.0 [cmake] (MIT) - Real-time operating system kernel for embedded devices
+   littlefs v2.9.3 [make] (BSD-3-Clause) - Little fail-safe filesystem designed for microcontrollers
+   lvgl v9.2.2 [cmake] (MIT) - Light and Versatile Embedded Graphics Library
+   lwip v2.2.0 [cmake] (BSD-3-Clause) - Lightweight TCP/IP stack for embedded systems
+   mbedtls v3.6.0 [cmake] (Apache-2.0) - Lightweight TLS/SSL library for embedded systems
+   nanopb v0.4.9.1 [cmake] (zlib) - Protocol Buffers with small code size for microcontrollers
+   tinyusb v0.18.0 [cmake] (MIT) - Open-source cross-platform USB host/device stack for embedded system
+   unity v2.6.1 [cmake] (MIT) - Simple Unit Testing for C
+   zlib v1.3.1 [cmake] (Zlib) - General-purpose lossless data compression library
+```
+
+### Synchronizing Remote Index (`ebuild update-index`)
+
+Refresh the local package index and cached recipe definitions from a remote repository mirror:
+
+```bash
+ebuild update-index --url https://example.com/recipes/index.json  # Remote repository URL (HTTPS required)
+ebuild update-index --url https://example.com/recipes/index.json --force  # Bypass 24h cache TTL and re-download
+ebuild update-index --offline                   # Use local cached index without network
+```
+
+> [!WARNING]
+> **Index Authenticity & Provenance Notice (Unauthenticated Index)**:
+> Remote package index synchronization validates transport encryption (HTTPS only) and verifies individual package archive bytes against stated SHA-256 checksums. However, the index document itself is currently **unauthenticated** (detached cryptographic signature verification and package provenance proof are not yet implemented).
+>
+> In accordance with reproducible build guarantees (§9.2), recipe discovery enforces a strict 3-tier source-ranked precedence hierarchy:
+> 1. **Project-Local Recipes** (`./recipes/`): Absolute highest priority; project pins always override upstream.
+> 2. **Shipped Catalog Recipes** (`<ebuild>/recipes/`): Built-in verified recipes shipped with ebuild.
+> 3. **Cached Remote Index** (`~/.ebuild/index/recipes/`): Definitions synchronized from remote repositories.
+>
+> An index update will never override pinned URLs, build systems, or checksums defined in your project repository.
+>
+> Furthermore, `ebuild update-index` automatically prunes stale cached `.yaml` and `.yml` recipes from `~/.ebuild/index/recipes/` that are absent from the updated remote index, preventing retired packages from lingering in the local cache.
+>
+> To support integrity verification, the SHA-256 digest of the downloaded index is recorded in `~/.ebuild/index/packages.json.sha256`.
+
+### Component Contract (§10.1) Field Coverage
+
+eBuild recipes currently carry a subset of the Master Design §10.1 component contract:
+- **Identity**: Package name, version, and optional description.
+- **Dependencies**: List of external library package dependencies.
+- **Compliance**: Package open-source license identifier.
+- **Integrity**: Transport SHA-256 checksum pin for downloaded tarballs.
+
+*Deferred Contract Fields*: Compatibility constraints (EmbeddedOS ABI/API version, architecture, and SoC targets) and Resource constraints (`flash_max`, `ram_max`) are not yet evaluated by the registry layer and must be validated at project build configuration time.
+
+### Shipped Embedded Library Catalog
+
+ebuild includes a curated suite of pre-packaged recipes under `recipes/`:
+
+| Package | Version | Build System | License | Description |
+|:---|:---|:---|:---|:---|
+| **`cjson`** | 1.7.18 | CMake | MIT | Ultralightweight JSON parser in ANSI C |
+| **`freertos`** | 11.1.0 | CMake | MIT | Real-time operating system kernel for embedded devices |
+| **`littlefs`** | 2.9.3 | Make | BSD-3-Clause | Fail-safe power-resilient filesystem for microcontrollers |
+| **`lvgl`** | 9.2.2 | CMake | MIT | Light and Versatile Embedded Graphics Library |
+| **`lwip`** | 2.2.0 | CMake | BSD-3-Clause | Lightweight TCP/IP stack for embedded targets |
+| **`mbedtls`** | 3.6.0 | CMake | Apache-2.0 | Cryptographic primitives, TLS/SSL stack |
+| **`nanopb`** | 0.4.9.1 | CMake | zlib | Memory-efficient Protocol Buffers implementation |
+| **`tinyusb`** | 0.18.0 | CMake | MIT | Cross-platform USB host/device stack |
+| **`unity`** | 2.6.1 | CMake | MIT | Standard embedded C unit testing framework |
+| **`zlib`** | 1.3.1 | CMake | Zlib | General-purpose lossless data compression |
+
+### Offline & Air-Gapped Operation
+
+For isolated CI/CD pipelines and field deployments:
+- Set environment variable `EBUILD_OFFLINE=1` or pass `--offline` to `ebuild update-index` to use cached remote indices without attempting network synchronization.
+- Note: Package archive source fetching (`ebuild build`) currently verifies archive integrity against pinned SHA-256 checksums but is not yet gated by the `--offline` flag.
+- ebuild automatically searches local directories first and gracefully falls back to cached indices in `~/.ebuild/index/` if the network is unreachable.
+- All downloads are validated against SHA-256 integrity pins before extraction.
+
+

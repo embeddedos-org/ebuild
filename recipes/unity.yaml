@@ -1,0 +1,11 @@
+package: unity
+version: "2.6.1"
+description: "Simple Unit Testing for C"
+license: MIT
+url: https://github.com/ThrowTheSwitch/Unity/archive/refs/tags/v2.6.1.tar.gz
+checksum: sha256:b41a66d45a6b99758fb3202ace6178177014d52fc524bf1f72687d93e9867292
+build: cmake
+configure_args:
+  - -DUNITY_EXTENSION_FIXTURE=OFF
+  - -DUNITY_EXTENSION_MEMORY=OFF
+dependencies: []

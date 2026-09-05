@@ -7,74 +7,82 @@
 ```mermaid
 graph TD
     subgraph CLI["ebuild CLI (Python)"]
-        CMD[cli/commands.py<br>18 commands]
+        CMD["cli/commands.py<br/>CLI Commands"]
     end
 
     subgraph BUILD["Build Orchestrator"]
-        ORCH[build/orchestrator.py]
-        NINJA[build/ninja_backend.py]
-        TC[build/toolchain.py<br>5 predefined toolchains]
+        ORCH["build/dispatch.py<br/>Backend Dispatcher"]
+        NINJA["build/ninja_backend.py<br/>Ninja Backend"]
+        TC["build/toolchain.py<br/>5 Predefined Toolchains"]
     end
 
     subgraph PACKAGES["Package Pipeline"]
-        RECIPE[packages/recipe.py]
-        REG[packages/registry.py]
-        RESOLVE[packages/resolver.py]
-        FETCH[packages/fetcher.py]
-        BUILDER[packages/builder.py]
-        CACHE[packages/cache.py]
-        LOCK[packages/lockfile.py]
-        REPO[packages/repository.py<br>Remote index]
-        PROFILES[packages/profiles.py<br>Build profiles]
+        SYNC["packages/index_sync.py<br/>Remote Index Sync"]
+        REPO["packages/repository.py<br/>Package Discovery"]
+        RECIPE["packages/recipe.py<br/>Recipe Schema"]
+        REG["packages/registry.py<br/>Package Registry"]
+        RESOLVE["packages/resolver.py<br/>Dependency Resolver"]
+        FETCH["packages/fetcher.py<br/>Package Fetcher"]
+        BUILDER["packages/builder.py<br/>Package Builder"]
+        CACHE["packages/cache.py<br/>Build Cache"]
+        LOCK["packages/lockfile.py<br/>Lockfile"]
+        PROFILES["packages/profiles.py<br/>Build Profiles"]
     end
 
     subgraph HWAI["Hardware AI"]
-        ANALYZER[eos_ai/eos_hw_analyzer.py<br>MCU database + peripheral detection]
-        PROJGEN[eos_ai/eos_project_generator.py<br>Manifest + project scaffolding]
+        ANALYZER["eos_ai/eos_hw_analyzer.py<br/>MCU & Peripheral Analysis"]
+        PROJGEN["eos_ai/eos_project_generator.py<br/>Project & Config Generator"]
     end
 
-    subgraph CORE["Core Components (always built)"]
-        EOS[core/eos/<br>HAL, Kernel, Crypto, OTA, Drivers]
-        EBOOT[core/eboot/<br>Bootloader, 26 board ports]
+    subgraph CORE["Core Components (Native)"]
+        EOS["core/eos/<br/>HAL, Kernel, Crypto, Drivers"]
+        EBOOT["core/eboot/<br/>Bootloader, 26 Board Ports"]
     end
 
-    subgraph LAYERS["Optional Layers (--with flag)"]
-        EAI[layers/eai/<br>AI inference + LLM models]
-        ENI[layers/eni/<br>Neural interface]
-        EIPC[layers/eipc/<br>Secure IPC (Go + C)]
-        EOSUITE[layers/eosuite/<br>Dev tools + GUI apps]
+    subgraph LAYERS["Optional Platform Layers"]
+        EAI["layers/eai/<br/>AI & Embedded Inference"]
+        ENI["layers/eni/<br/>Neural Interface"]
+        EIPC["layers/eipc/<br/>Secure IPC SDK"]
+        EOSUITE["layers/eosuite/<br/>Developer Tools"]
     end
 
     subgraph HW["Hardware Intake"]
-        BOARD[hardware/board/<br>KiCad, Eagle, YAML, BOM]
-        SOC[hardware/soc/<br>Datasheets, TRMs]
-        BOOT[hardware/boot/<br>Image layout, boot flow]
-        SW[hardware/software/<br>Device trees, linker scripts]
+        BOARD["hardware/board/<br/>KiCad, Eagle, YAML, BOM"]
+        SOC["hardware/soc/<br/>Datasheets, TRMs"]
+        BOOT["hardware/boot/<br/>Image Layout, Boot Flow"]
+        SW["hardware/software/<br/>Device Trees, Linker Scripts"]
     end
 
     subgraph SDK_OUT["SDK Output"]
-        SDKGEN[sdk_generator.py]
-        SDKAPI[sdk/include/<br>Header-only API]
+        SDKGEN["sdk_generator.py"]
+        SDKAPI["sdk/include/<br/>Header-only API"]
     end
 
     subgraph TEMPLATES["Project Templates"]
-        T1[bare-metal]
-        T2[rtos-app]
-        T3[linux-app]
-        T4[safety-critical]
-        T5[secure-boot]
-        T6[ble-sensor]
+        T1["bare-metal"]
+        T2["rtos-app"]
+        T3["linux-app"]
+        T4["safety-critical"]
+        T5["secure-boot"]
+        T6["ble-sensor"]
     end
 
     CMD --> ORCH
     CMD --> SDKGEN
     CMD --> ANALYZER
     CMD --> PROJGEN
+    CMD --> SYNC
+    CMD --> REPO
+
+    SYNC --> REPO
+    REPO --> REG
 
     ORCH --> NINJA
     ORCH --> TC
-    ORCH --> CORE
-    ORCH --> LAYERS
+    ORCH --> EOS
+    ORCH --> EBOOT
+    ORCH --> EAI
+    ORCH --> EIPC
 
     ORCH --> RECIPE
     RECIPE --> REG
@@ -83,16 +91,24 @@ graph TD
     FETCH --> BUILDER
     BUILDER --> CACHE
     RESOLVE --> LOCK
-    REG --> REPO
 
-    HW --> ANALYZER
+    BOARD --> ANALYZER
+    SOC --> ANALYZER
+    BOOT --> ANALYZER
+    SW --> ANALYZER
+
     ANALYZER --> PROJGEN
-    PROJGEN --> TEMPLATES
-    PROJGEN --> CORE
+    PROJGEN --> T1
+    PROJGEN --> T2
+    PROJGEN --> T3
+    PROJGEN --> EOS
     PROJGEN --> EBOOT
 
-    TC -->|cmake| CORE
-    TC -->|cmake| LAYERS
+    TC -->|cmake| EOS
+    TC -->|cmake| EAI
+    TC -->|cmake| EIPC
+
+    SDKGEN --> SDKAPI
 ```
 
 ## Subsystem Details
@@ -157,14 +173,15 @@ recipe.yaml → Registry → Resolver → Fetcher → Builder → Cache
 ```
 
 1. **Recipe** (`recipe.py`) — YAML schema defining package name, version, URL, checksum, build system, dependencies
-2. **Registry** (`registry.py`) — scans recipe directories and indexes available packages
-3. **Repository** (`repository.py`) — remote package index for discovery and search
-4. **Resolver** (`resolver.py`) — dependency resolution with version constraint solving
-5. **Fetcher** (`fetcher.py`) — downloads and verifies source archives
-6. **Builder** (`builder.py`) — builds packages using the specified build system
-7. **Cache** (`cache.py`) — caches built artifacts to avoid rebuilding
-8. **Lockfile** (`lockfile.py`) — records exact resolved versions for reproducibility
-9. **Profiles** (`profiles.py`) — composable build profiles (minimal, standard, full, custom)
+2. **Registry** (`registry.py`) — scans recipe directories (local, system, and cached remote) and indexes available packages
+3. **Index Sync** (`index_sync.py`) — downloads, validates, and manages remote package repository indices and recipe caches (`~/.ebuild/index/`) with offline fallback
+4. **Repository** (`repository.py`) — unified package discovery and multi-source search engine (`ebuild search`)
+5. **Resolver** (`resolver.py`) — dependency resolution with version constraint solving
+6. **Fetcher** (`fetcher.py`) — downloads and verifies source archives against SHA-256 integrity pins
+7. **Builder** (`builder.py`) — builds packages using the specified build system (CMake, Make, Meson, autoconf)
+8. **Cache** (`cache.py`) — caches built artifacts to avoid rebuilding
+9. **Lockfile** (`lockfile.py`) — records exact resolved versions for reproducibility
+10. **Profiles** (`profiles.py`) — composable build profiles (minimal, standard, full, custom)
 
 ### Hardware AI (`ebuild/eos_ai/`)
 

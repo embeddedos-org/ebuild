@@ -1,0 +1,11 @@
+package: lvgl
+version: "9.2.2"
+description: "Light and Versatile Embedded Graphics Library"
+license: MIT
+url: https://github.com/lvgl/lvgl/archive/refs/tags/v9.2.2.tar.gz
+checksum: sha256:129b4e00e06639fa79d7e8a6cab3c1ecce2445b1a246652ccd34f22e7b17ad6f
+build: cmake
+configure_args:
+  - -DLV_CONF_BUILD_DISABLE_EXAMPLES=ON
+  - -DLV_CONF_BUILD_DISABLE_DEMOS=ON
+dependencies: []
