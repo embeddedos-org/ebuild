@@ -4,7 +4,18 @@ on:
   push:
     tags:
       - "v*.*.*"
+      # -rc.N and friends. .github/STANDARDS.md names -rc.N as the org's only
+      # recognised pre-release suffix, and the release job below handles them
+      # explicitly (--prerelease). Without this pattern no pre-release tag
+      # starts the workflow at all.
       - "v*.*.*-*"
+  # This workflow's only trigger was a version tag, so the first execution of
+  # any change to it was a real release -- an uncomfortable place to be for a
+  # path whose last 15 runs all failed. workflow_dispatch lets a maintainer
+  # run validate + cibuildwheel + cross-compile on demand and watch the wheels
+  # land as artifacts, without spending a tag. The publishing jobs stay gated
+  # on a tag push (see their `if:`), so a manual run can never publish.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -35,7 +46,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, ubuntu-22.04-arm, windows-latest, macos-13, macos-14]
+        # macos-13 is retired: jobs requesting it are never assigned a runner
+        # and sit queued until GitHub kills them at 24h. Every release run this
+        # repository has ever had ended that way -- six tags, six 1d failures,
+        # with Publish to PyPI skipped each time because it needs this job.
+        # ci.yml moved off it already; this workflow did not.
+        #
+        # Dropped rather than swapped: macos-14 builds both architectures via
+        # macos-14. No per-architecture wheels are lost by that: ebuild is
+        # pure Python -- pyproject.toml declares setuptools.build_meta with no
+        # ext-modules, no cmdclass and no setup.py -- so the Build wheels step
+        # below selects `python -m build` on every leg, and all four produce
+        # the same ebuild-X.Y.Z-py3-none-any.whl that download-artifact then
+        # merges back into one. macos-13's wheels were that same universal
+        # file.
+        os: [ubuntu-latest, ubuntu-22.04-arm, windows-latest, macos-14]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,15 +68,48 @@ jobs:
           python-version: "3.12"
       - name: Install cibuildwheel
         run: pip install cibuildwheel==2.21.3
+      # shell: bash -- the matrix includes windows-latest, where the default
+      # shell is PowerShell and the trailing-backslash continuations below are
+      # a syntax error, so the step failed outright there. That is the other
+      # half of why no release has ever published.
+      #
+      # The builder is chosen, not attempted-and-caught. This step used to be
+      #     python -m cibuildwheel ... || (warn && python -m build --wheel)
+      # which is a fail-open build: it does not merely swallow the failure, it
+      # substitutes a *different artefact* and reports success. Today that
+      # fires on every leg by design, because ebuild is pure Python -- so the
+      # step's name has never meant what it says. The day a C extension lands,
+      # a genuine platform-specific compile failure on, say, Windows would
+      # have quietly published a pure-Python wheel in its place, and
+      # `skip-existing: true` on the publish step means it would not even
+      # collide with anything.
       - name: Build wheels
+        shell: bash
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-*"
           CIBW_SKIP: "*-musllinux_*"
         run: |
-          python -m cibuildwheel --output-dir wheelhouse || \
-            (echo "::warning::cibuildwheel failed (likely no C-extension); building pure-Python wheel" && \
-             pip install build && \
-             python -m build --wheel --outdir wheelhouse)
+          set -euo pipefail
+          # Does this project actually build a C extension? cibuildwheel is
+          # the right tool only if it does.
+          if python - <<'EOF'
+          import sys, pathlib, tomllib
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text())
+          has_ext = bool(
+              data.get("tool", {}).get("setuptools", {}).get("ext-modules")
+              or data.get("tool", {}).get("setuptools", {}).get("cmdclass")
+              or pathlib.Path("setup.py").exists()
+          )
+          sys.exit(0 if has_ext else 1)
+          EOF
+          then
+            echo "C extension detected: building platform wheels with cibuildwheel"
+            python -m cibuildwheel --output-dir wheelhouse
+          else
+            echo "Pure Python: building one universal wheel with python -m build"
+            pip install build
+            python -m build --wheel --outdir wheelhouse
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}
@@ -116,6 +174,10 @@ jobs:
     name: Publish to PyPI (OIDC)
     runs-on: ubuntu-latest
     needs: [validate, cibuildwheel]
+    # Publishing happens only for a real tag push. A workflow_dispatch run
+    # builds and uploads artifacts so the path can be exercised, and stops
+    # short of releasing anything.
+    if: github.event_name == 'push'
     permissions:
       id-token: write
       contents: read
@@ -136,9 +198,21 @@ jobs:
           merge-multiple: true
       - name: Stage dist
         run: |
+          set -euo pipefail
           mkdir -p dist
           find dist -mindepth 1 -delete
-          mv wheelhouse/*.whl dist/ 2>/dev/null || true
+          # `2>/dev/null || true` here meant that if no wheel was downloaded --
+          # every cibuildwheel leg red, the artifact upload skipped, the glob
+          # matching nothing -- dist/ ended up holding the sdist alone and
+          # PyPI was published with no wheels at all, silently. A release that
+          # ships less than it was asked to must fail, not publish.
+          shopt -s nullglob
+          wheels=(wheelhouse/*.whl)
+          if [ ${#wheels[@]} -eq 0 ]; then
+            echo "::error::no wheels were staged; refusing to publish a partial release"
+            exit 1
+          fi
+          mv "${wheels[@]}" dist/
           ls -lh dist/
       - name: Publish to PyPI (trusted publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -149,6 +223,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-latest
     needs: [validate, cibuildwheel, pypi]
+    if: github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
         with:
