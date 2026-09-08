@@ -30,3 +30,22 @@ ebuild = "ebuild.cli.commands:cli"
 
 [tool.setuptools.packages.find]
 include = ["ebuild*"]
+
+[tool.ruff]
+exclude = [
+    ".venv",
+    "core",
+    "layers/eosuite",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line too long
+    "E731",  # lambda assignment
+    "E741",  # ambiguous variable name
+    "F403",  # star import used (manim requires it in promo/)
+    "F405",  # name may be undefined from a star import
+    "F541",  # f-string without placeholders
+    "F841",  # unused local variable
+]
