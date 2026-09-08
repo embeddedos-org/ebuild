@@ -153,6 +153,10 @@ def _parse_recipe(
     return recipe
 
 
+# Alias for backward compatibility
+_parse_recipe = parse_recipe
+
+
 def load_recipe(recipe_path: str | Path) -> PackageRecipe:
     """Load a package recipe from a YAML file.
 

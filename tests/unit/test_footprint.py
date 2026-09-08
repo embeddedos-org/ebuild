@@ -15,6 +15,7 @@ the two tools disagree about what "flash" means:
 """
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -55,9 +56,16 @@ class TestAccounting:
         assert fp.flash == 100
         assert fp.ram == 8192
 
-
 class TestMeasure:
+    @pytest.mark.skipif(
+        shutil.which("gcc") is None or find_size_tool() is None,
+        reason="needs gcc and a size tool",
+    )
+
     def test_measures_a_real_binary(self, tmp_path):
+        if shutil.which("gcc") is None:
+            pytest.skip("needs a working gcc to compile the test binary")
+
         src = tmp_path / "m.c"
         src.write_text("static char buf[4096];\nint main(void){return buf[0];}\n")
         # gcc on Windows appends .exe when -o names no extension, so the

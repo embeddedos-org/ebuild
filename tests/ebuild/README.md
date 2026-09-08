@@ -90,7 +90,7 @@ Requires `../eos` and `../eboot` checked out alongside `ebuild`.
 | `TestEbuildMCUDatabase` | 7 | `MCU_DATABASE` entries: tms570/tms570lc/rm57 (`cortex-r5f`), rm46/rz_t1 (`cortex-r4f`), text detection roundtrip |
 | `TestEbuildCLIBoardMap` | 6 | `commands.py` `board_map`: tms570 with `arm`/`cortex-r5f`/`arm-none-eabi`/`ti`, am64x hybrid |
 | `TestEbuildPredefinedToolchains` | 3 | `toolchain.py` `PREDEFINED_TOOLCHAINS`: `arm-none-eabi` entry with correct prefix and arch |
-| `TestEbuildProjectGenerator` | 4 | `eos_project_generator.py`: `MCU_TO_EBOOT_BOARD` (tms570/rm57/rm46 → `cortex_r5`), `ARCH_TO_TOOLCHAIN` (`arm-cortex-r` → `arm-none-eabi-r5.yaml`) |
+| `TestEbuildProjectGenerator` | 4 | `ebuild/sdk_generator.py`: `MCU_TO_EBOOT_BOARD` (tms570/rm57/rm46 → `cortex_r5`), `ARCH_TO_TOOLCHAIN` (`arm-cortex-r` → `arm-none-eabi-r5.yaml`) |
 
 #### End-to-End (10 tests)
 

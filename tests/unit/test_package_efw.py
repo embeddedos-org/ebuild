@@ -29,7 +29,6 @@ from ebuild.build.firmware_image import (
     find_efwtool,
     missing_tool_message,
     pack,
-    verify,
 )
 from ebuild.cli.commands import cli
 
