@@ -28,6 +28,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import shutil
 import textwrap
 from pathlib import Path
 from types import SimpleNamespace
@@ -244,8 +245,8 @@ def test_configure_and_build_from_outside_agree_on_the_build_dir(
 
 
 @pytest.mark.skipif(
-    shutil.which("gcc") is None,
-    reason="needs gcc on PATH to link the executable",
+   shutil.which("gcc") is None,
+    reason="needs a working gcc to link the executable",
 )
 def test_end_to_end_build_from_outside_produces_the_binary(tmp_path, monkeypatch):
     """No stubs: the real ninja run must produce the real executable."""
