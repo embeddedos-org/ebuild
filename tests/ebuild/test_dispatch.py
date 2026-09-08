@@ -4,13 +4,11 @@
 """Tests for ebuild.build.dispatch — backend detection, dispatch, dry-run."""
 
 import logging
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
 from ebuild.build.dispatch import (
-    ALL_BACKENDS,
     BackendDispatcher,
     BackendError,
     UnknownBackendError,
@@ -204,6 +202,7 @@ class TestUnknownBackendError:
         d = BackendDispatcher(tmp_path, tmp_path / "build")
         with pytest.raises(UnknownBackendError, match="ninja"):
             d.configure("ninja")
+        assert not (tmp_path / "build").exists()
 
     def test_ninja_error_explains_the_targets_requirement(self, tmp_path):
         """The message must be actionable, not just a rejection."""
@@ -227,8 +226,10 @@ class TestUnknownBackendError:
         d = BackendDispatcher(tmp_path, tmp_path / "build")
         d.clean("ninja", dry_run=True)  # must not raise
 
-    def test_no_configure_step_backends_stay_noops(self, tmp_path):
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_no_configure_step_backends_stay_noops(self, mock_sub, tmp_path):
         """cargo/make/kbuild are accepted-and-skipped, not errors."""
         d = BackendDispatcher(tmp_path, tmp_path / "build")
         for backend in ("cargo", "make", "kbuild"):
-            d.configure(backend)  # must not raise
+            d.configure(backend)
+        mock_sub.run.assert_not_called()

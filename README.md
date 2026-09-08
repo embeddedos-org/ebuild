@@ -91,10 +91,10 @@ that each package's own build may already run parallel compile jobs, so a large
 [docs/dependency-management.md](docs/dependency-management.md#parallel-package-builds).
 
 Additional commands: `configure`, `install`, `add`, `list-packages`,
-`pipeline`, `system`, `firmware`, `flash`, `new`, `generate-project`,
-`generate-board`, `generate-boot`, `analyze`, `setup`, and the `repos` group
-(`status`, `update`, `set-url`, `set-branch`, `link`, `unlink`). Run
-`ebuild --help` for the full list.
+`search`, `update-index`, `pipeline`, `system`, `firmware`, `flash`, `new`,
+`generate-project`, `generate-board`, `generate-boot`, `analyze`, `setup`,
+and the `repos` group (`status`, `update`, `set-url`, `set-branch`, `link`,
+`unlink`). Run `ebuild --help` for the full list.
 
 
 `ebuild test` reports the counts the underlying runner printed, and reports none
@@ -106,6 +106,11 @@ when it finds nothing to run, and a `CMakeLists.txt` with `enable_testing()` and
 no `add_test()` still produces a `CTestTestfile.cmake` — so the runner is found,
 ctest prints `No tests were found!!!`, and trusting the exit status would report
 a green suite for a project with no tests at all.
+
+Projects that declare `type: test` targets in `build.yaml` are built and run
+directly (no ctest/cargo/meson). On Windows those binaries are named
+`<target>.exe`, matching the Ninja edge; `ebuild test` now asks ninja for that
+path rather than the unsuffixed name.
 
 ## Test
 

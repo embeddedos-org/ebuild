@@ -25,6 +25,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
+from ebuild.sdk_generator import MCU_TO_EBOOT_BOARD as _MCU_TO_EBOOT_BOARD
+from ebuild.sdk_generator import board_dir_for_mcu
 
 # Default GitHub URLs for eos and eboot repositories
 DEFAULT_EOS_REPO_URL = "https://github.com/spatchava/eos.git"
@@ -96,166 +98,9 @@ class EosProjectGenerator:
         "sensor": ["services/sensor"],
     }
 
-    # Map MCU family → matching eboot board directory name
-    MCU_TO_EBOOT_BOARD: Dict[str, str] = {
-        # ARM Cortex-M/A (modern)
-        "stm32f4": "stm32f4",
-        "stm32h7": "stm32h7",
-        "stm32h743": "stm32h7",
-        "stm32mp1": "stm32mp1",
-        "nrf52": "nrf52",
-        "nrf52840": "nrf52",
-        "rpi4": "rpi4",
-        "rpi": "rpi4",
-        "raspberrypi": "rpi4",
-        "bcm2711": "rpi4",
-        "riscv64_virt": "riscv64_virt",
-        "esp32": "esp32",
-        "x86_64_efi": "x86_64_efi",
-        "imx8m": "imx8m",
-        "am64x": "am64x",
-        "am6442": "am64x",
-        "samd51": "samd51",
-        "sifive_u": "sifive_u",
-        "sifive": "sifive_u",
-        "fu740": "sifive_u",
-        "qemu_arm64": "qemu_arm64",
-        "qemuarm64": "qemu_arm64",
-        "tms570": "cortex_r5",
-        "rm57": "cortex_r5",
-        "rm46": "cortex_r5",
-        # Intel StrongARM
-        "sa110": "strongarm",
-        "sa1100": "strongarm",
-        "sa1110": "strongarm",
-        # Intel XScale
-        "pxa250": "xscale",
-        "pxa255": "xscale",
-        "pxa270": "xscale",
-        "ixp420": "xscale",
-        "ixp425": "xscale",
-        "ixp465": "xscale",
-        # Fujitsu FR-V
-        "fr400": "frv",
-        "fr450": "frv",
-        "fr500": "frv",
-        "fr550": "frv",
-        "mb93091": "frv",
-        "mb93493": "frv",
-        # Hitachi/Renesas SuperH
-        "sh7604": "sh4",
-        "sh7091": "sh4",
-        "sh7750": "sh4",
-        "sh7751": "sh4",
-        "sh7709": "sh4",
-        "sh7710": "sh4",
-        "sh7203": "sh4",
-        "sh7206": "sh4",
-        # Hitachi/Renesas H8/300H
-        "h8300h": "h8300",
-        "h8s2148": "h8300",
-        "h8s2368": "h8300",
-        "h83048": "h8300",
-        "h83069": "h8300",
-        # Intel x86
-        "i386": "x86",
-        "i486": "x86",
-        "pentium": "x86",
-        "atom": "x86",
-        "quark": "x86",
-        # MIPS
-        "mips32": "mips",
-        "mips64": "mips",
-        "mips24k": "mips",
-        "mips34k": "mips",
-        "pic32": "mips",
-        "jz4740": "mips",
-        "ar9331": "mips",
-        # Matsushita/Panasonic AM3x
-        "mn1030": "mn103",
-        "mn103s": "mn103",
-        "am33": "mn103",
-        "am34": "mn103",
-        # Motorola/NXP PowerPC
-        "mpc8xx": "powerpc",
-        "mpc5200": "powerpc",
-        "mpc5554": "powerpc",
-        "mpc8260": "powerpc",
-        "mpc8540": "powerpc",
-        "p1020": "powerpc",
-        "p2020": "powerpc",
-        "t1040": "powerpc",
-        "ppc440": "powerpc",
-        "ppc405": "powerpc",
-        # Motorola 68k / ColdFire
-        "mc68000": "m68k",
-        "mc68020": "m68k",
-        "mc68030": "m68k",
-        "mc68040": "m68k",
-        "mc68060": "m68k",
-        "mcf5206": "m68k",
-        "mcf5272": "m68k",
-        "mcf5307": "m68k",
-        "mcf5407": "m68k",
-        "mcf5475": "m68k",
-        "mcf5282": "m68k",
-        "mcf52235": "m68k",
-        "mcf54418": "m68k",
-        # NEC/Renesas V850
-        "v850": "v850",
-        "v850e": "v850",
-        "v850e2": "v850",
-        "v850es": "v850",
-        "upd70f3002": "v850",
-        "rh850": "v850",
-        # Sun/Oracle SPARC
-        "sparc": "sparc",
-        "leon3": "sparc",
-        "leon4": "sparc",
-        "ut699": "sparc",
-        "gr712rc": "sparc",
-        "erc32": "sparc",
-        "ultrasparc": "sparc",
-        # --- TI ---
-        "msp430": "msp430",
-        "tms320f28": "c28x",
-        "tms320c67": "c6000",
-        "am335x_pru": "pru",
-        # --- Renesas + Infineon ---
-        "rl78": "rl78",
-        "rx65": "rx",
-        "rx72": "rx",
-        "tc397": "tricore",
-        "tc375": "tricore",
-        "xc2267": "c166",
-        # --- FPGA ---
-        "microblaze": "microblaze",
-        "nios2": "nios2",
-        "mor1kx": "openrisc",
-        "lm32": "lm32",
-        # --- DSP ---
-        "adsp_bf": "blackfin",
-        "adsp_21": "sharc",
-        "sdm845": "hexagon",
-        "ceva_xm": "ceva",
-        "hifi5": "xtensa_hifi",
-        # --- Misc ---
-        "arc_em": "arc",
-        "stc89": "8051",
-        "efm8": "8051",
-        "esp32c3": "esp32c3",
-        "esp32s3": "esp32s3",
-        # --- Server/exotic ---
-        "ultrasparc_t": "sparc64",
-        "power9": "ppc64",
-        "loongson": "loongarch",
-        "pa87": "parisc",
-        "itanium": "ia64",
-        "alpha21": "alpha",
-        "ibm_z": "s390",
-        "etrax": "cris",
-        "csr8675": "kalimba",
-    }
+    # MCU family -> eboot board dir table lives in ebuild.sdk_generator (Tier-1);
+    # this alias keeps the Tier-3 consumer depending down, not up.
+    MCU_TO_EBOOT_BOARD = _MCU_TO_EBOOT_BOARD
 
     # eboot core files that are always needed
     EBOOT_CORE_ALWAYS: List[str] = [
@@ -818,12 +663,8 @@ class EosProjectGenerator:
         return "rtos"
 
     def _resolve_eboot_board(self, profile: HardwareProfile) -> str:
-        """Map MCU → eboot board directory name."""
-        mcu = (profile.mcu or "").lower()
-        for prefix, board in self.MCU_TO_EBOOT_BOARD.items():
-            if mcu.startswith(prefix):
-                return board
-        return ""
+        """Map MCU → eboot board directory name (longest prefix wins)."""
+        return board_dir_for_mcu(profile.mcu) or ""
 
     def _resolve_eos_board(self, profile: HardwareProfile) -> str:
         """Map MCU family → eos board YAML filename."""

@@ -18,7 +18,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 
@@ -36,7 +36,7 @@ REPOS = {
     "eipc":  {"cmake_flag": "",                          "lang": "go", "sdk_subdir": "sdk/c"},
 }
 
-QEMU_ARCHS = {
+QEMU_ARCHS: Dict[str, Dict[str, Any]] = {
     "x86_64": {
         "bin": "qemu-system-x86_64",
         "args": ["-machine", "q35", "-cpu", "qemu64", "-m", "512",
@@ -138,7 +138,7 @@ def _cmake_build(repo_dir: Path, build_dir: Path, extra_flags: str,
 
 def _collect_libraries(build_dir: Path, repos: Dict[str, Path]) -> List[Path]:
     """Find all .a static libraries produced by the builds."""
-    libs = []
+    libs: List[Path] = []
     for name in repos:
         repo_build = build_dir / name
         if repo_build.exists():
@@ -294,7 +294,7 @@ def _create_initramfs(rootfs: Path, build_dir: Path) -> Path:
 
     initramfs = build_dir / "initramfs.cpio.gz"
     entries = [rootfs, *sorted(rootfs.rglob("*"), key=lambda p: p.as_posix())]
-    hardlink_inodes = {}
+    hardlink_inodes: Dict[Optional[Tuple[int, int]], int] = {}
     hardlink_data_written = set()
     next_inode = 1
 
@@ -611,7 +611,7 @@ def register_commands(cli_group: click.Group) -> None:
         eBoot board config for the specified hardware target.
         """
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from ebuild.sdk_generator import generate_sdk, list_targets as do_list
+        from ebuild.sdk_generator import TARGET_ARCH, generate_sdk, list_targets as do_list
 
         if list_targets:
             do_list()
@@ -621,6 +621,14 @@ def register_commands(cli_group: click.Group) -> None:
         log.info("Target: " + target)
         log.info("Output: " + output)
         sdk_dir = generate_sdk(target, output)
+        # Same gate as the pipeline path (commands.py step 4): a target outside
+        # TARGET_ARCH is a deliberate fallback (host x86_64 compiler + FATAL_ERROR
+        # eboot board), not a success. Exit non-zero instead of printing [ok].
+        if target not in TARGET_ARCH:
+            log.error("no cross-toolchain ships for " + target + "; the SDK fell back "
+                      "to the host x86_64 compiler and eboot/eboot_board.cmake carries "
+                      "a FATAL_ERROR. Run `ebuild sdk --list` for supported targets.")
+            raise SystemExit(1)
         log.success("SDK generated: " + str(sdk_dir))
 
     # Named "package-deliverable", not "package": #77 added a `package`
