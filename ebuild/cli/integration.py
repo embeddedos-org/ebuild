@@ -18,7 +18,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
 
@@ -36,7 +36,7 @@ REPOS = {
     "eipc":  {"cmake_flag": "",                          "lang": "go", "sdk_subdir": "sdk/c"},
 }
 
-QEMU_ARCHS = {
+QEMU_ARCHS: Dict[str, Dict[str, Any]] = {
     "x86_64": {
         "bin": "qemu-system-x86_64",
         "args": ["-machine", "q35", "-cpu", "qemu64", "-m", "512",
@@ -138,7 +138,7 @@ def _cmake_build(repo_dir: Path, build_dir: Path, extra_flags: str,
 
 def _collect_libraries(build_dir: Path, repos: Dict[str, Path]) -> List[Path]:
     """Find all .a static libraries produced by the builds."""
-    libs = []
+    libs: List[Path] = []
     for name in repos:
         repo_build = build_dir / name
         if repo_build.exists():
@@ -294,7 +294,7 @@ def _create_initramfs(rootfs: Path, build_dir: Path) -> Path:
 
     initramfs = build_dir / "initramfs.cpio.gz"
     entries = [rootfs, *sorted(rootfs.rglob("*"), key=lambda p: p.as_posix())]
-    hardlink_inodes = {}
+    hardlink_inodes: Dict[Optional[Tuple[int, int]], int] = {}
     hardlink_data_written = set()
     next_inode = 1
 
