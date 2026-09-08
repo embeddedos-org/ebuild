@@ -26,6 +26,7 @@ An absolute --build-dir was already unambiguous, which is why it worked.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import shutil
 import textwrap
