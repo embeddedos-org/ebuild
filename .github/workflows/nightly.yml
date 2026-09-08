@@ -14,7 +14,11 @@ concurrency:
 
 jobs:
   full-test-suite:
-    name: Full Test Suite
+    # Both matrix legs belong in the name: with a static name the three
+    # Python legs all reported as one check run called "Full Test Suite".
+    # Last remaining instance of the defect ci.yml's rename fixed; renaming
+    # is cheap exactly while nothing refers to the old name.
+    name: Full Test Suite (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:

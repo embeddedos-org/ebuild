@@ -199,3 +199,164 @@ def test_gate_fails_on_any_non_success_result(jobs):
         "fail-open shape this repository has been removing elsewhere"
     )
     assert "exit 1" in script, "the gate must actually fail the job"
+
+
+# ── Check names must be distinct ─────────────────────────────────────────────
+#
+# Branch protection addresses a check by name, and so does anyone reading the
+# checks list on a pull request. A matrix job whose `name:` does not mention
+# every dimension produces several check runs sharing one name: this workflow
+# reported three runs called "Test (Python 3.10)" until the `os` dimension was
+# added to the template. That is not cosmetic -- a required rule naming that
+# check cannot say which of the three it means, and a Windows-only failure is
+# indistinguishable from the other two legs without opening the run.
+
+import itertools
+import re
+
+# `include` and `exclude` shape a matrix but are not dimensions of it, so they
+# are not part of the cartesian product.
+_NOT_A_DIMENSION = {"include", "exclude"}
+
+
+def _substitute(name, values):
+    for key, value in values.items():
+        name = name.replace("${{ matrix.%s }}" % key, str(value))
+        name = name.replace("${{matrix.%s}}" % key, str(value))
+    return name
+
+
+def _matches(combo, spec):
+    """Does this combination match an `exclude:` entry?"""
+    return all(str(combo.get(k)) == str(v) for k, v in spec.items())
+
+
+def _expanded_names(job_name, matrix, has_explicit_name=True):
+    """Every check name this job produces, one per matrix combination.
+
+    `include` and `exclude` are not dimensions of the product, but ignoring
+    them entirely left a blind spot: a matrix expressed *entirely* through
+    `include:` has no list dimensions at all, so this returned [job_name] --
+    one name for however many legs the job really has. release.yml and
+    eosim-sanity.yml both use that form today, so the blind spot goes live
+    the moment this guard is pointed at them.
+    """
+    dimensions = {k: v for k, v in matrix.items()
+                  if k not in _NOT_A_DIMENSION and isinstance(v, list)}
+
+    combos = []
+    if dimensions:
+        keys = list(dimensions)
+        for values in itertools.product(*(dimensions[k] for k in keys)):
+            combos.append(dict(zip(keys, values)))
+
+    # exclude removes combinations rather than being ignored: counting a
+    # combination that never runs could report a duplicate that cannot happen.
+    for spec in matrix.get("exclude", []) or []:
+        if isinstance(spec, dict):
+            combos = [c for c in combos if not _matches(c, spec)]
+
+    # include adds legs. An entry that only refines an existing combination
+    # does not add a name; one that introduces new values does.
+    for spec in matrix.get("include", []) or []:
+        if not isinstance(spec, dict):
+            continue
+        refines = [c for c in combos if _matches(c, {k: v for k, v in spec.items()
+                                                    if k in c})]
+        if refines:
+            for c in refines:
+                c.update(spec)
+        else:
+            combos.append(dict(spec))
+
+    if not combos:
+        return [job_name]
+
+    # A job with no `name:` gets GitHub's auto-generated one, which already
+    # carries the matrix values -- `smoke (ubuntu-22.04)`, `smoke (macos-
+    # latest)`. Modelling that matters: falling back to the bare job id made
+    # every leg of an unnamed matrix look like the same check name, so this
+    # reported a collision GitHub would never produce and sent the reader
+    # looking for a bug that is not there.
+    if not has_explicit_name:
+        return [f"{job_name} ({', '.join(str(c[k]) for k in sorted(c))})"
+                for c in combos]
+
+    return [_substitute(job_name, c) for c in combos]
+
+
+def _all_check_names(jobs):
+    names = []
+    for job_id, job in jobs.items():
+        job_name = job.get("name", job_id)
+        matrix = job.get("strategy", {}).get("matrix", {})
+        names.extend(_expanded_names(job_name, matrix or {},
+                                     has_explicit_name="name" in job))
+    return names
+
+
+def test_every_check_name_is_unique(jobs):
+    names = _all_check_names(jobs)
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    assert not duplicates, (
+        f"these check names are produced more than once: {duplicates}. "
+        f"A name that maps to several check runs cannot be required, and cannot "
+        f"be read -- add the missing matrix dimension to the job's `name:`."
+    )
+
+
+def test_check_names_are_unique_across_every_workflow():
+    """Branch protection matches check-run names repo-wide, not per file.
+
+    The per-file test above catches a matrix that collides with itself; this
+    one catches ci.yml colliding with book-build.yml, and a static-named
+    matrix in any workflow (nightly.yml's Full Test Suite was one: three
+    Python legs, one name, invisible to the per-file check because the
+    fixture reads ci.yml only).
+    """
+    names = []
+    for doc in _pr_workflows().values():
+        names.extend(_all_check_names(doc["jobs"]))
+    # nightly.yml is schedule-only, so _pr_workflows() misses it -- but its
+    # names still land in the same namespace branch protection matches on.
+    for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        doc = _load(path)
+        if isinstance(doc, dict) and not _runs_on_pull_request(doc):
+            names.extend(_all_check_names(doc.get("jobs", {}) or {}))
+    duplicates = sorted({n for n in names if names.count(n) > 1})
+    assert not duplicates, (
+        f"these check names are produced more than once across the "
+        f"repository's workflows: {duplicates}. A name backed by several "
+        f"check runs cannot be required, whichever files produce them."
+    )
+
+
+def test_a_matrix_job_names_every_dimension_it_varies(jobs):
+    """The rule behind the test above, stated where it will be read.
+
+    An earlier version of this docstring claimed release.yml and
+    eosim-sanity.yml used the include:-only form and were the live blind
+    spot. Expansion showed neither does -- every matrix job in both names
+    every dimension it varies -- while nightly.yml's full-test-suite was the
+    one real offender in the repository, now fixed. The repo is clean; the
+    cross-file test below is what keeps it that way.
+    """
+    for job_id, job in jobs.items():
+        matrix = job.get("strategy", {}).get("matrix", {}) or {}
+        dimensions = [k for k, v in matrix.items()
+                      if k not in _NOT_A_DIMENSION
+                      and isinstance(v, list) and len(v) > 1]
+        if not dimensions:
+            continue
+        if "name" not in job:
+            # No `name:` means GitHub generates one that already carries the
+            # matrix values, so the rule is satisfied by the default. The rule
+            # is about a `name:` that varies less than the matrix does.
+            continue
+        name = job["name"]
+        missing = [k for k in dimensions
+                   if not re.search(r"\$\{\{\s*matrix\.%s\s*\}\}" % re.escape(k), name)]
+        assert not missing, (
+            f"job {job_id!r} varies {missing} but its `name:` does not mention "
+            f"them, so its legs share a check name"
+        )
