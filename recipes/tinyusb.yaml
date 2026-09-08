@@ -1,0 +1,9 @@
+package: tinyusb
+version: "0.18.0"
+description: "Open-source cross-platform USB host/device stack for embedded system"
+license: MIT
+url: https://github.com/hathach/tinyusb/archive/refs/tags/0.18.0.tar.gz
+checksum: sha256:e7fa1bd723213749a0362c79eaccc99e84c8adea8f0a63588c4e4812608b7aa9
+build: cmake
+configure_args: []
+dependencies: []

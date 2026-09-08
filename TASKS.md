@@ -18,6 +18,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | ID | Task | Owner | Verified by | Evidence |
 |----|------|-------|-------------|----------|
 | T-001 | Make initramfs creation portable and self-contained | backend | independent reviewer | Focused archive tests: **5 passed, 1 skipped** (symlink creation unavailable on this Windows host). Independent `bsdtar` extraction validated hard-link identity and payload. Full Python suite: **288 passed, 2 skipped, 1 unrelated failure** in the pre-existing Windows Ninja path assertion, recorded as T-002. QEMU boot was not run on Windows. |
+| T-003 | Address PR #111 review findings 1, 2, 3, 6, 7, 8 | backend | reviewer | Unit tests in `tests/unit/test_index_sync.py` (22 passed) verify keep-set filename matching, empty index floor and fallback status, .yml preservation and pruning, lack-of-URL recipe preservation, CLI prune reporting, and trailing newline in `CHANGELOG.md`. Static analysis with `ruff` on all PR-touched files reports 0 errors; `mypy` on modified packages reports 0 errors without suppressions. Full test suite passes 605 tests on Linux. |
 
 ---
 
