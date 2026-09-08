@@ -8,7 +8,7 @@ This document tracks alignment between all three EoS components to ensure they r
 
 | Dimension | eos | eboot | ebuild | Status |
 |-----------|-----|-------|--------|--------|
-| Board definitions | 25 YAML files in `eos/boards/` | 25 board ports in `eboot/boards/` | `MCU_TO_EBOOT_BOARD` + `EOS_BOARD_MAP` in project generator | ✅ Aligned |
+| Board definitions | 84 board YAMLs in `eos/boards/` (upstream) | 83 board dirs / 138 `eboot_add_board()` calls in `eboot/boards/` (upstream, pinned rev) | `TARGET_ARCH` 14 + `MCU_TO_EBOOT_BOARD` 138 in `ebuild/sdk_generator.py` | ⚠️ Unverified: 84 vs 83 vs 14/138 — three inventories describe the same set and nothing cross-checks them; see the resolver drift note in PR #109 |
 | Product profiles | 41 profiles in `eos/products/*.h` | — | `PRODUCT_MAP` (41 entries) in project generator | ✅ Aligned |
 | Platform enum | — | 24 `eos_platform_t` entries in `eos_hal.h` | MCU_DATABASE (100+ MCUs) in hw analyzer | ✅ Aligned |
 | Peripheral keywords | 33 HAL APIs in `hal.h` + `hal_extended.h` | — | `PERIPHERAL_KEYWORDS` (24 types) + `ComponentDB` (200+ parts) | ✅ Aligned |
@@ -118,7 +118,7 @@ Customer Input
 │     LLMClient (optional) ──► deep analysis                  │
 │                                                              │
 │  2. EosProjectGenerator                                     │
-│     MCU_TO_EBOOT_BOARD ──────────────────► eboot board dir  │
+│     MCU_TO_EBOOT_BOARD (alias of ebuild/sdk_generator.py) ► eboot board dir  │
 │     EOS_BOARD_MAP ──────────────────────► eos board YAML    │
 │     PRODUCT_MAP (41 entries) ──────────► eos product .h     │
 │     MULTICORE_MCUS ─────────────────────► multicore config  │

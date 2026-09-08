@@ -26,7 +26,11 @@ import click
 import yaml
 
 from ebuild import __version__
-from ebuild.build.ninja_backend import NinjaBackend, PackagePaths
+from ebuild.build.ninja_backend import (
+    NinjaBackend,
+    PackagePaths,
+    executable_output_path,
+)
 from ebuild.build.toolchain import resolve_toolchain
 from ebuild.cli.integration import register_commands as _register_integration_commands
 from ebuild.cli.logger import Logger
@@ -38,30 +42,15 @@ from ebuild.packages.cache import PackageCache
 from ebuild.packages.fetcher import FetchError, PackageFetcher
 from ebuild.packages.lockfile import Lockfile
 from ebuild.packages.recipe import RecipeError
-from ebuild.packages.registry import create_registry
+from ebuild.packages.registry import create_registry, find_recipe_dirs
 from ebuild.packages.resolver import PackageResolver, ResolveError
 
 
 pass_logger = click.make_pass_decorator(Logger, ensure=True)
 
-# Default recipe search paths (relative to project root)
-_RECIPE_DIRS = ["recipes"]
+# Canonical recipe search path discovery
+_find_recipe_dirs = find_recipe_dirs
 
-
-def _find_recipe_dirs(project_dir: Path) -> List[Path]:
-    """Locate recipe directories: project-local and install-level."""
-    dirs = []
-    for name in _RECIPE_DIRS:
-        d = project_dir / name
-        if d.is_dir():
-            dirs.append(d)
-
-    # Also check ebuild install location
-    pkg_recipes = Path(__file__).resolve().parent.parent.parent / "recipes"
-    if pkg_recipes.is_dir() and pkg_recipes not in dirs:
-        dirs.append(pkg_recipes)
-
-    return dirs
 
 
 def _install_packages(
@@ -509,8 +498,9 @@ def _report_footprint(cfg: "ProjectConfig", build_path: Path, log: Logger) -> No
     if not binaries:
         return
 
-    artifact = build_path / binaries[0].name
+    artifact = executable_output_path(build_path, binaries[0].name)
     if not artifact.is_file():
+        log.debug(f"no artifact at {artifact}; skipping footprint")
         return
 
     prefix = getattr(cfg.toolchain, "target", None) or "host"
@@ -650,7 +640,7 @@ def _run_pipeline_steps(
     from ebuild.eos_ai.eos_hw_analyzer import EosHardwareAnalyzer
     from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
     from ebuild.eos_ai.eos_boot_integrator import EosBootIntegrator
-    from ebuild.sdk_generator import generate_sdk
+    from ebuild.sdk_generator import generate_sdk_from_profile
 
     configs_dir = build_dir / "configs"
     sdk_dir = build_dir / "sdk"
@@ -700,10 +690,18 @@ def _run_pipeline_steps(
         log.success("  " + name + ": " + str(path))
 
     # Step 4: Generate SDK (toolchain.cmake, environment-setup, eboot target config)
+    # Drive the SDK from the detected profile, not just the board name — otherwise
+    # any MCU absent from the small target table silently regressed to an x86_64 SDK.
     log.step("[4/6] Generating SDK...")
-    target_name = board.lower()
-    generate_sdk(target_name, str(sdk_dir))
-    log.success("  SDK generated in " + str(sdk_dir))
+    _, toolchain_ok, eboot_board = generate_sdk_from_profile(profile, str(sdk_dir), target=board)
+    if not toolchain_ok:
+        raise RuntimeError("no cross-toolchain ships for " + board + "; the SDK fell back "
+                           "to the host x86_64 compiler. Run `ebuild sdk --list`.")
+    if eboot_board is None:
+        log.warning("  no eBoot board for " + board + ": eboot/eboot_board.cmake carries a "
+                    "FATAL_ERROR; a build that needs the board will fail by name.")
+    else:
+        log.success("  SDK generated in " + str(sdk_dir))
 
     # Step 5: Copy generated headers to build include path
     log.step("[5/6] Copying headers to build include path...")
@@ -1673,6 +1671,113 @@ def list_packages(log: Logger, config_path: str) -> None:
             pass
 
 
+@cli.command("search")
+@click.argument("query", required=False, default="")
+@click.option("--all", "show_all", is_flag=True, default=False, help="Show all available packages.")
+@click.option("--json", "as_json", is_flag=True, default=False, help="Output results in JSON format.")
+@click.option("--build-system", "build_sys", default=None, help="Filter by build system (cmake, make, meson, etc.).")
+@click.option("--license", "lic_filter", default=None, help="Filter by license.")
+@click.option(
+    "--config", "config_path",
+    default="build.yaml",
+    type=click.Path(exists=False),
+    help="Path to the build configuration file.",
+)
+@click.pass_obj
+def search_packages(
+    log: Logger,
+    query: str,
+    show_all: bool,
+    as_json: bool,
+    build_sys: Optional[str],
+    lic_filter: Optional[str],
+    config_path: str,
+) -> None:
+    """Search for packages across local recipes, shipped catalog, and remote index."""
+    from ebuild.packages.repository import PackageRepository
+
+    config_path_obj = Path(config_path)
+    project_dir = config_path_obj.parent if config_path_obj.exists() else Path(".")
+
+    repo = PackageRepository()
+    repo.load_all_sources(project_dir=project_dir)
+
+    effective_query = "" if show_all else query
+    results = repo.search(query=effective_query, build_system=build_sys, license_filter=lic_filter)
+
+    if as_json:
+        import json
+        click.echo(json.dumps([pkg.to_dict() for pkg in results], indent=2))
+        return
+
+    log.header("ebuild — Package Search")
+    if not results:
+        if query:
+            log.info(f"No packages found matching '{query}'. Add recipes to './recipes/' or run 'ebuild update-index --url <https://...>'.")
+        else:
+            log.info("No packages found. Add recipes to './recipes/' or run 'ebuild update-index --url <https://...>'.")
+        return
+
+    log.info(f"Found {len(results)} package(s):")
+    for pkg in results:
+        lic = f" ({pkg.license})" if pkg.license else ""
+        desc = f" — {pkg.description}" if pkg.description else ""
+        log.step(f"{pkg.name} v{pkg.version} [{pkg.build_system}]{lic}{desc}")
+
+
+@cli.command("update-index")
+@click.option("--url", "index_url", default=None, help="Custom remote package index URL (HTTPS).")
+@click.option("--offline", is_flag=True, default=False, help="Offline mode: do not download, use existing cache.")
+@click.option("--force", is_flag=True, default=False, help="Force refresh even if cache is up-to-date.")
+@click.pass_obj
+def update_index(log: Logger, index_url: Optional[str], offline: bool, force: bool) -> None:
+    """Synchronize the local package index with the remote recipe repository."""
+    import json
+    from ebuild.packages.index_sync import IndexSyncManager, IndexSyncError
+
+    log.header("ebuild — Update Package Index")
+    sync_mgr = IndexSyncManager()
+
+    prev_sha256 = None
+    if sync_mgr.meta_json.is_file():
+        try:
+            with open(sync_mgr.meta_json, "r", encoding="utf-8") as mf:
+                prev_sha256 = json.load(mf).get("sha256")
+        except Exception:
+            prev_sha256 = None
+
+    try:
+        res = sync_mgr.sync(url=index_url, force=force, offline=offline)
+        msg = res.message
+        is_fallback = getattr(res, "is_fallback", False)
+        current_sha256 = getattr(res, "sha256", None)
+        pruned_count = getattr(res, "pruned", 0)
+        if not current_sha256 and sync_mgr.meta_json.is_file():
+            try:
+                with open(sync_mgr.meta_json, "r", encoding="utf-8") as mf:
+                    current_sha256 = json.load(mf).get("sha256")
+            except Exception:
+                current_sha256 = None
+
+        if is_fallback and not offline:
+            log.warning(msg)
+            if current_sha256:
+                log.info(f"Index SHA-256 digest: {current_sha256}")
+            log.info(f"Index cache located at: {sync_mgr.index_dir}")
+            raise SystemExit(1)
+        log.success(msg)
+        if current_sha256:
+            log.info(f"Index SHA-256 digest: {current_sha256}")
+            if prev_sha256 and prev_sha256 != current_sha256:
+                log.info(f"Index updated (previous digest: {prev_sha256})")
+        if pruned_count > 0:
+            log.info(f"Pruned {pruned_count} stale cached recipe(s)")
+        log.info(f"Index cache located at: {sync_mgr.index_dir}")
+    except IndexSyncError as e:
+        log.error(f"Index update failed: {e}")
+        raise SystemExit(1)
+
+
 @cli.command()
 @click.argument("input_text", required=False)
 @click.option("--file", "input_file", type=click.Path(exists=True), help="Hardware design file (KiCad .kicad_sch, Eagle .sch, BOM .csv, YAML, text).")
@@ -2483,7 +2588,6 @@ def test(log: Logger, config_path: str, build_dir: str,
         log.success("All tests passed.")
 
 
-
 @cli.command()
 @click.option("--config", "config_path", default="build.yaml",
               type=click.Path(), help="Path to the build configuration file.")
@@ -2526,7 +2630,7 @@ def package(log: Logger, config_path: str, build_dir: str,
         log.error("No executable target in build.yaml — nothing to package.")
         raise SystemExit(1)
 
-    artifact = Path(build_dir) / binaries[0].name
+    artifact = executable_output_path(Path(build_dir), binaries[0].name)
     if not artifact.is_file():
         log.error(f"No built artifact at {artifact}. Run 'ebuild build' first.")
         raise SystemExit(1)
@@ -2609,11 +2713,14 @@ def _run_native_tests(
     from ebuild.build.dispatch import ninja_command
 
     # Ninja addresses targets by their output path, and `ebuild build` drives
-    # it with -f from the project root, so the same form is used here.
+    # it with -f from the project root, so the same form is used here. The
+    # path must include the platform suffix: on Windows the edge is
+    # ``<name>.exe``, and asking ninja to build ``<name>`` is an unknown
+    # target.
     argv = (
         ninja_command()
         + ["-f", str(build_path / "build.ninja")]
-        + [str(build_path / t.name) for t in selected]
+        + [str(executable_output_path(build_path, t.name)) for t in selected]
     )
     result = subprocess.run(argv)
     if result.returncode != 0:
@@ -2622,7 +2729,7 @@ def _run_native_tests(
 
     failures: List[str] = []
     for target in selected:
-        binary = build_path / target.name
+        binary = executable_output_path(build_path, target.name)
         if not binary.is_file():
             log.error(f"{target.name}: built, but no binary at {binary}")
             failures.append(target.name)

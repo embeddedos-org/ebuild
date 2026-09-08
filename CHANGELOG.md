@@ -2,7 +2,52 @@
 
 ## [Unreleased]
 
+### Added
+- **Remote Package Index & Synchronization (`ebuild/packages/index_sync.py`).**
+  Downloads and validates central/mirror package repository indices into a local cache
+  (`~/.ebuild/index/`), caching full recipe definitions. Enforces HTTPS transport,
+  path-traversal sanitization (`^[a-zA-Z0-9_-]+$`), 10s socket timeouts, and 10MB response
+  size limits. Index synchronization supports air-gapped operation via `--offline` and `EBUILD_OFFLINE=1`; package archive fetching is not yet offline-gated.
+- **Package Discovery & Multi-Source Search (`ebuild search`, `ebuild/packages/repository.py`).**
+  Search across local project recipes, system-shipped recipes, and cached remote indices.
+  Supports `--all`, `--json`, `--build-system`, and `--license` filters.
+- **Index Synchronization Command (`ebuild update-index`).**
+  CLI command to refresh local package and recipe index caches from remote repositories.
+- **Source-Ranked Recipe Precedence (`ebuild/packages/registry.py`).**
+  Enforces strict 3-tier precedence hierarchy during package resolution: project-local recipes (`./recipes/`) > system-shipped recipes (`recipes/`) > cached remote index recipes (`~/.ebuild/index/recipes/`), guaranteeing reproducible builds (§9.2) and ensuring project-level pins override remote definitions.
+- **Stale Cached Recipe Pruning (`ebuild/packages/index_sync.py`, `ebuild update-index`).**
+  `ebuild update-index` automatically prunes stale cached `.yaml` and `.yml` recipes from `~/.ebuild/index/recipes/` that are absent from the newly synchronized remote package index. An index that yields no usable entries is treated as a delivery fault: nothing is pruned, the cached index is left in place, and the condition is reported. Surfaced the count of pruned recipes in CLI output and returned `SyncResult`.
+- **Expanded Shipped Recipes Catalog (`recipes/`).**
+  Added 5 verified recipes with HTTPS release pins and SHA-256 integrity digests:
+  `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
+
 ### Fixed
+- **`ebuild test` now finds Windows test binaries.** The Ninja edge for a
+  native `type: test` target already carried the platform suffix
+  (`_exe_suffix()` names it `<name>.exe` on Windows), but `ebuild test`
+  rebuilt the path itself without that suffix, asked ninja to build
+  `<name>`, and then looked for that unsuffixed path. Ninja reported an
+  unknown target and the runner reported "built, but no binary". Both
+  steps now go through the same `executable_output_path()` the edge itself
+  uses (`ebuild/build/ninja_backend.py`, `ebuild/cli/commands.py`).
+- **`ebuild package` now finds the Windows binary too.** It looked up
+  `<build_dir>/<name>` directly instead of through `executable_output_path()`,
+  so on Windows it reported "No built artifact" after a build that had
+  succeeded. Now uses the same helper as `ebuild test`
+  (`ebuild/cli/commands.py`).
+- **`ebuild build`'s flash/RAM report went silent on Windows.**
+  `_report_footprint` also looked up `<build_dir>/<name>` directly, so on
+  Windows the artifact was never found and the function returned with no
+  diagnostic — the report just never appeared, with no indication it was
+  skipped rather than not applicable. Now uses `executable_output_path()`
+  and logs at debug level when it has nothing to measure
+  (`ebuild/cli/commands.py`).
+- **`pytest` collection no longer aborts on Windows without gcc.**
+  `tests/ebuild/test_build_dir_resolution.py` evaluated
+  `subprocess.run(["gcc", "--version"])` in a `skipif`. When gcc is not
+  installed, Windows raises `FileNotFoundError` instead of a non-zero
+  returncode, which pytest treats as a collection ERROR and stops the
+  suite. The probe now uses `shutil.which` and catches `OSError`.
 - **A path containing a space produced a silently wrong `build.ninja`.** Paths
   were written into build statements unescaped, but Ninja ends the output list
   at the first unescaped `:` and splits on unescaped spaces. A build directory

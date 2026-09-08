@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from ebuild.deps import DEFAULT_CONFIG
 from ebuild.deps.manager import DepsManager, SIBLING_DIR_NAMES
 
 
@@ -76,3 +77,25 @@ def test_sibling_eboot_missing_returns_none(isolated_deps, monkeypatch):
     resolved = DepsManager().get_repo_path("eboot", project_dir=project)
 
     assert resolved is None
+
+
+def test_setters_do_not_mutate_module_defaults(isolated_deps):
+    """In-place config edits must not leak into the shared DEFAULT_CONFIG.
+
+    load_config() used to alias the nested default repo dicts instead of
+    copying them, so set_branch() on one DepsManager rewrote the module-level
+    template — and every later instance in the process inherited the edit as
+    its 'default'.
+    """
+    mgr = DepsManager()
+    mgr.set_branch("eos", "dev")
+    mgr.set_url("eboot", "https://example.invalid/eboot.git")
+
+    assert DEFAULT_CONFIG["repos"]["eos"]["branch"] == "master"
+    assert DEFAULT_CONFIG["repos"]["eboot"]["url"].endswith("/eBoot.git")
+
+    # A fresh instance starting from a clean config must not see them either.
+    fresh = DepsManager()
+    fresh._config = fresh.load_config()
+    assert fresh.config["repos"]["eos"]["branch"] == "dev"  # persisted for us
+    assert DEFAULT_CONFIG["repos"]["eos"]["branch"] == "master"  # not for all

@@ -9,11 +9,14 @@ package name and version.
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from ebuild.packages.recipe import PackageRecipe, RecipeError, load_recipe
+
+logger = logging.getLogger(__name__)
 
 # Everything from the first '-' or '+' is a suffix: a pre-release tag
 # ("3.6.0-rc1") or build metadata ("1.3.1+patch2").
@@ -89,7 +92,7 @@ class PackageRegistry:
     """
 
     def __init__(self) -> None:
-        self._recipes: Dict[str, Dict[str, PackageRecipe]] = {}
+        self._recipes: Dict[str, Dict[str, Tuple[int, PackageRecipe]]] = {}
         self._search_paths: List[Path] = []
 
     def add_search_path(self, path: str | Path) -> None:
@@ -105,67 +108,78 @@ class PackageRegistry:
             Number of recipes loaded.
         """
         count = 0
-        for search_path in self._search_paths:
+        for rank, search_path in enumerate(self._search_paths):
             for recipe_file in sorted(search_path.glob("*.yaml")):
                 try:
                     recipe = load_recipe(recipe_file)
-                    self._register(recipe)
+                    self._register(recipe, rank=rank)
                     count += 1
                 except (RecipeError, FileNotFoundError):
                     continue
             for recipe_file in sorted(search_path.glob("*.yml")):
                 try:
                     recipe = load_recipe(recipe_file)
-                    self._register(recipe)
+                    self._register(recipe, rank=rank)
                     count += 1
                 except (RecipeError, FileNotFoundError):
                     continue
         return count
 
-    def _register(self, recipe: PackageRecipe) -> None:
-        """Register a recipe in the internal index."""
+    def _register(self, recipe: PackageRecipe, rank: int = 0) -> None:
+        """Register a recipe in the internal index (higher-priority source wins for same version)."""
         if recipe.name not in self._recipes:
             self._recipes[recipe.name] = {}
-        self._recipes[recipe.name][recipe.version] = recipe
+        if recipe.version not in self._recipes[recipe.name]:
+            self._recipes[recipe.name][recipe.version] = (rank, recipe)
+        else:
+            existing_rank, _ = self._recipes[recipe.name][recipe.version]
+            if rank < existing_rank:
+                self._recipes[recipe.name][recipe.version] = (rank, recipe)
 
     def get(self, name: str, version: Optional[str] = None) -> Optional[PackageRecipe]:
         """Look up a package recipe by name and optional version.
 
-        If no version is specified, returns the latest (highest) version.
+        If no version is specified, returns the latest (highest) version
+        within the highest-priority source that defines this package.
         """
         versions = self._recipes.get(name)
         if not versions:
             return None
 
         if version:
-            return versions.get(version)
+            entry = versions.get(version)
+            return entry[1] if entry else None
 
-        latest_version = sorted(versions.keys(), key=version_sort_key)[-1]
-        return versions[latest_version]
+        min_rank = min(rank for rank, _ in versions.values())
+        source_versions = {
+            v: r for v, (rank, r) in versions.items() if rank == min_rank
+        }
+        latest_version = sorted(source_versions.keys(), key=version_sort_key)[-1]
+        return source_versions[latest_version]
 
     def has(self, name: str, version: Optional[str] = None) -> bool:
         """Check if a recipe exists."""
         return self.get(name, version) is not None
 
     def list_packages(self) -> List[PackageRecipe]:
-        """Return all registered recipes (latest version of each)."""
+        """Return all registered recipes (latest version within highest-priority source of each)."""
         result = []
         for name in sorted(self._recipes.keys()):
-            versions = self._recipes[name]
-            latest = sorted(versions.keys(), key=version_sort_key)[-1]
-            result.append(versions[latest])
+            recipe = self.get(name)
+            if recipe is not None:
+                result.append(recipe)
         return result
 
     def list_all_versions(self, name: str) -> List[PackageRecipe]:
         """Return all versions of a package."""
         versions = self._recipes.get(name, {})
         return [
-                versions[v]
-                for v in sorted(
-                    versions.keys(),
-                    key=version_sort_key,
-                 )
-              ]
+            versions[v][1]
+            for v in sorted(
+                versions.keys(),
+                key=version_sort_key,
+            )
+        ]
 
     @property
     def package_count(self) -> int:
@@ -187,3 +201,43 @@ def create_registry(*recipe_dirs: str | Path) -> PackageRegistry:
         registry.add_search_path(d)
     registry.scan()
     return registry
+
+
+def find_recipe_dirs(
+    project_dir: Optional[Path | str] = None,
+    remote_index_dir: Optional[Path | str] = None,
+) -> List[Path]:
+    """Locate recipe directories in priority order: project-local, install-level, and remote synced cache.
+
+    Args:
+        project_dir: Optional path to project root.
+        remote_index_dir: Optional custom remote index cache directory.
+
+    Returns:
+        List of existing recipe directory Paths in priority order.
+    """
+    dirs: List[Path] = []
+    if project_dir is not None:
+        p_dir = Path(project_dir)
+        local_recipes = p_dir / "recipes"
+        if local_recipes.is_dir():
+            dirs.append(local_recipes)
+
+    # Shipped system recipes
+    pkg_recipes = Path(__file__).resolve().parent.parent.parent / "recipes"
+    if pkg_recipes.is_dir() and pkg_recipes not in dirs:
+        dirs.append(pkg_recipes)
+
+    # Remote synced cache in ~/.ebuild/index/recipes/ (or custom index_dir)
+    try:
+        if remote_index_dir is not None:
+            cached_recipes = Path(remote_index_dir) / "recipes"
+        else:
+            from ebuild.packages.index_sync import get_default_index_dir
+            cached_recipes = get_default_index_dir() / "recipes"
+        if cached_recipes.is_dir() and cached_recipes not in dirs:
+            dirs.append(cached_recipes)
+    except (ImportError, OSError) as e:
+        logger.warning("Failed to resolve remote index recipes directory: %s", e)
+
+    return dirs

@@ -15,6 +15,7 @@ the two tools disagree about what "flash" means:
 """
 
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -32,6 +33,7 @@ from ebuild.build.footprint import (
     measure,
     over_budget,
 )
+from tests.support import gcc_is_missing
 
 
 class TestAccounting:
@@ -55,9 +57,15 @@ class TestAccounting:
         assert fp.flash == 100
         assert fp.ram == 8192
 
-
 class TestMeasure:
+    @pytest.mark.skipif(
+        gcc_is_missing(),
+        reason="needs a working gcc to link the executable",
+    )
     def test_measures_a_real_binary(self, tmp_path):
+        if shutil.which("gcc") is None:
+            pytest.skip("needs a working gcc to compile the test binary")
+
         src = tmp_path / "m.c"
         src.write_text("static char buf[4096];\nint main(void){return buf[0];}\n")
         # gcc on Windows appends .exe when -o names no extension, so the
@@ -153,6 +161,17 @@ class TestBoardCapacity:
     def test_a_board_config_without_memory_falls_back(self):
         assert board_capacity("stm32f4", {"board_name": "x"})[0] == 1024 * 1024
 
+    def test_a_partial_override_fills_the_rest_from_the_reference_part(self):
+       """A board YAML that only overrides RAM (say, because it was fitted
+       with extra SRAM) should not lose the reference flash figure for the
+       same part."""
+       cfg = {"memory": {"ram_size": 320 * 1024}}
+       assert board_capacity("stm32f4", cfg) == (1024 * 1024, 320 * 1024)
+
+
+       cfg = {"memory": {"flash_size": "0x40000"}}
+       assert board_capacity("stm32f4", cfg) == (262144, 192 * 1024)
+
 
 class TestReport:
     def test_percentages_appear_only_with_a_known_capacity(self):
@@ -201,6 +220,61 @@ class TestFormatSize:
     ])
     def test_units(self, n, expected):
         assert format_size(n) == expected
+
+
+class TestCLIFootprintReport:
+    """`_report_footprint` (`ebuild/cli/commands.py`) is the CLI-level
+    consumer wired into `ebuild build`. Like `ebuild test` and `ebuild
+    package`, it has to look up the same suffixed binary NinjaBackend
+    linked."""
+
+    def test_looks_up_the_windows_suffixed_artifact(self, tmp_path, monkeypatch):
+        """On Windows the linked binary is `<name>.exe`; the report must
+        look there, not at the unsuffixed name NinjaBackend never produces
+        on that platform -- the third of three call sites this rule applies
+        to, and the only one that failed silently.
+
+        `_exe_suffix()` is forced to `.exe` rather than switching on
+        `sys.platform`, so this exercises the Windows path -- and fails
+        against the pre-fix code -- on any host the suite runs on.
+
+        `_report_footprint` also reads `eos.yaml`/`board.yaml` relative to
+        the process cwd (via `_selected_board`/`_board_config`), which this
+        test does not exercise -- chdir into `tmp_path` so a real cwd
+        carrying either file cannot change what this test measures.
+        """
+        from types import SimpleNamespace
+
+        from ebuild.build import ninja_backend
+        from ebuild.cli import commands
+        from ebuild.core.config import ProjectConfig, TargetConfig
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
+        monkeypatch.setattr(
+            "ebuild.build.footprint.find_size_tool",
+            lambda prefix: "/usr/bin/size")
+        monkeypatch.setattr(
+            "ebuild.build.footprint.measure",
+            lambda artifact, tool=None: Footprint(text=1000, data=200, bss=500))
+
+        cfg = ProjectConfig(
+            name="app", version="1", source_dir=tmp_path,
+            targets=[TargetConfig(name="app", target_type="executable",
+                                  sources=["a.c"])],
+        )
+        build = tmp_path / "b"
+        build.mkdir()
+        (build / "app.exe").write_bytes(b"\x7fELF")
+
+        logs = []
+        log = SimpleNamespace(
+            info=logs.append, debug=lambda *a, **k: None,
+            warning=lambda *a, **k: None)
+
+        commands._report_footprint(cfg, build, log)
+
+        assert any("Flash" in line for line in logs), logs
 
 
 def _completed(returncode=0, stdout="", stderr=""):
