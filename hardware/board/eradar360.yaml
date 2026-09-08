@@ -43,16 +43,16 @@ peripherals:
 
 memory_map:
   flash_base: 0x00000000
-  flash_size: 0x2000000     # 256MB NOR flash
+  flash_size: 0x2000000      # 256MB NOR flash
   ram_base: 0x00200000
-  ram_size: 0x40000000      # 1GB DDR4
-  spi0_base: 0xFE610000     # SPI0 controller (front radar)
-  spi1_base: 0xFE620000     # SPI1 controller (rear radar)
-  uart2_base: 0xFEB50000    # UART2 debug
-  uart3_base: 0xFEB60000    # UART3 V2X
-  i2c0_base: 0xFEA90000    # I2C0 bus
-  mipi_dsi_base: 0xFDE20000 # MIPI-DSI display controller
-  npu_base: 0xFDAB0000      # RKNPU (6 TOPS)
+  ram_size: 0x40000000       # 1GB DDR4
+  spi0_base: 0xFE610000      # SPI0 controller (front radar)
+  spi1_base: 0xFE620000      # SPI1 controller (rear radar)
+  uart2_base: 0xFEB50000     # UART2 debug
+  uart3_base: 0xFEB60000     # UART3 V2X
+  i2c0_base: 0xFEA90000      # I2C0 bus
+  mipi_dsi_base: 0xFDE20000  # MIPI-DSI display controller
+  npu_base: 0xFDAB0000       # RKNPU (6 TOPS)
 
 boot:
   recovery_pin: GPIO0_A0 (active low, pull-up)

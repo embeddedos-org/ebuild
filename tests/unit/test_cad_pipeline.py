@@ -19,8 +19,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 REPO = Path(__file__).resolve().parents[2]
 TOOL = REPO / "tools" / "cad_pipeline.py"
 SAMPLE = REPO / "samples" / "eos_reference_board.kicad_pcb"

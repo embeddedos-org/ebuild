@@ -29,7 +29,6 @@ from ebuild.build.firmware_image import (
     find_efwtool,
     missing_tool_message,
     pack,
-    verify,
 )
 from ebuild.build.ninja_backend import executable_output_path
 from ebuild.cli.commands import cli
