@@ -107,6 +107,11 @@ no `add_test()` still produces a `CTestTestfile.cmake` — so the runner is foun
 ctest prints `No tests were found!!!`, and trusting the exit status would report
 a green suite for a project with no tests at all.
 
+Projects that declare `type: test` targets in `build.yaml` are built and run
+directly (no ctest/cargo/meson). On Windows those binaries are named
+`<target>.exe`, matching the Ninja edge; `ebuild test` now asks ninja for that
+path rather than the unsuffixed name.
+
 ## Test
 
 ```bash
