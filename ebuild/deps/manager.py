@@ -153,7 +153,9 @@ class DepsManager:
 
         # Clone to cache
         effective_url = repo_cfg.get("url") or self._default_url(repo_name)
-        effective_branch = repo_cfg.get("branch") or "master"
+        Clone to cache
+effective_url = repo_cfg.get("url") or self._default_url(repo_name)
+effective_branch = repo_cfg.get("branch") or "master"
 
         dest = self.cache_dir / repo_name
         if dest.exists():
@@ -354,11 +356,14 @@ class DepsManager:
         return ""
 
     @staticmethod
-    def _git_clone(url: str, dest: Path, branch: str, shallow: bool) -> None:
+    def _git_clone(url: str, dest: Path, branch: Optional[str], shallow: bool) -> None:
         cmd = ["git", "clone"]
         if shallow:
             cmd.extend(["--depth", "1"])
-        cmd.extend(["--branch", branch, url, str(dest)])
+        if branch:
+    cmd.extend(["--branch", branch])
+
+cmd.extend([url, str(dest)])
 
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode != 0:
