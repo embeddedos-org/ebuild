@@ -30,7 +30,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -72,37 +72,87 @@ class LLMClient:
         self.timeout = timeout
 
         if provider == "ollama":
-            self.base_url = base_url or self.OLLAMA_URL
+            default_url = os.environ.get("OLLAMA_HOST") or self.OLLAMA_URL
+            raw_url = base_url or default_url
+            self.base_url = self._ensure_scheme(raw_url).rstrip("/")
         elif provider == "openai":
-            self.base_url = base_url or self.OPENAI_URL
+            default_url = os.environ.get("OPENAI_BASE_URL") or self.OPENAI_URL
+            self.base_url = (base_url or default_url).rstrip("/")
             self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
         elif provider == "custom":
-            self.base_url = base_url or ""
+            self.base_url = (base_url or "").rstrip("/")
             self.api_key = api_key or os.environ.get("EOS_LLM_API_KEY", "")
+
+    @staticmethod
+    def _ensure_scheme(url: str) -> str:
+        """Ensure a URL string has an http:// or https:// scheme prefix."""
+        if not url:
+            return ""
+        if url.startswith(("http://", "https://")):
+            return url
+        return f"http://{url}"
+
+    @staticmethod
+    def _error_message(payload: Any) -> str:
+        """Extract a human-readable error message from an API error payload."""
+        if isinstance(payload, dict):
+            return str(payload.get("message", payload))
+        return str(payload)
+
+    @staticmethod
+    def _normalize_ollama_url(base_url: str) -> str:
+        """Normalize Ollama base URL to generation endpoint."""
+        url = (base_url or "").rstrip("/")
+        if url.endswith("/api/generate"):
+            return url
+        return f"{url}/api/generate"
+
+    @staticmethod
+    def _normalize_openai_url(base_url: str) -> str:
+        """Normalize OpenAI-compatible base URL to chat completions endpoint.
+
+        Handles:
+        - "https://api.openai.com" -> "https://api.openai.com/v1/chat/completions"
+        - "https://api.openai.com/" -> "https://api.openai.com/v1/chat/completions"
+        - "https://api.openai.com/v1" -> "https://api.openai.com/v1/chat/completions"
+        - "https://api.openai.com/v1/" -> "https://api.openai.com/v1/chat/completions"
+        - "http://localhost:8000/v1/chat/completions" -> unchanged
+        """
+        url = (base_url or "").rstrip("/")
+        if url.endswith("/chat/completions"):
+            return url
+        if url.endswith("/v1"):
+            return f"{url}/chat/completions"
+        return f"{url}/v1/chat/completions"
 
     @classmethod
     def auto(cls) -> "LLMClient":
         """Auto-detect available LLM provider.
 
         Priority:
-        1. Ollama running locally
-        2. OpenAI API key in environment
-        3. EOS_LLM_API_KEY + EOS_LLM_URL in environment
+        1. Ollama running locally or at OLLAMA_HOST
+        2. OpenAI API key in environment (respecting OPENAI_BASE_URL)
+        3. EOS_LLM_URL in environment (EOS_LLM_API_KEY optional)
         4. None (returns a client that will fail gracefully)
         """
         # Try Ollama
-        if cls._check_ollama():
-            return cls(provider="ollama", model="llama3")
+        ollama_host = os.environ.get("OLLAMA_HOST") or cls.OLLAMA_URL
+        ollama_url = cls._ensure_scheme(ollama_host).rstrip("/")
+        if cls._check_ollama(ollama_url):
+            model = os.environ.get("OLLAMA_MODEL", "llama3")
+            return cls(provider="ollama", model=model, base_url=ollama_url)
 
         # Try OpenAI
         openai_key = os.environ.get("OPENAI_API_KEY", "")
         if openai_key:
-            return cls(provider="openai", model="gpt-4o-mini", api_key=openai_key)
+            openai_base = os.environ.get("OPENAI_BASE_URL")
+            model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+            return cls(provider="openai", model=model, api_key=openai_key, base_url=openai_base)
 
         # Try custom
-        custom_key = os.environ.get("EOS_LLM_API_KEY", "")
         custom_url = os.environ.get("EOS_LLM_URL", "")
-        if custom_key and custom_url:
+        if custom_url:
+            custom_key = os.environ.get("EOS_LLM_API_KEY", "")
             model = os.environ.get("EOS_LLM_MODEL", "default")
             return cls(provider="custom", model=model,
                        api_key=custom_key, base_url=custom_url)
@@ -110,14 +160,19 @@ class LLMClient:
         # No provider available
         return cls(provider="none", model="none")
 
-    @staticmethod
-    def _check_ollama() -> bool:
-        """Check if Ollama is running locally."""
+    @classmethod
+    def _check_ollama(cls, base_url: Optional[str] = None) -> bool:
+        """Check if Ollama is running at target base_url or localhost default."""
+        target_url = (base_url or cls.OLLAMA_URL).rstrip("/")
+        if target_url.endswith("/api/generate"):
+            tags_url = target_url.rsplit("/", 1)[0] + "/tags"
+        elif target_url.endswith("/api/tags"):
+            tags_url = target_url
+        else:
+            tags_url = f"{target_url}/api/tags"
+
         try:
-            req = urllib.request.Request(
-                f"{LLMClient.OLLAMA_URL}/api/tags",
-                method="GET",
-            )
+            req = urllib.request.Request(tags_url, method="GET")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 return resp.status == 200
         except (urllib.error.URLError, OSError, TimeoutError):
@@ -128,9 +183,11 @@ class LLMClient:
         if self.provider == "none":
             return False
         if self.provider == "ollama":
-            return self._check_ollama()
-        if self.provider in ("openai", "custom"):
+            return self._check_ollama(self.base_url)
+        if self.provider == "openai":
             return bool(self.api_key and self.base_url)
+        if self.provider == "custom":
+            return bool(self.base_url)
         return False
 
     def analyze(self, prompt: str, system: str = "") -> LLMResponse:
@@ -163,6 +220,42 @@ class LLMClient:
                 return self._call_ollama(prompt, system)
             else:
                 return self._call_openai_compat(prompt, system)
+        except urllib.error.HTTPError as e:
+            err_details = ""
+            try:
+                raw_err = e.read().decode("utf-8")
+                try:
+                    err_json = json.loads(raw_err)
+                    if isinstance(err_json, dict):
+                        if "error" in err_json:
+                            err_details = self._error_message(err_json["error"])
+                        elif "message" in err_json:
+                            err_details = str(err_json["message"])
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                if not err_details and raw_err.strip():
+                    err_details = raw_err.strip()[:200]
+            except (OSError, UnicodeDecodeError, AttributeError):
+                pass
+            msg = f"HTTP {e.code}: {err_details}" if err_details else f"HTTP {e.code}: {e.reason}"
+            return LLMResponse(
+                text="", model=self.model, provider=self.provider,
+                success=False, error=msg,
+            )
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, TimeoutError):
+                error_msg = f"Request timed out after {self.timeout}s"
+            else:
+                error_msg = f"Connection error: {e.reason}"
+            return LLMResponse(
+                text="", model=self.model, provider=self.provider,
+                success=False, error=error_msg,
+            )
+        except TimeoutError:
+            return LLMResponse(
+                text="", model=self.model, provider=self.provider,
+                success=False, error=f"Request timed out after {self.timeout}s",
+            )
         except Exception as e:
             return LLMResponse(
                 text="", model=self.model, provider=self.provider,
@@ -171,7 +264,7 @@ class LLMClient:
 
     def _call_ollama(self, prompt: str, system: str) -> LLMResponse:
         """Call Ollama local API."""
-        url = f"{self.base_url}/api/generate"
+        url = self._normalize_ollama_url(self.base_url or self.OLLAMA_URL)
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -189,6 +282,12 @@ class LLMClient:
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
 
+        if not isinstance(body, dict):
+            return LLMResponse(
+                text="", model=self.model, provider="ollama",
+                success=False, error="Invalid JSON response: expected object",
+            )
+
         return LLMResponse(
             text=body.get("response", ""),
             model=body.get("model", self.model),
@@ -199,7 +298,7 @@ class LLMClient:
 
     def _call_openai_compat(self, prompt: str, system: str) -> LLMResponse:
         """Call OpenAI-compatible chat completions API."""
-        url = f"{self.base_url}/v1/chat/completions"
+        url = self._normalize_openai_url(self.base_url or self.OPENAI_URL)
         payload = {
             "model": self.model,
             "messages": [
@@ -213,19 +312,48 @@ class LLMClient:
         data = json.dumps(payload).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
         }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
 
-        choice = body.get("choices", [{}])[0]
-        message = choice.get("message", {})
-        usage = body.get("usage", {})
+        if not isinstance(body, dict):
+            return LLMResponse(
+                text="", model=self.model, provider=self.provider,
+                success=False, error="Invalid JSON response: expected object",
+            )
+
+        if "error" in body and not body.get("choices"):
+            err_msg = self._error_message(body["error"])
+            return LLMResponse(
+                text="",
+                model=self.model,
+                provider=self.provider,
+                success=False,
+                error=err_msg,
+            )
+
+        choices = body.get("choices") or []
+        first_choice = choices[0] if choices else {}
+        message = first_choice.get("message", {}) if isinstance(first_choice, dict) else {}
+        content = message.get("content", "") if isinstance(message, dict) else ""
+        usage = body.get("usage", {}) if isinstance(body.get("usage"), dict) else {}
+
+        if not choices or not content:
+            return LLMResponse(
+                text="",
+                model=body.get("model", self.model),
+                provider=self.provider,
+                success=False,
+                error="Upstream returned no completion choices",
+            )
 
         return LLMResponse(
-            text=message.get("content", ""),
+            text=content,
             model=body.get("model", self.model),
             provider=self.provider,
             tokens_used=usage.get("total_tokens", 0),

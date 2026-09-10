@@ -100,11 +100,24 @@ ebuild analyze design.kicad_sch --llm-provider ollama --llm-model llama3
 ebuild analyze design.kicad_sch --llm-provider openai --llm-model gpt-4o
 ```
 
-**LLM Provider Auto-Detection:**
-1. **Ollama** (local, free) — checks `http://localhost:11434`
-2. **OpenAI** — uses `OPENAI_API_KEY` env var
-3. **Custom** — uses `EOS_LLM_API_KEY` + `EOS_LLM_URL` + `EOS_LLM_MODEL` env vars
+**LLM Provider Auto-Detection Priority:**
+1. **Ollama** (local, free) — checks `OLLAMA_HOST` (defaults to `http://localhost:11434`), using `OLLAMA_MODEL` (defaults to `llama3`)
+2. **OpenAI** — detected via `OPENAI_API_KEY` (supports custom proxies via `OPENAI_BASE_URL`, model via `OPENAI_MODEL`)
+3. **Custom** — detected via `EOS_LLM_URL` (supports keyless local inference like vLLM/llama.cpp; optional `EOS_LLM_API_KEY`, model via `EOS_LLM_MODEL`)
 4. **None** — works without LLM (rule engine only)
+
+**Environment Variables Reference:**
+
+| Variable | Provider | Default | Description |
+|----------|----------|---------|-------------|
+| `OLLAMA_HOST` | Ollama | `http://localhost:11434` | Ollama server URL or `host:port` |
+| `OLLAMA_MODEL` | Ollama | `llama3` | Model name for Ollama generation |
+| `OPENAI_API_KEY` | OpenAI | *(none)* | API key for OpenAI-compatible endpoint |
+| `OPENAI_BASE_URL` | OpenAI | `https://api.openai.com` | Base URL for OpenAI API or reverse proxy |
+| `OPENAI_MODEL` | OpenAI | `gpt-4o-mini` | Model name for OpenAI completions |
+| `EOS_LLM_URL` | Custom | *(none)* | Base URL for custom OpenAI-compatible server (vLLM, etc.) |
+| `EOS_LLM_API_KEY` | Custom | *(optional)* | API key for custom endpoint if authentication is required |
+| `EOS_LLM_MODEL` | Custom | `default` | Model name for custom endpoint |
 
 ---
 
