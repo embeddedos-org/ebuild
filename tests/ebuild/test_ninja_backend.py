@@ -62,6 +62,70 @@ def test_shared_library_links_with_the_platform_shared_flag(tmp_path):
     assert ": link_shared " in ninja_file
 
 
+def test_shared_library_sources_default_to_fpic(tmp_path):
+    config = _shared_library_config(tmp_path)
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar")
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    ninja_file = (tmp_path / "build" / "build.ninja").read_text(encoding="utf-8")
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+
+    assert "-fPIC" in ninja_file
+    assert "-fPIC" in compile_commands[0]["command"].split()
+
+
+def test_shared_library_respects_explicit_pic_policy(tmp_path):
+    config = _shared_library_config(tmp_path, target_cflags=["-fno-pic"])
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar")
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+    flags = compile_commands[0]["command"].split()
+
+    assert "-fno-pic" in flags
+    assert "-fPIC" not in flags
+
+
+@pytest.mark.parametrize("pie_flag", ["-fPIE", "-fpie", "-fno-PIE", "-fno-pie"])
+def test_shared_library_does_not_treat_pie_as_pic(tmp_path, pie_flag):
+    config = _shared_library_config(tmp_path)
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar", cflags=[pie_flag])
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+    flags = compile_commands[0]["command"].split()
+
+    assert pie_flag in flags
+    assert "-fPIC" in flags
+
+
+@pytest.mark.parametrize("pie_flag", ["-fPIE", "-fpie", "-fno-PIE", "-fno-pie"])
+def test_shared_library_respects_the_last_position_independence_flag(
+    tmp_path, pie_flag
+):
+    config = _shared_library_config(tmp_path, target_cflags=[pie_flag])
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar", cflags=["-fPIC"])
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+    flags = compile_commands[0]["command"].split()
+    pic_and_pie_flags = [flag for flag in flags if flag in {"-fPIC", pie_flag}]
+
+    assert pic_and_pie_flags == ["-fPIC", pie_flag, "-fPIC"]
+
+
 def test_cc_rule_emits_and_consumes_a_depfile(tmp_path):
     """The compile rule must generate a depfile and tell Ninja to read it.
 

@@ -24,10 +24,11 @@ class PackagePaths:
     libraries: List[str] = field(default_factory=list)
 
 
-# Flags that already request position-independent code. If one of these is
-# present (or explicitly disabled with -fno-*) we must not add -fPIC again.
-_PIC_FLAGS = {"-fPIC", "-fpic", "-fPIE", "-fpie", "-fno-pic", "-fno-PIC",
-              "-fno-pie", "-fno-PIE"}
+# Flags that explicitly control PIC generation. PIE is intentionally excluded:
+# its output is suitable for executables, not shared libraries.
+_PIC_FLAGS = {"-fPIC", "-fpic", "-fno-pic", "-fno-PIC"}
+_PIE_FLAGS = {"-fPIE", "-fpie", "-fno-pie", "-fno-PIE"}
+_POSITION_INDEPENDENCE_FLAGS = _PIC_FLAGS | _PIE_FLAGS
 
 
 def _exe_suffix() -> str:
@@ -146,7 +147,9 @@ class NinjaBackend:
         """Resolve all cflags for a target (toolchain + target + packages).
 
         Combines toolchain flags, target-specific flags, include paths,
-        defines, and package include directories into a single list.
+        defines, and package include directories into a single list. Shared
+        library sources default to position-independent code unless the target
+        or toolchain explicitly selects a PIC policy.
 
         Args:
             target: A TargetConfig with cflags, includes, defines, and uses.
@@ -165,6 +168,15 @@ class NinjaBackend:
             if pkg:
                 for inc_dir in pkg.include_dirs:
                     cflags.append(f"-I{inc_dir}")
+
+        if target.target_type == "shared_library":
+            effective_flag = None
+            for flag in reversed(cflags):
+                if flag in _POSITION_INDEPENDENCE_FLAGS:
+                    effective_flag = flag
+                    break
+            if effective_flag not in _PIC_FLAGS:
+                cflags.append("-fPIC")
 
         return cflags
 
