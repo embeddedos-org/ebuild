@@ -9,6 +9,62 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 
 ## Active
 
+### T-119 — Preserve toolchain linker settings for shared libraries
+
+Owner: backend / testing
+Mode: Verification
+Status: review
+Depends on: none
+
+Goal: shared-library link commands honor the same toolchain settings as executables.
+
+Acceptance criteria:
+- Shared-library link flags include toolchain ldflags and sysroot before target ldflags and package library paths.
+- Generating multiple shared libraries does not mutate or leak flags between targets or into the toolchain.
+- A real Linux shared-library build honors toolchain `-Wl,--no-undefined`: a resolved source builds successfully and an unresolved source fails to link.
+
+Design: reuse the already-computed `_get_toolchain_ldflags()` result with list
+concatenation, matching executable handling. No API or dependency changes.
+Files in scope: `ebuild/build/ninja_backend.py`,
+`tests/unit/test_shared_library_toolchain.py`, `CHANGELOG.md`, `TASKS.md`.
+Other shared-library features and unrelated defects are out of scope.
+Risk: previously ignored linker options may now correctly reject invalid builds.
+Verification: new tests before/after the fix, full pytest suite, Ruff, mypy,
+Python package build, and the repository's CMake/CTest check.
+
+Handoff (planning/architecture -> implementation/testing): discovery found the
+shared-library branch initializes flags from the target alone. The executable
+branch already includes toolchain flags. Acceptance criteria are the three
+bullets above; all checks are NOT RUN. Next: write failing regressions, then fix.
+
+Verification results (Linux, Python 3.12):
+- PASS: all three new regression cases failed against the original backend,
+  then passed with the fix (`pytest tests/unit/test_shared_library_toolchain.py -q`).
+- PASS: independent reviewer repeated the focused tests (3 passed), found no
+  blocking issues, and confirmed all three acceptance criteria.
+- PASS: Ruff on both changed Python files; mypy on `ninja_backend.py`;
+  `python -m build --no-isolation` (sdist and wheel); `git diff --check`;
+  `yamllint .` (no YAML changes).
+- FAIL (pre-existing): full suite: `9 failed, 672 passed, 3 skipped in 51.88s`.
+  All nine failures are in `tests/unit/test_index_sync.py`:
+  `AttributeError: 'PackageRecipe' object has no attribute 'to_dict'`.
+  Reproduced the same nine failures in a detached baseline worktree at
+  `8b623d5` (9 failed, 13 passed in that module).
+- FAIL (pre-existing): repository-wide mypy reports the same missing
+  `PackageRecipe.to_dict` at `ebuild/packages/index_sync.py:354`.
+- FAIL (pre-existing): repository-wide Ruff reports F811 in
+  `tests/ebuild/test_build_dir_resolution.py`, W292 in
+  `tests/ebuild/test_package_recipe.py`, and two E402 findings in
+  `tests/unit/test_ci_gate.py`. These files are unchanged.
+- NOT RUN: CMake/CTest; `cmake: command not found` in this environment.
+- NOT RUN: real Windows/macOS linker execution and cross-compilation with an SDK.
+  Portable manifest tests cover sysroot emission; the compiler regression is
+  explicitly Linux/GCC-only.
+
+Handoff (verification -> maintainer): focused change independently reviewed;
+submission is for review, not a release. Remaining work: maintainer review/CI,
+with the unrelated baseline failures above tracked here for separate fixes.
+
 | ID | Task | Owner | Mode | Status | Depends on |
 |----|------|-------|------|--------|------------|
 | T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
