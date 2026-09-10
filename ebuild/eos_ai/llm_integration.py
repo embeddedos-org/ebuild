@@ -30,7 +30,7 @@ import os
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 
 @dataclass
@@ -73,9 +73,8 @@ class LLMClient:
 
         if provider == "ollama":
             default_url = os.environ.get("OLLAMA_HOST") or self.OLLAMA_URL
-            if default_url and not default_url.startswith(("http://", "https://")):
-                default_url = f"http://{default_url}"
-            self.base_url = (base_url or default_url).rstrip("/")
+            raw_url = base_url or default_url
+            self.base_url = self._ensure_scheme(raw_url).rstrip("/")
         elif provider == "openai":
             default_url = os.environ.get("OPENAI_BASE_URL") or self.OPENAI_URL
             self.base_url = (base_url or default_url).rstrip("/")
@@ -83,6 +82,22 @@ class LLMClient:
         elif provider == "custom":
             self.base_url = (base_url or "").rstrip("/")
             self.api_key = api_key or os.environ.get("EOS_LLM_API_KEY", "")
+
+    @staticmethod
+    def _ensure_scheme(url: str) -> str:
+        """Ensure a URL string has an http:// or https:// scheme prefix."""
+        if not url:
+            return ""
+        if url.startswith(("http://", "https://")):
+            return url
+        return f"http://{url}"
+
+    @staticmethod
+    def _error_message(payload: Any) -> str:
+        """Extract a human-readable error message from an API error payload."""
+        if isinstance(payload, dict):
+            return str(payload.get("message", payload))
+        return str(payload)
 
     @staticmethod
     def _normalize_ollama_url(base_url: str) -> str:
@@ -121,9 +136,8 @@ class LLMClient:
         4. None (returns a client that will fail gracefully)
         """
         # Try Ollama
-        ollama_url = os.environ.get("OLLAMA_HOST") or cls.OLLAMA_URL
-        if ollama_url and not ollama_url.startswith(("http://", "https://")):
-            ollama_url = f"http://{ollama_url}"
+        ollama_host = os.environ.get("OLLAMA_HOST") or cls.OLLAMA_URL
+        ollama_url = cls._ensure_scheme(ollama_host).rstrip("/")
         if cls._check_ollama(ollama_url):
             model = os.environ.get("OLLAMA_MODEL", "llama3")
             return cls(provider="ollama", model=model, base_url=ollama_url)
@@ -214,15 +228,14 @@ class LLMClient:
                     err_json = json.loads(raw_err)
                     if isinstance(err_json, dict):
                         if "error" in err_json:
-                            inner = err_json["error"]
-                            err_details = inner.get("message", str(inner)) if isinstance(inner, dict) else str(inner)
+                            err_details = self._error_message(err_json["error"])
                         elif "message" in err_json:
                             err_details = str(err_json["message"])
                 except (json.JSONDecodeError, ValueError):
                     pass
                 if not err_details and raw_err.strip():
                     err_details = raw_err.strip()[:200]
-            except Exception:
+            except (OSError, UnicodeDecodeError, AttributeError):
                 pass
             msg = f"HTTP {e.code}: {err_details}" if err_details else f"HTTP {e.code}: {e.reason}"
             return LLMResponse(
@@ -314,9 +327,8 @@ class LLMClient:
                 success=False, error="Invalid JSON response: expected object",
             )
 
-        if isinstance(body, dict) and "error" in body and not body.get("choices"):
-            err_data = body["error"]
-            err_msg = err_data.get("message", str(err_data)) if isinstance(err_data, dict) else str(err_data)
+        if "error" in body and not body.get("choices"):
+            err_msg = self._error_message(body["error"])
             return LLMResponse(
                 text="",
                 model=self.model,
@@ -331,8 +343,17 @@ class LLMClient:
         content = message.get("content", "") if isinstance(message, dict) else ""
         usage = body.get("usage", {}) if isinstance(body.get("usage"), dict) else {}
 
+        if not choices or not content:
+            return LLMResponse(
+                text="",
+                model=body.get("model", self.model),
+                provider=self.provider,
+                success=False,
+                error="Upstream returned no completion choices",
+            )
+
         return LLMResponse(
-            text=content or "",
+            text=content,
             model=body.get("model", self.model),
             provider=self.provider,
             tokens_used=usage.get("total_tokens", 0),

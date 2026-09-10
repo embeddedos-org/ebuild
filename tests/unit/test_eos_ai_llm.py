@@ -42,6 +42,23 @@ class MockHTTPResponse:
         pass
 
 
+@pytest.fixture(autouse=True)
+def clean_ambient_llm_env(monkeypatch):
+    """Ensure tests run in an isolated environment without ambient LLM env vars."""
+    env_vars = [
+        "OLLAMA_HOST",
+        "OLLAMA_MODEL",
+        "OPENAI_BASE_URL",
+        "OPENAI_MODEL",
+        "OPENAI_API_KEY",
+        "EOS_LLM_URL",
+        "EOS_LLM_API_KEY",
+        "EOS_LLM_MODEL",
+    ]
+    for var in env_vars:
+        monkeypatch.delenv(var, raising=False)
+
+
 @pytest.mark.ebuild
 class TestLLMClientInitAndConfig:
     """Tests for LLMClient initialization and configuration."""
@@ -63,6 +80,10 @@ class TestLLMClientInitAndConfig:
             api_key="sk-test",
         )
         assert client_openai.base_url == "https://api.openai.com/v1"
+
+    def test_init_normalizes_scheme_for_explicit_base_url_without_scheme(self):
+        client = LLMClient(provider="ollama", base_url="192.168.1.50:11434")
+        assert client.base_url == "http://192.168.1.50:11434"
 
     def test_custom_provider_init(self):
         client = LLMClient(
@@ -326,7 +347,8 @@ class TestErrorResilienceAndEdgeCases:
             mock_urlopen.return_value = MockHTTPResponse(empty_choices_body)
             resp = client.analyze("Prompt")
 
-            assert resp.success is True
+            assert resp.success is False
+            assert resp.error == "Upstream returned no completion choices"
             assert resp.text == ""
 
     def test_json_error_payload_in_response(self):
@@ -465,6 +487,26 @@ class TestHardwareAnalyzerIntegrationWithLLM:
 
         assert result.confidence == 0.8
         assert "llm_analyzed" not in "".join(result.features)
+
+    def test_analyzer_unchanged_when_llm_returns_empty_choices(self):
+        analyzer = EosHardwareAnalyzer()
+        base_profile = HardwareProfile(
+            mcu="STM32F4",
+            arch="arm",
+            core="cortex-m4",
+            confidence=0.8,
+        )
+
+        real_client = LLMClient(provider="openai", api_key="sk-test")
+        empty_choices_body = {"id": "test", "choices": [], "usage": {}}
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = MockHTTPResponse(empty_choices_body)
+            analyzer._llm_client = real_client
+            result = analyzer.analyze_with_llm(base_profile)
+
+        assert result.confidence == 0.8
+        assert not any("llm_analyzed" in f for f in result.features)
 
     def test_analyze_uses_default_system_prompt_when_none_provided(self):
         client = LLMClient(provider="ollama")
