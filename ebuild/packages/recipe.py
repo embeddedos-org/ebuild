@@ -89,6 +89,41 @@ class PackageRecipe:
                 f"Must be one of {self.VALID_BUILD_SYSTEMS}."
             )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize this recipe to a dict using the canonical YAML schema.
+
+        Keys match the *external* YAML format (``package``, ``build``, etc.)
+        rather than the internal dataclass field names (``name``,
+        ``build_system``), so the result round-trips cleanly through
+        :func:`parse_recipe`.
+
+        Only non-empty optional fields are included to keep the output
+        minimal and readable.
+        """
+        data: Dict[str, Any] = {
+            "package": self.name,
+            "version": self.version,
+            "url": self.url,
+            "build": self.build_system,
+        }
+        if self.checksum:
+            data["checksum"] = self.checksum
+        if self.dependencies:
+            data["dependencies"] = list(self.dependencies)
+        if self.patches:
+            data["patches"] = list(self.patches)
+        if self.configure_args:
+            data["configure_args"] = list(self.configure_args)
+        if self.build_args:
+            data["build_args"] = list(self.build_args)
+        if self.install_args:
+            data["install_args"] = list(self.install_args)
+        if self.description:
+            data["description"] = self.description
+        if self.license:
+            data["license"] = self.license
+        return data
+
 
 def _parse_string_list(
     raw: Dict[str, Any],
