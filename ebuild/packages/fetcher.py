@@ -5,18 +5,40 @@
 
 Handles HTTP/HTTPS downloads, SHA-256 checksum verification, and
 tar/zip extraction into the package cache directory.
+
+Downloads are bounded and atomic: a socket timeout keeps a stalled mirror
+from hanging the build forever, an overall size cap keeps a runaway
+response from filling the disk, and the archive is streamed to a ``.part``
+file that is renamed into place only once complete, so a crashed download
+never leaves a truncated archive behind to satisfy the cache.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import tarfile
+import urllib.error
+import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Optional
-from urllib.request import urlretrieve
 
+from ebuild.packages.index_sync import is_offline
 from ebuild.packages.recipe import PackageRecipe
+
+# Seconds a download may stall before it is abandoned. urlretrieve() carried
+# no timeout at all, so one unresponsive mirror hung `ebuild build` until the
+# user killed it.
+DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 30
+
+# Upper bound on a single downloaded archive (512 MB). Enforced while
+# streaming, so a server that lies about (or omits) Content-Length still
+# cannot fill the disk.
+MAX_ARCHIVE_SIZE_BYTES = 512 * 1024 * 1024
+
+# Chunk size for streaming a download to disk.
+DOWNLOAD_CHUNK_SIZE_BYTES = 256 * 1024
 
 
 class FetchError(Exception):
@@ -30,8 +52,13 @@ class PackageFetcher:
     Checksums are verified to ensure integrity.
     """
 
-    def __init__(self, download_dir: str | Path) -> None:
+    def __init__(
+        self,
+        download_dir: str | Path,
+        timeout: int = DEFAULT_DOWNLOAD_TIMEOUT_SECONDS,
+    ) -> None:
         self.download_dir = Path(download_dir)
+        self.timeout = timeout
         self.download_dir.mkdir(parents=True, exist_ok=True)
 
     def fetch(self, recipe: PackageRecipe, extract_to: str | Path) -> Path:
@@ -45,8 +72,21 @@ class PackageFetcher:
             Path to the extracted source directory.
 
         Raises:
-            FetchError: If download or verification fails.
+            FetchError: If download or verification fails, or if offline
+                mode is active and the archive is not already cached.
         """
+        # Offline mode must gate archive fetching the same way it gates index
+        # synchronization: a fetch that is not already in the download cache
+        # requires the network, and in offline mode there is no network.
+        if is_offline() and not self.is_downloaded(recipe):
+            archive_path = self._archive_path(recipe)
+            where = f" ({archive_path})" if archive_path else ""
+            raise FetchError(
+                f"Offline mode (EBUILD_OFFLINE=1): package {recipe.name} "
+                f"v{recipe.version} is not in the download cache{where}. "
+                f"Re-run without offline mode to download it."
+            )
+
         # PackageRecipe.validate() rejects a recipe without a checksum, but
         # fetch() is reachable with a hand-built recipe too, so refuse here as
         # well rather than falling through to an unverified extract.
@@ -90,14 +130,42 @@ class PackageFetcher:
             return archive_path
 
         archive_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Stream to a .part sibling and rename only once complete. A download
+        # that dies halfway must not leave a truncated file at archive_path:
+        # _download() short-circuits on existence, so a partial archive would
+        # be served by every later fetch as if it were the real thing.
+        partial_path = archive_path.with_name(archive_path.name + ".part")
         try:
-            urlretrieve(recipe.url, str(archive_path))
-        except Exception as e:
-            archive_path.unlink(missing_ok=True)
-            raise FetchError(
-                f"Failed to download {recipe.name} v{recipe.version} "
-                f"from {recipe.url}: {e}"
-            )
+            try:
+                request = urllib.request.Request(
+                    recipe.url,
+                    headers={"User-Agent": "ebuild-package-manager/3.0"},
+                )
+                with urllib.request.urlopen(
+                    request, timeout=self.timeout
+                ) as response:
+                    received = 0
+                    with open(partial_path, "wb") as f:
+                        while True:
+                            chunk = response.read(DOWNLOAD_CHUNK_SIZE_BYTES)
+                            if not chunk:
+                                break
+                            received += len(chunk)
+                            if received > MAX_ARCHIVE_SIZE_BYTES:
+                                raise FetchError(
+                                    f"Archive from {recipe.url} exceeds the "
+                                    f"maximum size of {MAX_ARCHIVE_SIZE_BYTES} bytes"
+                                )
+                            f.write(chunk)
+                os.replace(partial_path, archive_path)
+            except (urllib.error.URLError, OSError) as e:
+                raise FetchError(
+                    f"Failed to download {recipe.name} v{recipe.version} "
+                    f"from {recipe.url}: {e}"
+                ) from e
+        finally:
+            partial_path.unlink(missing_ok=True)
 
         return archive_path
 

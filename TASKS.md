@@ -15,6 +15,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
 | T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
 | T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | todo | none |
+| T-006 | `PackageRecipe.to_dict()` was deleted in #112; `ebuild update-index` fails with `AttributeError` on every recipe it caches (`index_sync.py:354` calls it); 9 tests in `tests/unit/test_index_sync.py` fail on master, and mypy reports the call site | backend | Maintenance | todo | none |
 
 ### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
 
