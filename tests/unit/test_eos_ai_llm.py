@@ -513,3 +513,34 @@ class TestHardwareAnalyzerIntegrationWithLLM:
             resp = client.analyze("Prompt")
             assert resp.success is False
             assert "Unexpected internal failure" in resp.error
+
+    def test_openai_respects_openai_base_url_env_var(self, monkeypatch):
+        monkeypatch.setenv("OPENAI_BASE_URL", "https://api.groq.com/openai/v1/")
+        monkeypatch.setenv("OPENAI_API_KEY", "gsk-test")
+        client = LLMClient(provider="openai")
+        assert client.base_url == "https://api.groq.com/openai/v1"
+
+        with patch.object(LLMClient, "_check_ollama", return_value=False):
+            auto_client = LLMClient.auto()
+            assert auto_client.provider == "openai"
+            assert auto_client.base_url == "https://api.groq.com/openai/v1"
+
+    def test_ollama_respects_ollama_host_env_var(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_HOST", "192.168.1.50:11434/")
+        client = LLMClient(provider="ollama")
+        assert client.base_url == "http://192.168.1.50:11434"
+
+    def test_dispatch_non_dict_json_response(self):
+        client = LLMClient(provider="ollama")
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = MockHTTPResponse(b'["unexpected", "list"]')
+            resp = client.analyze("Prompt")
+            assert resp.success is False
+            assert "Invalid JSON response: expected object" in resp.error
+
+        openai_client = LLMClient(provider="openai", api_key="sk-test")
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            mock_urlopen.return_value = MockHTTPResponse(b'["unexpected", "list"]')
+            resp = openai_client.analyze("Prompt")
+            assert resp.success is False
+            assert "Invalid JSON response: expected object" in resp.error

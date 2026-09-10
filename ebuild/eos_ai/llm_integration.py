@@ -72,9 +72,13 @@ class LLMClient:
         self.timeout = timeout
 
         if provider == "ollama":
-            self.base_url = (base_url or self.OLLAMA_URL).rstrip("/")
+            default_url = os.environ.get("OLLAMA_HOST") or self.OLLAMA_URL
+            if default_url and not default_url.startswith(("http://", "https://")):
+                default_url = f"http://{default_url}"
+            self.base_url = (base_url or default_url).rstrip("/")
         elif provider == "openai":
-            self.base_url = (base_url or self.OPENAI_URL).rstrip("/")
+            default_url = os.environ.get("OPENAI_BASE_URL") or self.OPENAI_URL
+            self.base_url = (base_url or default_url).rstrip("/")
             self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
         elif provider == "custom":
             self.base_url = (base_url or "").rstrip("/")
@@ -111,19 +115,25 @@ class LLMClient:
         """Auto-detect available LLM provider.
 
         Priority:
-        1. Ollama running locally
-        2. OpenAI API key in environment
+        1. Ollama running locally or at OLLAMA_HOST
+        2. OpenAI API key in environment (respecting OPENAI_BASE_URL)
         3. EOS_LLM_URL in environment (EOS_LLM_API_KEY optional)
         4. None (returns a client that will fail gracefully)
         """
         # Try Ollama
-        if cls._check_ollama():
-            return cls(provider="ollama", model="llama3")
+        ollama_url = os.environ.get("OLLAMA_HOST") or cls.OLLAMA_URL
+        if ollama_url and not ollama_url.startswith(("http://", "https://")):
+            ollama_url = f"http://{ollama_url}"
+        if cls._check_ollama(ollama_url):
+            model = os.environ.get("OLLAMA_MODEL", "llama3")
+            return cls(provider="ollama", model=model, base_url=ollama_url)
 
         # Try OpenAI
         openai_key = os.environ.get("OPENAI_API_KEY", "")
         if openai_key:
-            return cls(provider="openai", model="gpt-4o-mini", api_key=openai_key)
+            openai_base = os.environ.get("OPENAI_BASE_URL")
+            model = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
+            return cls(provider="openai", model=model, api_key=openai_key, base_url=openai_base)
 
         # Try custom
         custom_url = os.environ.get("EOS_LLM_URL", "")
@@ -259,6 +269,12 @@ class LLMClient:
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
 
+        if not isinstance(body, dict):
+            return LLMResponse(
+                text="", model=self.model, provider="ollama",
+                success=False, error="Invalid JSON response: expected object",
+            )
+
         return LLMResponse(
             text=body.get("response", ""),
             model=body.get("model", self.model),
@@ -291,6 +307,12 @@ class LLMClient:
 
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             body = json.loads(resp.read().decode("utf-8"))
+
+        if not isinstance(body, dict):
+            return LLMResponse(
+                text="", model=self.model, provider=self.provider,
+                success=False, error="Invalid JSON response: expected object",
+            )
 
         if isinstance(body, dict) and "error" in body and not body.get("choices"):
             err_data = body["error"]
