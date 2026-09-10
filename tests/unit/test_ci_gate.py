@@ -11,9 +11,12 @@ wire it into the gate, which would otherwise silently create a job that the
 required check does not cover.
 """
 
+import itertools
+import re
+from pathlib import Path
+
 import yaml
 import pytest
-from pathlib import Path
 
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[2] / ".github" / "workflows"
@@ -210,9 +213,6 @@ def test_gate_fails_on_any_non_success_result(jobs):
 # added to the template. That is not cosmetic -- a required rule naming that
 # check cannot say which of the three it means, and a Windows-only failure is
 # indistinguishable from the other two legs without opening the run.
-
-import itertools
-import re
 
 # `include` and `exclude` shape a matrix but are not dimensions of it, so they
 # are not part of the cartesian product.
