@@ -6,12 +6,6 @@ ignore: |
 
 rules:
   line-length: disable
-  # The Windows runners check out with core.autocrlf=true, so every LF file
-  # arrives as CRLF and the default `unix` setting rejected each line of
-  # each YAML file there; the step had never passed on that leg. `platform`
-  # accepts the checkout's own convention, which is what the files are in.
-  new-lines:
-    type: platform
   truthy:
     check-keys: false
   document-start: disable
