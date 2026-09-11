@@ -182,7 +182,11 @@ class TestObjectPathNamespacing:
         assert "-DBUILD_LIB=1" in ninja_content
         assert "-DBUILD_APP=1" in ninja_content
 
-    def test_shared_source_manifest_is_valid_ninja(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("app_sources", [
+        ["src/main.c", "src/util.c"],
+        ["src/util.c", "src/util.S"],
+    ])
+    def test_shared_source_manifest_is_valid_ninja(self, tmp_path, monkeypatch, app_sources):
         """The generated manifest must load in real ninja, not just look right.
 
         Ninja treats two edges producing one output as an error, so this is
@@ -203,8 +207,9 @@ class TestObjectPathNamespacing:
             "int main(void) { return util_answer() == 42 ? 0 : 1; }\n",
             encoding="utf-8",
         )
+        (src_dir / "util.S").write_text("", encoding="utf-8")
 
-        config = self._shared_source_config(tmp_path, ["src/main.c", "src/util.c"])
+        config = self._shared_source_config(tmp_path, app_sources)
 
         monkeypatch.chdir(tmp_path)
         build_dir = Path("_build")
@@ -222,6 +227,34 @@ class TestObjectPathNamespacing:
             "ninja rejected the generated manifest:\n"
             f"{result.stdout}\n{result.stderr}"
         )
+
+    @pytest.mark.parametrize("sources", [["src/main.c"], ["src/start.c", "src/start.S"]])
+    def test_object_outputs_preserve_source_extensions(self, tmp_path, sources):
+        """Distinct source filenames must stay distinct in both generated files."""
+        config = ProjectConfig(
+            name="source_extensions", version="1.0", source_dir=tmp_path,
+            targets=[TargetConfig(name="app", target_type="executable", sources=sources)],
+        )
+        build_dir = tmp_path / "_build"
+        NinjaBackend(config, build_dir, ResolvedToolchain()).generate()
+
+        manifest = (build_dir / "build.ninja").read_text(encoding="utf-8")
+        compile_edges = [line for line in manifest.splitlines() if ": cc " in line]
+        objects = [build_dir / "obj" / "app" / (src + ".o") for src in sources]
+        assert compile_edges == [
+            f"build {escape_ninja_path(obj)}: cc {escape_ninja_path(src)}"
+            for src, obj in zip(sources, objects)
+        ]
+        link_edge = next(line for line in manifest.splitlines() if ": link " in line)
+        assert link_edge.split(": link ", 1)[1] == " ".join(
+            escape_ninja_path(obj) for obj in objects
+        )
+
+        commands = json.loads((build_dir / "compile_commands.json").read_text(encoding="utf-8"))
+        assert [entry["file"] for entry in commands] == sources
+        assert [entry["command"].split(" -o ", 1)[1] for entry in commands] == [
+            str(obj) for obj in objects
+        ]
 
     def test_compile_commands_distinguishes_shared_source_entries(self, tmp_path):
         """compile_commands.json entries for a shared source must differ.

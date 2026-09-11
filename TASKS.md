@@ -52,6 +52,18 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 
 ## Completed
 
+### T-006 — Preserve source extensions in Ninja object paths
+
+- Implementation and independent review complete: `start.c` and `start.S`
+  produce `start.c.o` and `start.S.o`, retaining target namespaces.
+- Focused regression suite: 19 passed, including real Ninja dry runs; before
+  the fix, 3 failed and 16 passed. Changed-file Ruff and diff checks passed.
+- Separate architecture review and changelog entry omitted per ORCHESTRATION.md:
+  this is a one-line naming fix; the helper documentation describes the change.
+- Full suite: 667 passed, 10 failed, 7 skipped. The same 10 failures reproduce
+  with the original backend: nine missing `PackageRecipe.to_dict()` errors and
+  one environment permission error. These are outside this fix's scope.
+
 | ID | Task | Owner | Verified by | Evidence |
 |----|------|-------|-------------|----------|
 | T-001 | Make initramfs creation portable and self-contained | backend | independent reviewer | Focused archive tests: **5 passed, 1 skipped** (symlink creation unavailable on this Windows host). Independent `bsdtar` extraction validated hard-link identity and payload. Full Python suite: **288 passed, 2 skipped, 1 unrelated failure** in the pre-existing Windows Ninja path assertion, recorded as T-002. QEMU boot was not run on Windows. |
