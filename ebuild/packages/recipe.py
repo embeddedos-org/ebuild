@@ -89,6 +89,30 @@ class PackageRecipe:
                 f"Must be one of {self.VALID_BUILD_SYSTEMS}."
             )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert recipe to dictionary for YAML serialization."""
+        data: Dict[str, Any] = {
+            "package": self.name,
+            "version": self.version,
+        }
+        if self.description:
+            data["description"] = self.description
+        if self.license:
+            data["license"] = self.license
+        data["url"] = self.url
+        if self.checksum:
+            data["checksum"] = self.checksum
+        data["build"] = self.build_system
+        if self.dependencies:
+            data["dependencies"] = self.dependencies
+        if self.configure_args:
+            data["configure_args"] = self.configure_args
+        if self.build_args:
+            data["build_args"] = self.build_args
+        if self.patches:
+            data["patches"] = self.patches
+        return data
+
 
 def _parse_string_list(
     raw: Dict[str, Any],
