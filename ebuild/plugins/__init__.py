@@ -43,7 +43,7 @@ def discover_plugins() -> List[PluginBase]:
         else:
             # Before 3.10 entry_points() returned a dict; the current stubs
             # only model EntryPoints, which has no .get, hence the ignore.
-            eps = entry_points.get("ebuild.plugins", [])  # type: ignore[attr-defined]
+            eps = entry_points.get("ebuild.plugins", [])  # type: ignore[arg-type]
 
         for ep in eps:
             try:
