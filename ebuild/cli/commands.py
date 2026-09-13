@@ -1844,7 +1844,15 @@ def analyze(log: Logger, input_text: Optional[str], input_file: Optional[str],
             log.info(f"  Provider: {llm_info}")
             if interpreter.llm_client.is_available():
                 profile = interpreter.analyze_with_llm(profile)
-                log.success("  LLM analysis complete")
+                if any(f.startswith("llm_analyzed:") for f in profile.features):
+                    log.success("  LLM analysis complete")
+                else:
+                    # Keep the rule-engine profile; don't print success
+                    # just because we attempted the call.
+                    log.warning(
+                        "  LLM analysis did not complete; "
+                        "continuing with the rule-engine profile"
+                    )
             else:
                 log.warning("  No LLM available. Install Ollama or set OPENAI_API_KEY.")
 

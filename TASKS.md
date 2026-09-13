@@ -15,6 +15,9 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
 | T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
 | T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | todo | none |
+| T-006 | Make optional LLM analysis honest: probe configured Ollama URL, join OpenAI `/v1` once, reject non-HTTP(S), do not report `--llm` success on a failed call | backend | Maintenance | review | none |
+| T-007 | Flash/RAM size regex requires `[mk]b` immediately before `flash`/`ram`, so `"2MB SPI flash"` yields `flash_size=0` and `generate_boot_yaml` silently defaults to 1 MB | backend | Maintenance | todo | none |
+| T-008 | `IndexSyncManager.sync` calls `PackageRecipe.to_dict()`, which does not exist; `tests/unit/test_index_sync.py` currently fails 9 tests on that AttributeError. Unrelated to T-006. | backend | Maintenance | todo | none |
 
 ### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
 
@@ -46,9 +49,18 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
   process cwd's own `eos.yaml`/`board.yaml`, if any, cannot change what it
   measures; confirmed to fail against the pre-fix lookup (no report
   emitted) and pass against the fix.
-- **Suite result** (single run, both changes present, this Windows host):
-  **560 passed, 6 skipped, exit code 0**. Supersedes any other count quoted
-  for T-003 or T-004 elsewhere in this repo or in PR #110's description.
+- **T-006**: `LLMClient.is_available()` probes `self.base_url` rather than
+  hardcoded localhost; `_openai_chat_url()` joins `/v1` once; non-HTTP(S)
+  schemes never reach `urlopen`; a failed `analyze_with_llm` appends
+  `llm_failed:<provider>` and `ebuild analyze --llm` warns instead of
+  printing success. Covered by `tests/ebuild/test_llm_integration.py`
+  (**33 passed**). The `/v1` join test was confirmed to fail against the
+  pre-fix `f"{base}/v1/chat/completions"` (3 parametrized cases produced
+  `/v1/v1/chat/completions`) and pass against the fix. `llm_integration.py`
+  coverage **99.46%** on that file. Full `tests/ebuild` + `tests/unit`:
+  **699 passed, 3 skipped, 9 failed** — the 9 are pre-existing
+  `PackageRecipe.to_dict` errors in `index_sync.py`, recorded as T-008.
+
 
 ## Completed
 

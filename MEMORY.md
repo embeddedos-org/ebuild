@@ -31,7 +31,7 @@ notices the obvious-looking alternative.
 
 | Date | Decision | Reason | Rejected alternative |
 |------|----------|--------|----------------------|
-| —    | None recorded yet. | — | — |
+| 2026-09-13 | LLM endpoints accept `http` and `https`; package-index fetch stays HTTPS-only | Ollama's default listener is `http://localhost:11434`. Requiring HTTPS would break the documented local path. `file://` and other urllib schemes are rejected. | Reuse the index-sync `https://` allowlist for LLM URLs — rejected because it would disable stock Ollama. |
 
 <!-- Example of the level of detail worth recording:
 | 2026-03-14 | Queue writes in-process rather than via Redis | Deploy target has no
