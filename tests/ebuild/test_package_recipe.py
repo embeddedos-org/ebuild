@@ -5,7 +5,12 @@
 
 import pytest
 
-from ebuild.packages.recipe import RecipeError, load_recipe_from_string
+from ebuild.packages.recipe import (
+    RecipeError,
+    _parse_recipe,
+    load_recipe_from_string,
+    parse_recipe,
+)
 
 
 BASE_RECIPE = """
@@ -14,6 +19,11 @@ version: 1.0.0
 url: https://example.com/demo.tar.gz
 checksum: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 """
+
+
+def test_parse_recipe_public_name_preserves_legacy_alias():
+    """The public parser keeps the legacy private alias."""
+    assert _parse_recipe is parse_recipe
 
 
 @pytest.mark.parametrize(

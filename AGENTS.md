@@ -10,6 +10,42 @@ One rule is structural rather than stylistic: **whoever implements does not
 approve.** Review is a separate role because self-review reliably misses the
 thing the implementer already believes is correct.
 
+## Repository map
+
+- `ebuild/` is the Python package. Keep CLI wiring in `ebuild/cli/`, backend
+  selection and execution in `ebuild/build/`, dependency and package behavior
+  in `ebuild/deps/` and `ebuild/packages/`, and image or firmware workflows in
+  `ebuild/system/` and `ebuild/firmware/`.
+- `core/` contains vendored native EoS and eBoot components. Changes there need
+  the component's CMake tests in addition to the Python suite.
+- `recipes/`, `layers/`, `hardware/`, and `templates/` are user-facing build
+  inputs. Preserve their schemas and add a focused parser, resolver, or
+  generated-output test when behavior changes.
+- `docs/` is the MkDocs source. `docs/wiki/` mirrors the six published GitHub
+  Wiki pages; keep those pages aligned when their shared guidance changes.
+- `tests/ebuild/` and `tests/unit/` cover the Python tool, while
+  `tests/functional/`, `tests/performance/`, and native `core/**/tests/` cover
+  broader behavior. Do not use `tests_backup/` as the validation target.
+
+## Working in this repository
+
+1. Read `README.md`, `CONTRIBUTING.md`, and the nearest component files before
+   editing. Keep changes within the requested subsystem.
+2. Install the Python development environment with
+   `python -m pip install -e ".[dev]"` when dependencies are not already
+   available.
+3. Run focused tests for the changed behavior, then run
+   `python -m pytest tests/ -v --tb=short` when the environment supports the
+   full suite.
+4. Run `ruff check .` for Python changes. For native changes, configure with
+   `cmake -S . -B build -DEOS_BUILD_TESTS=ON`, build with `cmake --build build`,
+   and run `ctest --test-dir build --output-on-failure`.
+5. Validate changed YAML and Markdown with the repository tooling, and always
+   run `git diff --check` before committing.
+6. Follow the DCO and conventional commit requirements in `CONTRIBUTING.md`.
+   Pull requests must use a closing keyword such as `Fixes #123` for a real
+   issue in this repository.
+
 ## Planner — [.ai/planner.md](./.ai/planner.md)
 
 - Understand the request.
