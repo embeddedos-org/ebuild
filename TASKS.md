@@ -56,11 +56,13 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
   Windows suffix path is exercised.
 - **Suite result**: the earlier **560 passed, 6 skipped, exit code 0** record
   predates the current branch and must not be used as its validation result.
-  On the current PR head, the full suite reports **670 passed, 4 skipped, 10
-  failed**: nine `tests/unit/test_index_sync.py` cases fail because
-  `PackageRecipe.to_dict` is missing, and
-  `tests/ebuild/test_build_dir_resolution.py::test_end_to_end_build_from_outside_produces_the_binary`
-  also fails. These failures reproduce on `master` and are unrelated to T-005.
+  On the current PR head, the full suite on Windows CPython 3.14 reports
+  **669 passed, 6 skipped, 9 failed**; all nine failures are in
+  `tests/unit/test_index_sync.py` because `PackageRecipe.to_dict` is missing.
+  The independent Linux review run selected a different platform-sensitive
+  set (**670 passed, 4 skipped, 10 failed**), including one build-directory
+  test. These failures reproduce outside T-005 and are not hidden by this
+  change.
 
 ## Completed
 
