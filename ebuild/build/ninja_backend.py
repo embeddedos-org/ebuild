@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ebuild.build.layout import executable_output_path
+
 
 @dataclass
 class PackagePaths:
@@ -28,41 +30,6 @@ class PackagePaths:
 # present (or explicitly disabled with -fno-*) we must not add -fPIC again.
 _PIC_FLAGS = {"-fPIC", "-fpic", "-fPIE", "-fpie", "-fno-pic", "-fno-PIC",
               "-fno-pie", "-fno-PIE"}
-
-
-def _exe_suffix() -> str:
-    """The extension the compiler driver gives an executable.
-
-    gcc on Windows appends .exe when -o names no extension, so an edge
-    declaring "app" produced "app.exe" on disk: ninja never saw its own
-    output, treated the target as dirty and relinked on every build.
-    """
-    return ".exe" if sys.platform == "win32" else ""
-
-
-def executable_output_path(build_dir: Path, target_name: str) -> Path:
-    """Return the linked binary path NinjaBackend emits for *target_name*.
-
-    Args:
-        build_dir: Directory that contains ``build.ninja`` and the linked
-            outputs.
-        target_name: The ``name`` of an ``executable`` or ``test`` target.
-
-    Returns:
-        ``build_dir / target_name`` on POSIX, or that path with ``.exe``
-        appended on Windows -- the same path the Ninja edge in
-        ``_write_ninja`` already names via ``_exe_suffix()``. A consumer
-        that rebuilds this path independently instead of calling this
-        function can silently drop the suffix and go looking for a binary
-        the edge never produced.
-
-    Example:
-        >>> from pathlib import Path
-        >>> executable_output_path(Path("_build"), "hello").name in (
-        ...     "hello", "hello.exe")
-        True
-    """
-    return Path(build_dir) / (target_name + _exe_suffix())
 
 
 def _shared_flag() -> str:

@@ -30,7 +30,7 @@ from ebuild.build.firmware_image import (
     missing_tool_message,
     pack,
 )
-from ebuild.build.ninja_backend import executable_output_path
+from ebuild.build.layout import executable_output_path
 from ebuild.cli.commands import cli
 
 
@@ -273,8 +273,8 @@ class TestCommandPacks:
         against the pre-fix code, which looked for the unsuffixed name --
         on any host the suite runs on.
         """
-        from ebuild.build import ninja_backend
-        monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
+        from ebuild.build import layout
+        monkeypatch.setattr(layout, "_exe_suffix", lambda: ".exe")
 
         tool = _efwtool_that_packs(tmp_path)
         monkeypatch.chdir(self._project(tmp_path))
