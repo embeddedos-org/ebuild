@@ -26,10 +26,10 @@ import click
 import yaml
 
 from ebuild import __version__
+from ebuild.build.layout import executable_output_path
 from ebuild.build.ninja_backend import (
     NinjaBackend,
     PackagePaths,
-    executable_output_path,
 )
 from ebuild.build.toolchain import resolve_toolchain
 from ebuild.cli.integration import register_commands as _register_integration_commands

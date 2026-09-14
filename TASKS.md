@@ -48,15 +48,19 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
   emitted) and pass against the fix.
 - **T-005**: `executable_output_path()` now lives in
   `ebuild/build/layout.py`; `ninja_backend` re-exports the same function for
-  compatibility, and consumers/tests use the backend-neutral owner. The
+  compatibility, and CLI consumers/tests use the backend-neutral owner. The
   focused suite (`tests/unit/test_package_efw.py`,
   `tests/unit/test_golden_path_commands.py`, `tests/unit/test_footprint.py`,
   and `tests/unit/test_ninja_backend.py`) reports **119 passed, 1 skipped**;
   the compatibility test asserts both import paths are identical and the
   Windows suffix path is exercised.
-- **Suite result** (single run, both changes present, this Windows host):
-  **560 passed, 6 skipped, exit code 0**. Supersedes any other count quoted
-  for T-003 or T-004 elsewhere in this repo or in PR #110's description.
+- **Suite result**: the earlier **560 passed, 6 skipped, exit code 0** record
+  predates the current branch and must not be used as its validation result.
+  On the current PR head, the full suite reports **670 passed, 4 skipped, 10
+  failed**: nine `tests/unit/test_index_sync.py` cases fail because
+  `PackageRecipe.to_dict` is missing, and
+  `tests/ebuild/test_build_dir_resolution.py::test_end_to_end_build_from_outside_produces_the_binary`
+  also fails. These failures reproduce on `master` and are unrelated to T-005.
 
 ## Completed
 
