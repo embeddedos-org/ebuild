@@ -125,7 +125,7 @@ def _parse_string_list(
     return list(value)
 
 
-def _parse_recipe(
+def parse_recipe(
     raw: Dict[str, Any],
     source_path: Optional[Path] = None,
 ) -> PackageRecipe:
