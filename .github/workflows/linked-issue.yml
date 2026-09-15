@@ -11,6 +11,12 @@ permissions:
 
 jobs:
   policy:
+    # pull_request_target also fires on `edited` for closed and merged pull
+    # requests, so editing the body of a PR merged before this policy existed
+    # graded it against the policy and failed it. A merged PR cannot be
+    # changed to satisfy the policy, and grading it says nothing about the
+    # tree. Only an open PR is a decision still to be made.
+    if: github.event.pull_request.state == 'open'
     uses: embeddedos-org/.github/.github/workflows/linked-issue-policy.yml@92cb596c773496ec4df76717e8acf0e6b7700f73
     with:
       policy_ref: 92cb596c773496ec4df76717e8acf0e6b7700f73
