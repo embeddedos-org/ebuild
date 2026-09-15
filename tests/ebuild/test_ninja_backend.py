@@ -194,3 +194,88 @@ def test_editing_a_header_triggers_a_rebuild(tmp_path):
         "was reused and the build wrongly reported success"
     )
     assert "header was recompiled" in (second.stdout + second.stderr)
+
+
+@pytest.mark.parametrize("directory", ["project", "project with spaces"])
+def test_removing_source_removes_archive_member(tmp_path, directory):
+    """Incremental archives must contain only the current source objects."""
+    cc = shutil.which("cc") or shutil.which("gcc")
+    ar = shutil.which("ar")
+    if not cc or not ar or importlib.util.find_spec("ninja") is None:
+        pytest.skip("host C compiler, ar, and ninja are required")
+
+    source_dir = tmp_path / directory
+    source_dir.mkdir()
+    (source_dir / "keep.c").write_text("int keep(void) { return 1; }\n")
+    (source_dir / "removed.c").write_text("int removed(void) { return 42; }\n")
+    main = source_dir / "main.c"
+    main.write_text("int removed(void); int main(void) { return removed(); }\n")
+    library = TargetConfig(
+        name="helpers", target_type="static_library",
+        sources=["keep.c", "removed.c"],
+    )
+    config = ProjectConfig(
+        name="archive-regression", version="1.0", source_dir=source_dir,
+        targets=[library],
+    )
+    build_dir = source_dir / "build"
+    archive = build_dir / "libhelpers.a"
+    toolchain = SimpleNamespace(cc=cc, cxx="c++", ar=ar)
+
+    def build():
+        NinjaBackend(config, build_dir, toolchain).generate()
+        result = subprocess.run(
+            [sys.executable, "-m", "ninja", "-f", str(build_dir / "build.ninja")],
+            cwd=source_dir, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def link():
+        return subprocess.run(
+            [cc, str(main), str(archive), "-o", str(build_dir / "app")],
+            capture_output=True, text=True,
+        )
+
+    build()
+    assert link().returncode == 0
+    initial_mtime = archive.stat().st_mtime_ns
+    build()
+    assert archive.stat().st_mtime_ns == initial_mtime, "unchanged archive rebuilt"
+
+    library.sources.remove("removed.c")
+    (source_dir / "removed.c").unlink()
+    build()
+    members = subprocess.check_output([ar, "t", str(archive)], text=True)
+    assert "removed.o" not in members.splitlines(), members
+    assert "keep.o" in members.splitlines(), members
+    assert link().returncode != 0, "deleted function still links from stale code"
+
+    # The retained function still links, so this is not merely a broken archive.
+    main.write_text("int keep(void); int main(void) { return keep() - 1; }\n")
+    result = link()
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_archive_failure_is_reported_by_ninja(tmp_path):
+    """The Python wrapper must preserve the archiver's failure status."""
+    cc = shutil.which("cc") or shutil.which("gcc")
+    if not cc or importlib.util.find_spec("ninja") is None:
+        pytest.skip("host C compiler and ninja are required")
+    (tmp_path / "lib.c").write_text("int value(void) { return 1; }\n")
+    config = ProjectConfig(
+        name="archive-failure", version="1.0", source_dir=tmp_path,
+        targets=[TargetConfig(
+            name="helpers", target_type="static_library", sources=["lib.c"],
+        )],
+    )
+    # Python receives 'rcs' as a script name and fails: a portable stand-in
+    # for an archiver returning a nonzero status, without a shell script.
+    toolchain = SimpleNamespace(cc=cc, cxx="c++", ar=sys.executable)
+    build_dir = tmp_path / "build"
+    NinjaBackend(config, build_dir, toolchain).generate()
+    result = subprocess.run(
+        [sys.executable, "-m", "ninja", "-f", str(build_dir / "build.ninja")],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "rcs" in result.stdout + result.stderr

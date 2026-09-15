@@ -66,3 +66,16 @@ passed, failed and skipped. A skipped test is not a passing test.
 
 Any test that could not be run in this environment is named, with the reason,
 and marked `NOT RUN` or `UNKNOWN` per [VERIFY.md](./VERIFY.md).
+
+## Static-library source removal regression
+
+Run `python -m pytest tests/ebuild/test_ninja_backend.py -v` to check native
+archive rebuilding. The source-removal test requires a host C compiler, `ar`,
+and the Ninja Python package. It builds a library, removes a source, and
+checks that the old object is absent and its function no longer links. It
+also verifies that retained code still links, unchanged archives are not
+rebuilt, and project paths containing spaces work. A separate test checks
+that an archiver failure makes Ninja fail.
+
+Static archives are recreated when their build step runs: updating an existing
+archive with `ar rcs` alone retains members removed from the source list.

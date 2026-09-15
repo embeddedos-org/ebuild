@@ -109,3 +109,13 @@ These commands were derived from the manifests at the repository root. Confirm o
   [ORCHESTRATION.md](./ORCHESTRATION.md) is met and the verification commands
   were actually run.
 - `blocked` requires a note naming what it is blocked on and who can unblock it.
+
+## Baseline findings during static-archive validation
+
+Unchanged commit `76970c9` and the archive fix both have nine failing tests
+caused by missing `PackageRecipe.to_dict`, plus one offline-index test denied
+access to the home cache by the local sandbox. Mypy also reports the missing
+method. Ruff reports four existing findings in `test_build_dir_resolution.py`,
+`test_package_recipe.py`, and `test_ci_gate.py`. These are outside the archive
+fix; the before/after full-suite results are respectively 669/672 passed,
+10 failed, and 2 skipped on macOS with Python 3.13.
