@@ -89,6 +89,12 @@ class PackageRecipe:
                 f"Must be one of {self.VALID_BUILD_SYSTEMS}."
             )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert recipe back to dictionary representation."""
+        from dataclasses import asdict
+        return asdict(self)
+
+
 
 def _parse_string_list(
     raw: Dict[str, Any],
