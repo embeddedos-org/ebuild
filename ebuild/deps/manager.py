@@ -53,8 +53,10 @@ class DepsManager:
     2. Environment variables ``EBUILD_EOS_PATH`` / ``EBUILD_EBOOT_PATH``
     3. ``~/.ebuild/config.yaml`` custom ``path:`` override
     4. ``~/.ebuild/repos/<name>/`` (cached git clone)
-    5. Sibling directory ``../<name>/`` (workspace layout; ``eboot`` also tries ``eBoot``)
-    6. Embedded ``core/<name>/`` (legacy fallback — prints deprecation warning)
+    5. Sibling directory ``../<name>/`` (workspace layout;
+       ``eboot`` also tries ``eBoot``)
+    6. Embedded ``core/<name>/`` (legacy fallback — prints deprecation
+       warning)
     """
 
     def __init__(self, cli_overrides: Optional[Dict[str, str]] = None) -> None:
@@ -71,17 +73,19 @@ class DepsManager:
         if EBUILD_CONFIG_PATH.exists():
             with open(EBUILD_CONFIG_PATH, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f) or {}
-            # Merge missing keys from defaults. Deep-copied: setup(),
-            # set_url(), set_branch() and link() mutate these nested dicts
+
+            # Merge missing keys from defaults. Deep-copied because setup(),
+            # set_url(), set_branch() and link() mutate nested dictionaries
             # in place, and an aliased default would leak one instance's
             # edits into DEFAULT_CONFIG for the rest of the process.
             for key, val in DEFAULT_CONFIG.items():
                 if key not in data:
                     data[key] = copy.deepcopy(val)
                 elif key == "repos" and isinstance(val, dict):
-                    for rname, rval in val.items():
-                        if rname not in data["repos"]:
-                            data["repos"][rname] = copy.deepcopy(rval)
+                    for repo_name, repo_value in val.items():
+                        if repo_name not in data["repos"]:
+                            data["repos"][repo_name] = copy.deepcopy(repo_value)
+
             return data
 
         self._config = copy.deepcopy(DEFAULT_CONFIG)
@@ -91,11 +95,18 @@ class DepsManager:
     def save_config(self) -> None:
         """Write the current configuration to ``~/.ebuild/config.yaml``."""
         ensure_ebuild_home()
+
         with open(EBUILD_CONFIG_PATH, "w", encoding="utf-8") as f:
-            yaml.dump(self._config, f, default_flow_style=False, sort_keys=False)
+            yaml.dump(
+                self._config,
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+            )
 
     @property
     def config(self) -> Dict[str, Any]:
+        """Return the current configuration."""
         return self._config
 
     # ------------------------------------------------------------------
@@ -104,10 +115,11 @@ class DepsManager:
 
     @property
     def cache_dir(self) -> Path:
-        """Resolved cache directory (from config or env var)."""
+        """Resolve the cache directory from config or environment."""
         env = os.environ.get("EBUILD_REPOS_DIR")
         if env:
             return Path(env)
+
         raw = self._config.get("cache_dir", str(EBUILD_REPOS_DIR))
         return Path(os.path.expanduser(raw))
 
@@ -123,47 +135,71 @@ class DepsManager:
         path: Optional[str] = None,
         shallow: bool = True,
     ) -> Path:
-        """Clone or link a repo.
+        """Clone or link a repository.
 
         Args:
             repo_name: ``"eos"`` or ``"eboot"``.
-            url: Git URL override. Falls back to config → default.
-            branch: Branch/tag override. Falls back to config → ``"master"``.
+            url: Git URL override. Falls back to config, then default URL.
+            branch: Branch/tag override. Falls back to configured branch.
+                If no branch is configured, the remote repository's default
+                branch is used.
             path: If given, register this local path instead of cloning.
-            shallow: Use ``--depth 1`` for faster clones (default *True*).
+            shallow: Use ``--depth 1`` for faster clones.
 
         Returns:
-            The resolved local path of the repo.
+            The resolved local path of the repository.
         """
-        repo_cfg = self._config.setdefault("repos", {}).setdefault(repo_name, {})
+        repo_cfg = self._config.setdefault("repos", {}).setdefault(
+            repo_name,
+            {},
+        )
 
         if url:
             repo_cfg["url"] = url
+
         if branch:
             repo_cfg["branch"] = branch
 
         if path:
-            # Link to local repo — no clone needed
-            p = Path(path).resolve()
-            if not p.is_dir():
-                raise FileNotFoundError(f"Local repo path does not exist: {p}")
-            repo_cfg["path"] = str(p)
-            self.save_config()
-            return p
+            # Link to local repo — no clone needed.
+            local_path = Path(path).resolve()
 
-        # Clone to cache
+            if not local_path.is_dir():
+                raise FileNotFoundError(
+                    f"Local repo path does not exist: {local_path}"
+                )
+
+            repo_cfg["path"] = str(local_path)
+            self.save_config()
+            return local_path
+
         effective_url = repo_cfg.get("url") or self._default_url(repo_name)
-        effective_branch = repo_cfg.get("branch") or "master"
+
+        # Do not invent a branch when one was not configured.
+        # Passing None to _git_clone causes git to use the remote's
+        # default branch.
+        effective_branch = repo_cfg.get("branch")
 
         dest = self.cache_dir / repo_name
+
         if dest.exists():
-            # Already cloned — optionally switch branch
-            self._checkout_branch(dest, effective_branch)
+            # Already cloned — only switch branches when one was
+            # explicitly configured.
+            if effective_branch:
+                self._checkout_branch(dest, effective_branch)
+
             self.save_config()
             return dest
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
-        self._git_clone(effective_url, dest, effective_branch, shallow)
+
+        self._git_clone(
+            effective_url,
+            dest,
+            effective_branch,
+            shallow,
+        )
+
         self.save_config()
         return dest
 
@@ -180,63 +216,83 @@ class DepsManager:
 
         Args:
             repo_name: ``"eos"`` or ``"eboot"``.
-            project_dir: Current project directory (for sibling/core fallback).
+            project_dir: Current project directory for sibling/core fallback.
 
         Returns:
-            Absolute path to the repo, or *None* if not found anywhere.
+            Absolute path to the repo, or ``None`` if not found.
         """
         # 1. CLI override
         cli_path = self._cli_overrides.get(repo_name)
+
         if cli_path:
-            p = Path(cli_path).resolve()
-            if p.is_dir():
-                return p
+            path = Path(cli_path).resolve()
+
+            if path.is_dir():
+                return path
 
         # 2. Environment variable
         env_var = ENV_PATH_VARS.get(repo_name)
+
         if env_var:
-            env_val = os.environ.get(env_var)
-            if env_val:
-                p = Path(env_val).resolve()
-                if p.is_dir():
-                    return p
+            env_value = os.environ.get(env_var)
+
+            if env_value:
+                path = Path(env_value).resolve()
+
+                if path.is_dir():
+                    return path
 
         # 3. Config path override
         repo_cfg = self._config.get("repos", {}).get(repo_name, {})
         config_path = repo_cfg.get("path")
+
         if config_path:
-            p = Path(config_path).resolve()
-            if p.is_dir():
-                return p
+            path = Path(config_path).resolve()
+
+            if path.is_dir():
+                return path
 
         # 4. Cached clone
         cached = self.cache_dir / repo_name
+
         if cached.is_dir():
             return cached
 
-        # 5. Sibling directory (try documented aliases; Linux is case-sensitive)
+        # 5. Sibling directory
         if project_dir:
-            names = SIBLING_DIR_NAMES.get(repo_name, (repo_name,))
+            names = SIBLING_DIR_NAMES.get(
+                repo_name,
+                (repo_name,),
+            )
+
             for name in names:
                 sibling = project_dir.parent / name
+
                 if sibling.is_dir():
                     return sibling
 
-        # 6. Legacy embedded core/<name>/ (deprecation warning)
+        # 6. Legacy embedded core/<name>/ fallback
         if project_dir:
             core_path = project_dir / "core" / repo_name
+
             if core_path.is_dir():
                 warnings.warn(
                     f"Using embedded core/{repo_name}/ is deprecated. "
-                    f"Run 'ebuild setup' to clone repos to ~/.ebuild/repos/.",
+                    "Run 'ebuild setup' to clone repos to "
+                    "~/.ebuild/repos/.",
                     DeprecationWarning,
                     stacklevel=2,
                 )
+
                 return core_path
 
         return None
 
-    def is_available(self, repo_name: str, project_dir: Optional[Path] = None) -> bool:
+    def is_available(
+        self,
+        repo_name: str,
+        project_dir: Optional[Path] = None,
+    ) -> bool:
         """Check if *repo_name* is resolvable anywhere."""
         return self.get_repo_path(repo_name, project_dir) is not None
 
@@ -248,32 +304,42 @@ class DepsManager:
         """Git pull latest for one or all repos.
 
         Returns:
-            Dict mapping repo name to result string (e.g. ``"updated"``).
+            Dict mapping repo name to result string.
         """
         names = [repo_name] if repo_name else list(KNOWN_REPOS)
         results: Dict[str, str] = {}
 
         for name in names:
             repo_dir = self.cache_dir / name
+
             if not repo_dir.is_dir():
                 results[name] = "not cloned"
                 continue
 
             repo_cfg = self._config.get("repos", {}).get(name, {})
+
             if repo_cfg.get("path"):
                 results[name] = "linked (skipped)"
                 continue
 
             try:
                 subprocess.run(
-                    ["git", "-C", str(repo_dir), "pull", "--ff-only"],
+                    [
+                        "git",
+                        "-C",
+                        str(repo_dir),
+                        "pull",
+                        "--ff-only",
+                    ],
                     capture_output=True,
                     text=True,
                     check=True,
                 )
+
                 results[name] = "updated"
-            except subprocess.CalledProcessError as e:
-                results[name] = f"failed: {e.stderr.strip()}"
+
+            except subprocess.CalledProcessError as error:
+                results[name] = f"failed: {error.stderr.strip()}"
 
         return results
 
@@ -282,22 +348,29 @@ class DepsManager:
     # ------------------------------------------------------------------
 
     def status(self) -> List[Dict[str, Any]]:
-        """Return status info for all known repos."""
+        """Return status information for all known repositories."""
         entries: List[Dict[str, Any]] = []
+
         for name in KNOWN_REPOS:
             repo_cfg = self._config.get("repos", {}).get(name, {})
             cached = self.cache_dir / name
 
             info: Dict[str, Any] = {
                 "name": name,
-                "url": repo_cfg.get("url", self._default_url(name)),
-                "branch": repo_cfg.get("branch", "master"),
+                "url": repo_cfg.get(
+                    "url",
+                    self._default_url(name),
+                ),
+                "branch": repo_cfg.get("branch"),
                 "config_path": repo_cfg.get("path"),
                 "cached": cached.is_dir(),
-                "cache_location": str(cached) if cached.is_dir() else None,
+                "cache_location": (
+                    str(cached)
+                    if cached.is_dir()
+                    else None
+                ),
             }
 
-            # Get current git branch/commit if cloned
             if cached.is_dir():
                 info["git_branch"] = self._git_current_branch(cached)
                 info["git_commit"] = self._git_head_commit(cached)
@@ -310,18 +383,40 @@ class DepsManager:
     # Link / unlink
     # ------------------------------------------------------------------
 
-    def link(self, repo_name: str, local_path: str) -> None:
-        """Register a local path override (no symlink — just config entry)."""
-        p = Path(local_path).resolve()
-        if not p.is_dir():
-            raise FileNotFoundError(f"Path does not exist: {p}")
-        repo_cfg = self._config.setdefault("repos", {}).setdefault(repo_name, {})
-        repo_cfg["path"] = str(p)
+    def link(
+        self,
+        repo_name: str,
+        local_path: str,
+    ) -> None:
+        """Register a local path override."""
+        path = Path(local_path).resolve()
+
+        if not path.is_dir():
+            raise FileNotFoundError(
+                f"Path does not exist: {path}"
+            )
+
+        repo_cfg = self._config.setdefault(
+            "repos",
+            {},
+        ).setdefault(
+            repo_name,
+            {},
+        )
+
+        repo_cfg["path"] = str(path)
         self.save_config()
 
     def unlink(self, repo_name: str) -> None:
         """Remove a local path override, reverting to cache."""
-        repo_cfg = self._config.get("repos", {}).get(repo_name, {})
+        repo_cfg = self._config.get(
+            "repos",
+            {},
+        ).get(
+            repo_name,
+            {},
+        )
+
         repo_cfg.pop("path", None)
         self.save_config()
 
@@ -329,15 +424,37 @@ class DepsManager:
     # URL / branch setters
     # ------------------------------------------------------------------
 
-    def set_url(self, repo_name: str, url: str) -> None:
-        """Change the git URL for a repo."""
-        repo_cfg = self._config.setdefault("repos", {}).setdefault(repo_name, {})
+    def set_url(
+        self,
+        repo_name: str,
+        url: str,
+    ) -> None:
+        """Change the git URL for a repository."""
+        repo_cfg = self._config.setdefault(
+            "repos",
+            {},
+        ).setdefault(
+            repo_name,
+            {},
+        )
+
         repo_cfg["url"] = url
         self.save_config()
 
-    def set_branch(self, repo_name: str, branch: str) -> None:
-        """Change the branch/tag for a repo."""
-        repo_cfg = self._config.setdefault("repos", {}).setdefault(repo_name, {})
+    def set_branch(
+        self,
+        repo_name: str,
+        branch: str,
+    ) -> None:
+        """Change the branch/tag for a repository."""
+        repo_cfg = self._config.setdefault(
+            "repos",
+            {},
+        ).setdefault(
+            repo_name,
+            {},
+        )
+
         repo_cfg["branch"] = branch
         self.save_config()
 
@@ -347,60 +464,149 @@ class DepsManager:
 
     @staticmethod
     def _default_url(repo_name: str) -> str:
+        """Return the default repository URL."""
         if repo_name == "eos":
             return DEFAULT_EOS_REPO_URL
+
         if repo_name == "eboot":
             return DEFAULT_EBOOT_REPO_URL
+
         return ""
 
     @staticmethod
-    def _git_clone(url: str, dest: Path, branch: str, shallow: bool) -> None:
+    def _git_clone(
+        url: str,
+        dest: Path,
+        branch: Optional[str],
+        shallow: bool,
+    ) -> None:
+        """Clone a repository.
+
+        When ``branch`` is ``None``, no ``--branch`` option is supplied.
+        Git then checks out the remote repository's default branch.
+        """
         cmd = ["git", "clone"]
+
         if shallow:
             cmd.extend(["--depth", "1"])
-        cmd.extend(["--branch", branch, url, str(dest)])
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        if branch:
+            cmd.extend(["--branch", branch])
+
+        cmd.extend([url, str(dest)])
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+        )
+
         if result.returncode != 0:
-            raise RuntimeError(f"Failed to clone {url}: {result.stderr.strip()}")
+            raise RuntimeError(
+                f"Failed to clone {url}: {result.stderr.strip()}"
+            )
 
     @staticmethod
-    def _checkout_branch(repo_dir: Path, branch: str) -> None:
+    def _checkout_branch(
+        repo_dir: Path,
+        branch: Optional[str],
+    ) -> None:
+        """Checkout a configured branch in an existing repository.
+
+        If no branch is configured, this method intentionally does nothing.
+        """
+        if not branch:
+            return
+
         current = DepsManager._git_current_branch(repo_dir)
-        if current != branch:
-            subprocess.run(
-                ["git", "-C", str(repo_dir), "fetch", "--all"],
-                capture_output=True,
-                text=True,
+
+        if current == branch:
+            return
+
+        fetch = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_dir),
+                "fetch",
+                "--all",
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if fetch.returncode != 0:
+            raise RuntimeError(
+                f"Failed to fetch {repo_dir}: "
+                f"{fetch.stderr.strip()}"
             )
-            subprocess.run(
-                ["git", "-C", str(repo_dir), "checkout", branch],
-                capture_output=True,
-                text=True,
+
+        checkout = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo_dir),
+                "checkout",
+                branch,
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+        if checkout.returncode != 0:
+            raise RuntimeError(
+                f"Failed to checkout {branch}: "
+                f"{checkout.stderr.strip()}"
             )
 
     @staticmethod
     def _git_current_branch(repo_dir: Path) -> str:
+        """Return the current git branch name."""
         try:
             result = subprocess.run(
-                ["git", "-C", str(repo_dir), "rev-parse", "--abbrev-ref", "HEAD"],
+                [
+                    "git",
+                    "-C",
+                    str(repo_dir),
+                    "rev-parse",
+                    "--abbrev-ref",
+                    "HEAD",
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
             )
+
             return result.stdout.strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
+
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ):
             return "(unknown)"
 
     @staticmethod
     def _git_head_commit(repo_dir: Path) -> str:
+        """Return the abbreviated current git commit."""
         try:
             result = subprocess.run(
-                ["git", "-C", str(repo_dir), "rev-parse", "--short", "HEAD"],
+                [
+                    "git",
+                    "-C",
+                    str(repo_dir),
+                    "rev-parse",
+                    "--short",
+                    "HEAD",
+                ],
                 capture_output=True,
                 text=True,
                 check=True,
             )
+
             return result.stdout.strip()
-        except (subprocess.CalledProcessError, FileNotFoundError):
+
+        except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+        ):
             return "(unknown)"

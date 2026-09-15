@@ -115,3 +115,4 @@ depends: zlib
 
     with pytest.raises(RecipeError, match="dependencies"):
         load_recipe_from_string(content)
+        
