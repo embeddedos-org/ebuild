@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import importlib.metadata
 import logging
-from typing import List
+from typing import Any, List, Mapping, cast
 
 from ebuild.plugins.base import PluginBase
 
@@ -41,9 +41,12 @@ def discover_plugins() -> List[PluginBase]:
         if hasattr(entry_points, "select"):
             eps = entry_points.select(group="ebuild.plugins")
         else:
-            # Before 3.10 entry_points() returned a dict; the current stubs
-            # only model EntryPoints, which has no .get, hence the ignore.
-            eps = entry_points.get("ebuild.plugins", [])  # type: ignore[attr-defined]
+            # Before 3.10, entry_points() returned a mapping of group name
+            # to entry points. The stubs only model the modern EntryPoints, so
+            # spell the old shape out rather than widen the ignore: the
+            # `# type: ignore[attr-defined]` that was here named the wrong
+            # error code, and mypy failed on the line anyway.
+            eps = cast(Mapping[str, Any], entry_points).get("ebuild.plugins", [])
 
         for ep in eps:
             try:
