@@ -5,11 +5,16 @@ on:
     branches: [master, main]
     paths:
       - 'docs/book/**'
+      # The workflow runs on changes to itself, so a toolchain change here
+      # gets the run that proves it. Before this, the job only fired on
+      # docs/book/** and a workflow-only PR could not be tested at all.
+      - '.github/workflows/book-build.yml'
     tags:
       - 'v*'
   pull_request:
     paths:
       - 'docs/book/**'
+      - '.github/workflows/book-build.yml'
   release:
     types: [published, created]
   workflow_dispatch:
@@ -23,6 +28,14 @@ permissions:
 
 env:
   PANDOC_VERSION: "3.6.1"
+  # 3.4.0, not the newest: 3.5.0 (2026-06-28) migrated the default font from
+  # the `sourcesanspro` package to `sourcesans`, which the runner's
+  # texlive-fonts-extra (ubuntu-latest, 24.04 at the time of writing) does
+  # not ship, so 3.5.x fails with "File `sourcesans.sty' not found" -- seen
+  # on the first run of this change. 3.4.0 is the last release that uses
+  # sourcesanspro (present in texlive-fonts-extra, installed below) and
+  # already carries pandoc's default template merged through 3.9.
+  EISVOGEL_VERSION: "3.4.0"
 
 jobs:
   # ═══════════════════════════════════════════════════
@@ -95,12 +108,23 @@ jobs:
           echo "pandoc $(pandoc --version | head -1)"
 
       - name: Install Eisvogel template
+        # Eisvogel 2.4.0 with pandoc 3.6.1 fails every run with
+        # "LaTeX Error: Command \chead already defined" (exit 43). The 2.4.0
+        # template predates pandoc 3.6; the 3.x line merges pandoc's default
+        # LaTeX template up to 3.6.1 and beyond (its CHANGELOG names the
+        # merges) and its README states pandoc 3 compatibility. The exact
+        # LaTeX-level cause of the clash is not established here -- the run
+        # on the change is what shows whether the pair works. The 3.x
+        # tarball extracts into a versioned directory, not flat, so the copy
+        # names it.
+        # No `|| true` on tar: a missing or reshaped tarball must fail here,
+        # at the step that broke, not at the copy after it.
         run: |
           mkdir -p ~/.local/share/pandoc/templates
-          wget -q https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v2.4.0/Eisvogel-2.4.0.tar.gz
-          tar xzf Eisvogel-2.4.0.tar.gz 2>/dev/null || true
-          cp eisvogel.latex ~/.local/share/pandoc/templates/eisvogel.latex
-          echo "Eisvogel template installed"
+          wget -q https://github.com/Wandmalfarbe/pandoc-latex-template/releases/download/v${EISVOGEL_VERSION}/Eisvogel-${EISVOGEL_VERSION}.tar.gz
+          tar xzf Eisvogel-${EISVOGEL_VERSION}.tar.gz
+          cp Eisvogel-${EISVOGEL_VERSION}/eisvogel.latex ~/.local/share/pandoc/templates/eisvogel.latex
+          echo "Eisvogel ${EISVOGEL_VERSION} template installed"
 
       - name: Clean source
         run: |
@@ -145,6 +169,22 @@ jobs:
             CITE_ARGS="--citeproc --bibliography=references.bib"
           fi
 
+          # Header and footer go through Eisvogel's own variables (header-left,
+          # header-right, footer-center; footer-right is the template's default
+          # page number). The template builds them with KOMA's scrlayer-scrpage,
+          # which defines \chead. This step used to inject \usepackage{fancyhdr}
+          # and \fancyhead/\fancyfoot through header-includes, which the template
+          # places BEFORE its own header setup -- so fancyhdr defined \chead first
+          # and scrlayer-scrpage's \newcommand failed: "Command \chead already
+          # defined". Two header packages, one command. Every run since both
+          # arrived in ef0dc50 died there, whatever the Eisvogel or pandoc version.
+          #
+          # No -V author=...: a -V value is inserted into the LaTeX verbatim, and
+          # the author string contains '&', which LaTeX reads as an alignment tab
+          # ("Misplaced alignment tab character &", run 3 of #135). book.md's
+          # metadata already carries the same author, and metadata is escaped by
+          # pandoc. Any -V value must be LaTeX-safe; title/subtitle/date are.
+
           pandoc \
             book.md \
             -o "${{ steps.meta.outputs.pdf_name }}" \
@@ -163,7 +203,6 @@ jobs:
             -V page-background-color="ffffff" \
             -V "title=${{ steps.meta.outputs.title }}" \
             -V "subtitle=Version ${{ steps.meta.outputs.version }}" \
-            -V "author=Srikanth Patchava & EmbeddedOS Contributors" \
             -V "date=$(date +'%B %Y')" \
             -V toc=true \
             -V toc-depth=3 \
@@ -179,6 +218,9 @@ jobs:
             -V float-placement-figure=H \
             -V caption-justification=centering \
             -V table-use-row-colors=true \
+            -V "header-left=\leftmark" \
+            -V "header-right=${{ steps.meta.outputs.version }}" \
+            -V "footer-center=EmbeddedOS Press — embeddedos-org.github.io" \
             -V "header-includes=\
               \usepackage{float}\
               \usepackage{booktabs}\
@@ -187,14 +229,6 @@ jobs:
               \captionsetup{font=small,labelfont=bf,format=hang}\
               \captionsetup[figure]{name=Figure}\
               \captionsetup[table]{name=Table}\
-              \usepackage{fancyhdr}\
-              \pagestyle{fancy}\
-              \fancyhead[L]{\small\leftmark}\
-              \fancyhead[R]{\small ${{ steps.meta.outputs.version }}}\
-              \fancyfoot[C]{\small EmbeddedOS Press — embeddedos-org.github.io}\
-              \fancyfoot[R]{\thepage}\
-              \renewcommand{\headrulewidth}{0.4pt}\
-              \renewcommand{\footrulewidth}{0.2pt}\
               \usepackage{graphicx}\
               \makeatletter\def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}\makeatother\
               \setkeys{Gin}{width=\maxwidth,keepaspectratio}" \
