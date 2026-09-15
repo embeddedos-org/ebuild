@@ -3,7 +3,7 @@
 
 """Tests for ebuild.packages.fetcher.PackageFetcher.
 
-No test here touches the network: ``urlretrieve`` is replaced with a stub
+No test here touches the network: ``urlopen`` is replaced with a stub
 that synthesises a small tarball whose contents identify the URL it was
 asked for. That makes cross-package contamination observable — a package
 extracted from the wrong archive carries the wrong marker.
@@ -99,12 +99,21 @@ def fake_download(monkeypatch):
     """
     calls = []
 
-    def _urlretrieve(url, filename):
-        calls.append(url)
-        with open(filename, "wb") as f:
-            f.write(targz_bytes(url))
+    class _FakeResponse(io.BytesIO):
+        """Duck-typed urlopen() response: BytesIO plus a context manager."""
 
-    monkeypatch.setattr("ebuild.packages.fetcher.urlretrieve", _urlretrieve)
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    def _urlopen(request, timeout=None):
+        url = request.full_url if hasattr(request, "full_url") else request
+        calls.append(url)
+        return _FakeResponse(targz_bytes(url))
+
+    monkeypatch.setattr("ebuild.packages.fetcher.urllib.request.urlopen", _urlopen)
     return calls
 
 
@@ -252,12 +261,19 @@ def test_fetch_extracts_into_the_requested_directory(tmp_path, fake_download):
 
 
 def test_unsupported_archive_format_is_rejected(tmp_path, monkeypatch):
+    class _Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
     monkeypatch.setattr(
-        "ebuild.packages.fetcher.urlretrieve",
-        lambda url, filename: open(filename, "wb").write(b"not an archive"),
+        "ebuild.packages.fetcher.urllib.request.urlopen",
+        lambda request, timeout=None: _Response(b"not an archive"),
     )
     fetcher = PackageFetcher(tmp_path / "dl")
-    # Checksum of the bytes the patched urlretrieve writes, so the fetch gets
+    # Checksum of the bytes the patched urlopen serves, so the fetch gets
     # past verification and reaches the format check this test is about.
     recipe = make_recipe(
         "littlefs",
@@ -287,12 +303,114 @@ def test_non_http_url_schemes_are_rejected(tmp_path, url):
 
 
 def test_failed_download_leaves_no_partial_archive(tmp_path, monkeypatch):
-    def _boom(url, filename):
-        with open(filename, "wb") as f:
-            f.write(b"partial")
-        raise OSError("connection reset")
+    class _Response(io.BytesIO):
+        def __enter__(self):
+            return self
 
-    monkeypatch.setattr("ebuild.packages.fetcher.urlretrieve", _boom)
+        def __exit__(self, *exc_info):
+            return False
+
+    def _boom(request, timeout=None):
+        return _Response(b"partial")
+
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.urllib.request.urlopen", _boom
+    )
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.MAX_ARCHIVE_SIZE_BYTES", 4
+    )
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs")
+
+    with pytest.raises(FetchError, match="maximum size"):
+        fetcher.fetch(recipe, tmp_path / "src")
+
+    assert fetcher.is_downloaded(recipe) is False
+
+
+# ── Download hardening (timeout, size cap, atomicity) ────────
+
+
+def test_download_passes_the_configured_timeout(tmp_path, monkeypatch):
+    """urlretrieve() carried no timeout, so a stalled mirror hung the build.
+
+    The timeout must actually reach urlopen — it is the whole point.
+    """
+    seen = {}
+
+    def _urlopen(request, timeout=None):
+        seen["timeout"] = timeout
+        return io.BytesIO(b"")
+
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.urllib.request.urlopen", _urlopen
+    )
+    fetcher = PackageFetcher(tmp_path / "dl", timeout=7)
+    # A mismatching checksum lets the download run to completion before the
+    # verification failure ends the fetch.
+    recipe = make_recipe("littlefs", checksum="sha256:" + "0" * 64)
+    with pytest.raises(FetchError):
+        fetcher.fetch(recipe, tmp_path / "src")
+
+    assert seen["timeout"] == 7
+
+
+def test_default_fetcher_gets_the_default_timeout(tmp_path, fake_download):
+    """A fetcher constructed with no explicit timeout still times out."""
+    from ebuild.packages.fetcher import DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
+
+    fetcher = PackageFetcher(tmp_path / "dl")
+    assert fetcher.timeout == DEFAULT_DOWNLOAD_TIMEOUT_SECONDS
+
+
+def test_oversized_download_is_rejected(tmp_path, monkeypatch):
+    """A response larger than the cap must be refused, not written to disk."""
+    class _Response(io.BytesIO):
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.urllib.request.urlopen",
+        lambda request, timeout=None: _Response(b"x" * 16),
+    )
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.MAX_ARCHIVE_SIZE_BYTES", 8
+    )
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs", checksum="sha256:" + "0" * 64)
+
+    with pytest.raises(FetchError, match="maximum size"):
+        fetcher.fetch(recipe, tmp_path / "src")
+
+    assert fetcher.is_downloaded(recipe) is False
+    # Only the (empty) package directory may remain — no archive, no .part.
+    assert all(p.is_dir() for p in (tmp_path / "dl").rglob("*"))
+
+
+def test_truncated_download_leaves_no_cache_entry(tmp_path, monkeypatch):
+    """A connection that dies mid-body must not satisfy the cache.
+
+    _download() short-circuits on existence, so a truncated archive left at
+    the cache path would be extracted (or checksum-failed) forever after.
+    The streamed .part file must never be renamed into place on failure.
+    """
+    class _TruncatedResponse(io.BytesIO):
+        def read(self, size=-1):
+            raise OSError("connection reset by peer")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.urllib.request.urlopen",
+        lambda request, timeout=None: _TruncatedResponse(b""),
+    )
     fetcher = PackageFetcher(tmp_path / "dl")
     recipe = make_recipe("littlefs")
 
@@ -300,3 +418,40 @@ def test_failed_download_leaves_no_partial_archive(tmp_path, monkeypatch):
         fetcher.fetch(recipe, tmp_path / "src")
 
     assert fetcher.is_downloaded(recipe) is False
+    # No .part litter either.
+    assert not list((tmp_path / "dl").rglob("*.part"))
+
+
+# ── Offline mode ─────────────────────────────────────────────
+
+
+def test_offline_mode_refuses_an_uncached_package(tmp_path, monkeypatch):
+    """Offline mode must gate archive fetching like it gates index sync."""
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.is_offline", lambda offline_flag=False: True
+    )
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs")
+
+    with pytest.raises(FetchError, match="Offline mode"):
+        fetcher.fetch(recipe, tmp_path / "src")
+
+    # Nothing was downloaded or extracted.
+    assert fetcher.is_downloaded(recipe) is False
+    assert not (tmp_path / "src").exists()
+
+
+def test_offline_mode_uses_the_cached_archive(tmp_path, monkeypatch, fake_download):
+    """A package already in the download cache stays buildable offline."""
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs")
+    fetcher.fetch(recipe, tmp_path / "src-warm")
+    assert fake_download == [LITTLEFS_URL]
+
+    monkeypatch.setattr(
+        "ebuild.packages.fetcher.is_offline", lambda offline_flag=False: True
+    )
+    fetcher.fetch(recipe, tmp_path / "src-offline")
+
+    assert fake_download == [LITTLEFS_URL]
+    assert marker_in(tmp_path / "src-offline") == LITTLEFS_URL
