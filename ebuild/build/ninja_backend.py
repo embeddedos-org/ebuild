@@ -280,7 +280,7 @@ class NinjaBackend:
                     # get, which the rule preamble alone does not supply. The
                     # "build a shared object" flag itself lives in the
                     # link_shared rule, so it must not be repeated here.
-                    ldflags = list(target.ldflags)
+                    ldflags = toolchain_ldflags + list(target.ldflags)
                     libs = []
                     for pkg_name in target.uses:
                         pkg = self.package_paths.get(pkg_name)

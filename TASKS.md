@@ -11,6 +11,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 
 | ID | Task | Owner | Mode | Status | Depends on |
 |----|------|-------|------|--------|------------|
+| T-006 | Preserve toolchain linker settings for shared libraries ([#125](https://github.com/embeddedos-org/ebuild/pull/125)) | backend | Verification | review | none |
 | T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
 | T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
 | T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
