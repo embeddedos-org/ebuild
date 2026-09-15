@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ebuild.build import layout
 from ebuild.build.ninja_backend import NinjaBackend, escape_ninja_path
 from ebuild.build.toolchain import ResolvedToolchain
 from ebuild.core.config import ProjectConfig, TargetConfig
@@ -20,6 +21,13 @@ from ebuild.core.config import ProjectConfig, TargetConfig
 
 def _toolchain():
     return SimpleNamespace(cc="cc", cxx="c++", ar="ar")
+
+
+def test_executable_path_is_reexported_for_backend_compatibility():
+    """Existing Ninja imports must resolve to the neutral layout helper."""
+    from ebuild.build.ninja_backend import executable_output_path as legacy_path
+
+    assert legacy_path is layout.executable_output_path
 
 
 class TestNinjaBackendSharedLibrary(unittest.TestCase):

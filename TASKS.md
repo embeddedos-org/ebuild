@@ -14,7 +14,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
 | T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
 | T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
-| T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | todo | none |
+| T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | review | none |
 
 ### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
 
@@ -46,9 +46,23 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
   process cwd's own `eos.yaml`/`board.yaml`, if any, cannot change what it
   measures; confirmed to fail against the pre-fix lookup (no report
   emitted) and pass against the fix.
-- **Suite result** (single run, both changes present, this Windows host):
-  **560 passed, 6 skipped, exit code 0**. Supersedes any other count quoted
-  for T-003 or T-004 elsewhere in this repo or in PR #110's description.
+- **T-005**: `executable_output_path()` now lives in
+  `ebuild/build/layout.py`; `ninja_backend` re-exports the same function for
+  compatibility, and CLI consumers/tests use the backend-neutral owner. The
+  focused suite (`tests/unit/test_package_efw.py`,
+  `tests/unit/test_golden_path_commands.py`, `tests/unit/test_footprint.py`,
+  and `tests/unit/test_ninja_backend.py`) reports **119 passed, 1 skipped**;
+  the compatibility test asserts both import paths are identical and the
+  Windows suffix path is exercised.
+- **Suite result**: the earlier **560 passed, 6 skipped, exit code 0** record
+  predates the current branch and must not be used as its validation result.
+  On the current PR head, the full suite on Windows CPython 3.14 reports
+  **669 passed, 6 skipped, 9 failed**; all nine failures are in
+  `tests/unit/test_index_sync.py` because `PackageRecipe.to_dict` is missing.
+  The independent Linux review run selected a different platform-sensitive
+  set (**670 passed, 4 skipped, 10 failed**), including one build-directory
+  test. These failures reproduce outside T-005 and are not hidden by this
+  change.
 
 ## Completed
 
