@@ -22,6 +22,18 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **`ebuild analyze --llm` no longer reports success when the model call failed.**
+  `LLMClient` always probed `http://localhost:11434` for Ollama availability,
+  even when constructed with a different `base_url`; OpenAI-compatible URLs
+  that already ended in `/v1` were joined to `/v1/v1/chat/completions`;
+  `file://` (and other non-HTTP schemes) could reach `urllib.request.urlopen`;
+  an empty or failed response still made `ebuild analyze --llm` print
+  "LLM analysis complete". Availability now probes the configured host,
+  `/v1` is joined once, non-HTTP(S) endpoints are rejected, responses are
+  capped at 10 MB, error text redacts bearer tokens, and a failed call
+  records `llm_failed:<provider>` so the CLI warns and continues with the
+  rule-engine profile (`ebuild/eos_ai/llm_integration.py`,
+  `ebuild/eos_ai/eos_hw_analyzer.py`, `ebuild/cli/commands.py`).
 - **`ebuild test` now finds Windows test binaries.** The Ninja edge for a
   native `type: test` target already carried the platform suffix
   (`_exe_suffix()` names it `<name>.exe` on Windows), but `ebuild test`

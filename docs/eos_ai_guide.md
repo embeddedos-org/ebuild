@@ -328,3 +328,9 @@ for deeper analysis:
 Supported LLMs (all optional):
 - Local: Ollama, llama.cpp, LM Studio
 - Cloud: OpenAI, Anthropic, Grok, Gemini
+
+`ebuild analyze --llm` calls `LLMClient.auto()` (Ollama on localhost, then
+`OPENAI_API_KEY`, then `EOS_LLM_API_KEY` + `EOS_LLM_URL`). A failed call
+leaves the rule-engine profile in place and prints a warning; it does not
+report LLM analysis as complete. The generated `llm_prompt.txt` remains
+available for a manual paste.
