@@ -66,3 +66,20 @@ passed, failed and skipped. A skipped test is not a passing test.
 
 Any test that could not be run in this environment is named, with the reason,
 and marked `NOT RUN` or `UNKNOWN` per [VERIFY.md](./VERIFY.md).
+
+## Static-library source removal regression
+
+Run `python -m pytest tests/unit/test_ninja_backend.py::TestStaticArchiveRecreation -v`.
+
+The behavioral test drives Ninja with Python stub `cc`/`ar` tools (same launcher
+pattern as `tests/unit/test_package_efw.py`), so it does not need a host C
+toolchain. The stub archiver keeps omitted members the way real `ar r` does;
+after a source is removed, the rebuilt archive must not list that object.
+
+`ar_rule` recreates the archive when its build step runs: updating an existing
+archive with `ar rcs` alone retains members removed from the source list. The
+rule invokes `recreate_archive.py` by absolute path through the generating
+Python interpreter, so Ninja needs that interpreter at build time for every
+`static_library` edge. Regenerate `build.ninja` if the environment's Python or
+the ebuild installation moves. The helper is not imported as `ebuild.*`, so a
+bare checkout that only puts the package on `PYTHONPATH` still works.

@@ -60,6 +60,9 @@ Observed in the source tree:
 
 Requires Python 3.8+.
 
+Building a `static_library` target also invokes that Python interpreter at
+build time: the generated Ninja `ar_rule` runs a small helper to recreate the
+archive so removed object members cannot linger.
 ```bash
 pip install -e .        # from the repo root
 # or:
