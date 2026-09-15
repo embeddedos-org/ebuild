@@ -360,6 +360,31 @@ ebuild includes a curated suite of pre-packaged recipes under `recipes/`:
 | **`unity`** | 2.6.1 | CMake | MIT | Standard embedded C unit testing framework |
 | **`zlib`** | 1.3.1 | CMake | Zlib | General-purpose lossless data compression |
 
+### `ebuild.lock` — Reproducible Package Resolution
+
+Every resolution (`ebuild configure`, `ebuild build`, `ebuild package`) writes
+`ebuild.lock` next to `build.yaml`, recording for each resolved package the
+exact `version`, `url`, `checksum` and `build` system it used — and reads it
+back first, so the next resolution lands on the same artifacts:
+
+- **Precedence:** a version named in `build.yaml` wins; otherwise the version
+  in `ebuild.lock` wins; only a package in neither is resolved to the newest
+  recipe. A lock never overrides an explicit request, and an unpinned package
+  therefore stays put until you move it.
+- **Drift is refused, not silently accepted.** If the lock pins a version whose
+  recipe now has a different `url`, `checksum` or `build`, resolution stops with
+  an error naming the field, because the version alone would reproduce the
+  package's name and not its bytes. Delete `ebuild.lock` or pin the version
+  explicitly if the change is intended.
+- **Commit it** for a reproducible build; CI and colleagues then resolve to the
+  same artifacts you did.
+- **To upgrade** a locked package, name the new version in `build.yaml`, or
+  delete `ebuild.lock` to resolve everything afresh; either way the next
+  resolution rewrites the lock.
+- A lock that is not valid YAML, or cannot be opened, is reported as a
+  resolution error and stops the build. A lock of the wrong shape (an entry
+  that is not a mapping) is ignored entry by entry and rewritten.
+
 ### Offline & Air-Gapped Operation
 
 For isolated CI/CD pipelines and field deployments:

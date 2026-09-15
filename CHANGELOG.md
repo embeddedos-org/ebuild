@@ -22,6 +22,27 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **`ebuild.lock` is read, not only written.** `_install_packages` created the `Lockfile` after resolution and only ever saved it, and nothing called `Lockfile.load()`, so the lock pinned nothing: an unpinned package resolved to the newest recipe on every machine and every run, and a stale `ebuild.lock` sat beside it claiming otherwise. The lock is now loaded before resolving and handed to `PackageResolver.resolve(requested, lockfile=...)`, which uses it as a pin for every package the request leaves open. Precedence is request, then lock, then newest. A locked version no recipe provides is an error (`ebuild.lock pins 'zlib' at v9.9.9 ...`), not a silent fallback, and a locked entry whose recorded URL or checksum no longer matches the recipe of that version is refused -- the version reproduces the name, the lock exists to reproduce the bytes. An explicit request outranks the lock and the lock is rewritten from the result, as before. `Lockfile.load()` drops malformed entries instead of failing later. A lock that is not valid YAML, or cannot be opened, is reported as a resolution error (`[error] ... ebuild.lock is not valid YAML: ...`) instead of a `yaml.scanner.ScannerError` traceback; the recorded `build` system is compared on read-back like `url` and `checksum` (`Lockfile.CHECKED_FIELDS` is the one list both sides use); and `docs/dependency-management.md` documents the file, its precedence, and how to upgrade. (`ebuild/packages/resolver.py`, `ebuild/packages/lockfile.py`, `ebuild/cli/commands.py`, `docs/dependency-management.md`)
+- **CI on master runs to completion again.** ruff stopped the pipeline at its
+  first step on findings the merges had introduced (an F811 duplicate import,
+  W292, E402). `PackageRecipe.to_dict()` -- defined by #111, deleted by #112's
+  replay of the same file -- is restored; nine `test_index_sync` cases and mypy
+  had failed without it. It now emits `install_args`, which the original never
+  did, and hands back copies of its list fields rather than the live lists;
+  the index sync mapping carries `install_args` through to the cached recipe.
+  The vendored `core/eos/docs/three-way-alignment.md` is reverted to its pin
+  (the correction #109 made there is filed upstream as embeddedos-org/eos#149).
+  The OSSF Scorecard action moved to the ghcr.io-hosted release and is pinned
+  by commit. yamllint on the Windows legs: YAML is pinned to LF in
+  `.gitattributes`, so an existing Windows clone needs its files checked out
+  again once (`git rm --cached -r . && git reset --hard HEAD`, or a re-clone;
+  see CONTRIBUTING.md). On Python 3.10 and 3.11 `ebuild/plugins/__init__.py`
+  now type-checks: the `entry_points()` fallback is spelled out with a cast
+  instead of a `# type: ignore` naming the wrong error code.
+  (`ebuild/packages/recipe.py`, `ebuild/packages/index_sync.py`,
+  `ebuild/plugins/__init__.py`, `core/eos/docs/three-way-alignment.md`,
+  `.github/workflows/scorecard.yml`, `.gitattributes`, `.yamllint.yml`, and
+  the three lint-fixed test files.)
 - **`ebuild test` now finds Windows test binaries.** The Ninja edge for a
   native `type: test` target already carried the platform suffix
   (`_exe_suffix()` names it `<name>.exe` on Windows), but `ebuild test`

@@ -343,6 +343,7 @@ class IndexSyncManager:
                 "dependencies": entry.get("dependencies", []),
                 "configure_args": entry.get("configure_args", []),
                 "build_args": entry.get("build_args", []),
+                "install_args": entry.get("install_args", []),
                 "patches": entry.get("patches", []),
             }
 
