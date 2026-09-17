@@ -89,6 +89,37 @@ class PackageRecipe:
                 f"Must be one of {self.VALID_BUILD_SYSTEMS}."
             )
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert recipe to dictionary for YAML serialization."""
+        data: Dict[str, Any] = {
+            "package": self.name,
+            "version": self.version,
+        }
+        if self.description:
+            data["description"] = self.description
+        if self.license:
+            data["license"] = self.license
+        data["url"] = self.url
+        if self.checksum:
+            data["checksum"] = self.checksum
+        data["build"] = self.build_system
+        # Copies, not the live lists: a caller that appends to what it got
+        # back must not edit the recipe behind its back. The key order is the
+        # one index_sync's recipe_dict uses, with install_args after
+        # build_args; parse_recipe() reads every key by name, so a dump and a
+        # reload agree field for field regardless of order.
+        if self.dependencies:
+            data["dependencies"] = list(self.dependencies)
+        if self.configure_args:
+            data["configure_args"] = list(self.configure_args)
+        if self.build_args:
+            data["build_args"] = list(self.build_args)
+        if self.install_args:
+            data["install_args"] = list(self.install_args)
+        if self.patches:
+            data["patches"] = list(self.patches)
+        return data
+
 
 def _parse_string_list(
     raw: Dict[str, Any],

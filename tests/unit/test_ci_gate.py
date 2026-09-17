@@ -58,6 +58,14 @@ NO_GATE = {
     "vendor-drift.yml":
         "reports third-party drift for triage and is expected to fail while a "
         "vendored dependency is behind",
+    "eosim-sanity.yml":
+        "its pull_request trigger is filtered to paths: "
+        "['.github/workflows/eosim-sanity.yml'], so on a pull request that "
+        "touches nothing else it reports no status at all, and a required "
+        "check that never arrives hangs the merge instead of failing it. It "
+        "has a fail-closed gate (`EoSim Sanity Gate`, iterating "
+        "toJSON(needs)) for the runs it does make; the trigger exists so a "
+        "change to the workflow proves itself",
 }
 
 

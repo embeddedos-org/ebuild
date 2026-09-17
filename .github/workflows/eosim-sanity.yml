@@ -1,6 +1,12 @@
 name: EoSim Sanity
 
 on:
+  # A change to this file tests itself. Without this the workflow was
+  # schedule- and dispatch-only, so a pull request editing it produced no
+  # run of it at all.
+  pull_request:
+    paths:
+      - '.github/workflows/eosim-sanity.yml'
   schedule:
     - cron: '0 4 * * *'
   workflow_dispatch:
@@ -111,9 +117,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install EoSim from source
+        run: |
+          git clone --depth 1 --branch v${{ env.EOSIM_VERSION }} https://github.com/embeddedos-org/EoSim.git /tmp/EoSim
+          pip install -e /tmp/EoSim
       - name: Test EoSim on Windows
         run: |
-          pip install "eosim @ https://github.com/embeddedos-org/EoSim/releases/download/v${{ env.EOSIM_VERSION }}/eosim-${{ env.EOSIM_VERSION }}-py3-none-any.whl"
           eosim --version
           eosim list && eosim doctor
           eosim list
@@ -127,9 +136,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Install EoSim from source
+        run: |
+          git clone --depth 1 --branch v${{ env.EOSIM_VERSION }} https://github.com/embeddedos-org/EoSim.git /tmp/EoSim
+          pip install -e /tmp/EoSim
       - name: Test EoSim on macOS
         run: |
-          pip install "eosim @ https://github.com/embeddedos-org/EoSim/releases/download/v${{ env.EOSIM_VERSION }}/eosim-${{ env.EOSIM_VERSION }}-py3-none-any.whl"
           eosim --version
           eosim list && eosim doctor
           eosim list
@@ -140,18 +152,31 @@ jobs:
     needs: [install-validate, nested-simulation, nested-guest-install, windows-sanity, macos-sanity]
     runs-on: ubuntu-latest
     steps:
-      - name: Results
+      # Iterates toJSON(needs) rather than naming one dependency. The previous
+      # body tested install-validate alone and then printed "All EoSim sanity
+      # checks passed" -- which it did on 2026-09-17 (run 35181688794) with
+      # Windows Sanity and macOS Sanity both red. Five jobs in needs:, one
+      # checked. This form cannot fall out of step with needs:, and it is the
+      # gate eos and eBoot already run.
+      - name: Every job in this workflow must have succeeded
+        env:
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          echo "════════════════════════════════════════════════"
-          echo "  EoSim Sanity Results"
-          echo "════════════════════════════════════════════════"
-          echo "Install & Validate (3 OS × 3 Py):  ${{ needs.install-validate.result }}"
-          echo "Nested Simulation (7 platforms):    ${{ needs.nested-simulation.result }}"
-          echo "Nested Guest Install (3 guests):    ${{ needs.nested-guest-install.result }}"
-          echo "Windows Sanity:                     ${{ needs.windows-sanity.result }}"
-          echo "macOS Sanity:                       ${{ needs.macos-sanity.result }}"
-          echo "════════════════════════════════════════════════"
-          if [ "${{ needs.install-validate.result }}" != "success" ]; then
-            echo "❌ Install/validate failed"; exit 1
+          set -euo pipefail
+          # Refuse to conclude anything from nothing: an empty or null
+          # RESULTS is not "no failures".
+          if [ -z "${RESULTS:-}" ] || [ "$RESULTS" = "null" ]; then
+            echo "::error::gate received no results to check"
+            exit 1
           fi
-          echo "✅ All EoSim sanity checks passed"
+          printf '%s\n' "$RESULTS"
+          bad=$(printf '%s' "$RESULTS" | jq -r '
+            to_entries[]
+            | select(.value.result != "success")
+            | "  \(.key): \(.value.result)"')
+          if [ -n "$bad" ]; then
+            echo "::error::EoSim Sanity Gate failed. These jobs did not succeed:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "All EoSim sanity jobs succeeded."

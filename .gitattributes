@@ -1,0 +1,8 @@
+# YAML is linted with yamllint's default new-lines rule (LF). The Windows
+# runners check out with core.autocrlf=true, which turned every LF file into
+# CRLF and failed the rule on line 1 of the first file -- except a file that
+# already carried a stray CR, which autocrlf leaves alone. Pin the encoding
+# instead of guessing at the checkout's, so the same bytes are linted on
+# every OS.
+*.yml   text eol=lf
+*.yaml  text eol=lf
