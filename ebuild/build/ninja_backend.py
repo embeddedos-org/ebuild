@@ -178,11 +178,14 @@ class NinjaBackend:
         source made both targets claim one output, which ninja rejects with
         "multiple rules generate ...".
 
+        Keep the source extension too: start.c and start.S in one target
+        must produce start.c.o and start.S.o rather than sharing start.o.
+
         Example:
             >>> backend._object_path(target, "src/main.c")   # target.name == "app"
-            PosixPath('_build/obj/app/src/main.o')
+            PosixPath('_build/obj/app/src/main.c.o')
         """
-        return (self.build_dir / "obj" / target.name / src).with_suffix(".o")
+        return self.build_dir / "obj" / target.name / (src + ".o")
 
     def _write_ninja(self) -> None:
         """Write the build.ninja file."""
