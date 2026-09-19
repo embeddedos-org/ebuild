@@ -42,6 +42,35 @@ Observed in the source tree:
 - **Layers & recipes** — reusable board/OS composition under `layers/` and
   `recipes/`.
 
+## Pinned eCAD validation gate
+
+Hardware-derived generation can be wrapped by `HardwareGenerationGate` so no
+output callback runs until a product's immutable eCAD contract bundle has been
+verified. A request pins the canonical eCAD repository, full 40-character Git
+commit, contract version, complete schema-set digest, receipt-schema digest,
+product-bundle digest, receipt digest, and product ID.
+
+The verifier independently checks all bundled document and evidence bytes,
+source cleanliness, product and provenance consistency, known requirements and
+tools, exact V0–V4 coverage, child execution states, aggregate verdicts, and
+eligibility. Branches, tags, `latest`, dirty sources, missing evidence,
+unavailable tools, timeouts, warnings on required checks, and every non-pass
+required result deny generation. Authorization occurs before the supplied
+generation callback can create or mutate output.
+
+```python
+from ebuild.eos_ai.hardware_gate import HardwareGenerationGate
+
+result = HardwareGenerationGate().authorize_and_generate(
+    verification_request,
+    lambda authorization: generate_from_verified_contract(authorization),
+)
+```
+
+This is the authorization foundation for issue #156. Existing CLI generators
+must not be described as contract-gated until each entry point has been routed
+through this API and covered by a denial-before-mutation test.
+
 ## What's inside
 
 | Path | Contents |
