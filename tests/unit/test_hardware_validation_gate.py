@@ -136,7 +136,7 @@ class SyntheticContractFixture:
         self.evidence_index_path = self.root / "evidence-index.json"
 
         for name in SCHEMA_FILES:
-            schema = {
+            schema: dict[str, object] = {
                 "$schema": "http://json-schema.org/draft-07/schema#",
                 "$id": (
                     "https://embeddedos.org/schemas/hardware-validation/v1/" + name
