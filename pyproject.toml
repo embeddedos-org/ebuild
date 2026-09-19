@@ -14,6 +14,7 @@ dependencies = [
     "click>=8.0",
     "pyyaml>=6.0",
     "ninja>=1.11",
+    "jsonschema>=4.18,<5",
 ]
 
 [project.optional-dependencies]
