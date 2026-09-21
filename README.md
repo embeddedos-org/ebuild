@@ -68,8 +68,9 @@ pip install -e .        # from the repo root
 ```
 
 Runtime dependencies (`click`, `pyyaml`, `ninja`) are installed automatically.
-Note the `ninja` **pip package** is required — a system `ninja` binary alone is
-not enough, because ebuild invokes `python -m ninja`.
+ebuild prefers a `ninja` binary on PATH and falls back to `python -m ninja`
+if none is present, so a system ninja install is enough. The pip `ninja`
+package is the fallback when no binary is on PATH.
 
 ## Usage
 
