@@ -22,6 +22,26 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **CI on master runs to completion again.** ruff stopped the pipeline at its
+  first step on findings the merges had introduced (an F811 duplicate import,
+  W292, E402). `PackageRecipe.to_dict()` -- defined by #111, deleted by #112's
+  replay of the same file -- is restored; nine `test_index_sync` cases and mypy
+  had failed without it. It now emits `install_args`, which the original never
+  did, and hands back copies of its list fields rather than the live lists;
+  the index sync mapping carries `install_args` through to the cached recipe.
+  The vendored `core/eos/docs/three-way-alignment.md` is reverted to its pin
+  (the correction #109 made there is filed upstream as embeddedos-org/eos#149).
+  The OSSF Scorecard action moved to the ghcr.io-hosted release and is pinned
+  by commit. yamllint on the Windows legs: YAML is pinned to LF in
+  `.gitattributes`, so an existing Windows clone needs its files checked out
+  again once (`git rm --cached -r . && git reset --hard HEAD`, or a re-clone;
+  see CONTRIBUTING.md). On Python 3.10 and 3.11 `ebuild/plugins/__init__.py`
+  now type-checks: the `entry_points()` fallback is spelled out with a cast
+  instead of a `# type: ignore` naming the wrong error code.
+  (`ebuild/packages/recipe.py`, `ebuild/packages/index_sync.py`,
+  `ebuild/plugins/__init__.py`, `core/eos/docs/three-way-alignment.md`,
+  `.github/workflows/scorecard.yml`, `.gitattributes`, `.yamllint.yml`, and
+  the three lint-fixed test files.)
 - **`ebuild test` now finds Windows test binaries.** The Ninja edge for a
   native `type: test` target already carried the platform suffix
   (`_exe_suffix()` names it `<name>.exe` on Windows), but `ebuild test`

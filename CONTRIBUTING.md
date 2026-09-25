@@ -20,6 +20,14 @@ This certifies you have the right to submit the code under the MIT license.
 6. Commit with DCO sign-off: git commit -s
 7. Push and create Pull Request
 
+**Windows contributors:** `.gitattributes` pins `*.yml` and `*.yaml` to LF so
+yamllint sees the same bytes on every platform. The attribute governs future
+checkouts, not files already sitting in a working tree, and `git add
+--renormalize .` rewrites only the index, never the files. After pulling that
+change, from a clean tree run `git rm --cached -r . && git reset --hard HEAD`
+once (or re-clone) so the YAML files are checked out again as LF; otherwise
+yamllint will still see CRLF locally.
+
 ## Coding Standards
 
 ### C (ISO C11)
