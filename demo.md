@@ -7,8 +7,8 @@ C program end-to-end via `ebuild build`.
 
 - Python 3.8+
 - A system C compiler (`gcc` or `clang`)
-- The `ninja` **pip package** — a system `ninja` binary alone is not enough, since
-  `ebuild` invokes `python -m ninja` internally.
+- A `ninja` binary on PATH, or the `ninja` pip package as fallback —
+  `ebuild` prefers the binary and uses `python -m ninja` only if none is present.
 
 ## 1. Set up a virtual environment
 

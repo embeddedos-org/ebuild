@@ -114,6 +114,10 @@
   relative `--build-dir` now resolves against the directory containing
   `build.yaml`, as an absolute path, so both sides agree regardless of the
   working directory (`ebuild/cli/commands.py`).
+- **`ebuild build` now uses `ninja_command()`.** `ebuild test` already preferred a
+  `ninja` binary on PATH and fell back to `python -m ninja`. `ebuild build` still
+  hardcoded the module form, so a system ninja install was not enough for the
+  main command (`ebuild/cli/commands.py`).
 
 ### Added
 - `ebuild.build.dispatch.UnknownBackendError`, raised for a backend a dispatch
