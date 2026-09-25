@@ -122,6 +122,13 @@
   notably the CLI's `except RuntimeError`, which turns this into a clean
   `exit 1` rather than a traceback. New code should catch
   `UnknownBackendError`.
+- **Runner arguments can now override defaults via CLI, Environment, or Config.**
+  The `flash` command now resolves extra tool arguments following a strict
+  precedence chain. CLI passthrough (`--`) overrides the
+  `EBUILD_FLASH_RUNNER_ARGS` environment variable, which in turn overrides the
+  `runner_args` list in the `flash:` section of `build.yaml`. This enables
+  developers to instantly customize underlying tools (like OpenOCD or ESPTool)
+  without requiring new native `ebuild` flags (`ebuild/cli/commands.py`).
 
 ## [3.0.1] - 2026-05-16
 

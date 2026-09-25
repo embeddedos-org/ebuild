@@ -103,6 +103,7 @@ class ProjectConfig:
     backend: str = "auto"
     backend_config: Dict[str, Any] = field(default_factory=dict)
     system_config: Dict[str, Any] = field(default_factory=dict)
+    flash_config: Dict[str, Any] = field(default_factory=dict)
 
     def get_target(self, name: str) -> Optional[TargetConfig]:
         for t in self.targets:
@@ -260,6 +261,13 @@ def load_config(config_path: str | Path) -> ProjectConfig:
         raise ConfigError("'system' must be a mapping.")
     system_config = dict(system_config)
 
+    flash_config = raw.get("flash", {})
+    if flash_config is None:
+        flash_config = {}
+    if not isinstance(flash_config, dict):
+        raise ConfigError("'flash' must be a mapping.")
+    flash_config = dict(flash_config)
+
     # For cmake/make/meson builds, pull defines from config
     if raw.get("cmake") and isinstance(raw["cmake"], dict):
         backend_config.update(raw["cmake"])
@@ -345,4 +353,5 @@ def load_config(config_path: str | Path) -> ProjectConfig:
         # every consumer saw an empty mapping and the whole [system]
         # section was silently inert.
         system_config=system_config,
+        flash_config=flash_config,
     )
