@@ -22,6 +22,17 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **Restored `commands.py` features lost in a merge resolution.** The master
+  merge inside PR #141 kept that branch's `ebuild/cli/commands.py` wholesale,
+  silently reverting flash runner args (#161), the lockfile read-back (#146)
+  and `ninja_command()` in `ebuild build` (#160). Their hunks are reapplied
+  unchanged; their tests had been failing on master since.
+- **Static archives are recreated through `recreate_archive.py` again.** A later
+  merge replaced the helper call with an inline `python -c`, leaving the helper
+  unused and its tests failing. The helper refuses to delete a good archive
+  when the archiver cannot run. Archive-member assertions now use the
+  `<source>.o` object names (`keep.c.o`); the old `removed.o` check passed
+  without testing anything.
 - **Ninja shared-library sources compile as position-independent code.**
   Shared-library targets now default to `-fPIC`, while preserving an explicit
   PIC policy supplied by the target or toolchain

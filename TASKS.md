@@ -18,6 +18,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 | T-006 | Make optional LLM analysis honest: probe configured Ollama URL, join OpenAI `/v1` once, reject non-HTTP(S), do not report `--llm` success on a failed call | backend | Maintenance | review | none |
 | T-007 | Flash/RAM size regex requires `[mk]b` immediately before `flash`/`ram`, so `"2MB SPI flash"` yields `flash_size=0` and `generate_boot_yaml` silently defaults to 1 MB | backend | Maintenance | todo | none |
 | T-008 | `IndexSyncManager.sync` calls `PackageRecipe.to_dict()`, which does not exist; `tests/unit/test_index_sync.py` currently fails 9 tests on that AttributeError. Unrelated to T-006. | backend | Maintenance | todo | none |
+| T-009 | Restore `commands.py` hunks from #146/#160/#161 dropped by the master merge in #141 (`7b010c9`), and the `recreate_archive.py` call dropped by #137; fix archive tests that still asserted the member names from before `<source>.o` object paths (63b8c62) | backend | Maintenance | review | none |
 
 ### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
 
@@ -49,6 +50,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
   process cwd's own `eos.yaml`/`board.yaml`, if any, cannot change what it
   measures; confirmed to fail against the pre-fix lookup (no report
   emitted) and pass against the fix.
+- **T-009**: Baseline on master `7f1ff93`: **26 failed, 763 passed, 1 skipped, 1 collection error**. After: **797 passed, 1 skipped, 0 failed** (skip: Windows-only `cmd.exe` test). CI mypy command: 1 error on master, 0 after. Reverting either fix in turn re-fails the relevant tests (`commands.py` from master: collection error in `tests/unit/cli`; plain `ar rcs`: 5 archive tests fail). T-008's `to_dict` failures no longer reproduce on master; `tests/unit/test_index_sync.py` passes.
 - **T-006**: `LLMClient.is_available()` probes `self.base_url` rather than
   hardcoded localhost; `_openai_chat_url()` joins `/v1` once; non-HTTP(S)
   schemes never reach `urlopen`; a failed `analyze_with_llm` appends

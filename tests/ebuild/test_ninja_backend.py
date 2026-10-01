@@ -310,8 +310,8 @@ def test_removing_source_removes_archive_member(tmp_path, directory):
     (source_dir / "removed.c").unlink()
     build()
     members = subprocess.check_output([ar, "t", str(archive)], text=True)
-    assert "removed.o" not in members.splitlines(), members
-    assert "keep.o" in members.splitlines(), members
+    assert "removed.c.o" not in members.splitlines(), members
+    assert "keep.c.o" in members.splitlines(), members
     assert link().returncode != 0, "deleted function still links from stale code"
 
     # The retained function still links, so this is not merely a broken archive.

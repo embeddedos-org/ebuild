@@ -79,3 +79,9 @@ that an archiver failure makes Ninja fail.
 
 Static archives are recreated when their build step runs: updating an existing
 archive with `ar rcs` alone retains members removed from the source list.
+
+`python -m pytest tests/unit/test_ninja_backend.py::TestStaticArchiveRecreation -v`
+covers the same behaviour without a host toolchain, using Python stub
+`cc`/`ar` tools. `ar_rule` runs `ebuild/build/recreate_archive.py` by absolute
+path through the generating Python interpreter, so regenerate `build.ninja` if
+that interpreter or the ebuild installation moves.

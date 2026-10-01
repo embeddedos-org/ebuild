@@ -12,12 +12,13 @@ from __future__ import annotations
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import threading
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
@@ -40,7 +41,7 @@ from ebuild.core.scheduler import run_graph
 from ebuild.packages.builder import BuildError, PackageBuilder
 from ebuild.packages.cache import PackageCache
 from ebuild.packages.fetcher import FetchError, PackageFetcher
-from ebuild.packages.lockfile import Lockfile
+from ebuild.packages.lockfile import Lockfile, LockfileError
 from ebuild.packages.recipe import RecipeError
 from ebuild.packages.registry import create_registry, find_recipe_dirs
 from ebuild.packages.resolver import PackageResolver, ResolveError
@@ -51,6 +52,80 @@ pass_logger = click.make_pass_decorator(Logger, ensure=True)
 # Canonical recipe search path discovery
 _find_recipe_dirs = find_recipe_dirs
 
+# yaml key for the runner args config
+_RUNNER_ARGS_CONFIG_KEY = "runner_args"
+
+
+def _resolve_runner_args(
+    cli_args: tuple,
+    env_key: str,
+    cfg_loader: "Callable[[], ProjectConfig]",
+    config_section: str,
+    config_key: str,
+    log: "Logger",
+    clear_args: bool = False,
+) -> list[str]:
+    """Resolve tool arguments following a precedence chain: CLI > Environment > Configuration File.
+
+    This function short-circuits to avoid unnecessary config file reads if CLI or environment
+    arguments are present.
+
+    Args:
+        cli_args: Tuple of unparsed CLI arguments captured by Click.
+        env_key: The environment variable name to check for arguments.
+        cfg_loader: A callable that returns the parsed ProjectConfig.
+        config_section: The section name within the parsed ProjectConfig (e.g. 'flash_config').
+        config_key: The key within the section mapping that holds the arguments list.
+        log: Logger instance for recording debug or warning messages.
+        clear_args: If true, explicitly clear the arguments, ignoring config and environment.
+
+    Returns:
+        A list of string arguments to pass to the underlying tool. Returns empty list if none found.
+    """
+    if clear_args:
+        log.debug("Runner args explicitly cleared via flag")
+        return []
+
+    # CLI args (highest precedence)
+    if cli_args:
+        args_list = list(cli_args)
+        log.debug(f"Loaded runner args from CLI: {args_list}")
+        return args_list
+
+    # Environment variable
+    env_args = os.environ.get(env_key)
+    if env_args and env_args.strip():
+        args_list = shlex.split(env_args.strip())
+        log.debug(f"Loaded runner args from environment ({env_key}): {args_list}")
+        return args_list
+
+    # Config file
+    try:
+        cfg = cfg_loader()
+        section = getattr(cfg, config_section, {})
+        if not isinstance(section, dict):
+            section = {}
+
+        config_args = section.get(config_key, [])
+        if isinstance(config_args, list):
+            args_list = [str(a) for a in config_args]
+            if args_list:
+                log.debug(f"Loaded runner args from config: {args_list}")
+            return args_list
+        elif isinstance(config_args, str):
+            args_list = shlex.split(config_args)
+            if args_list:
+                log.debug(f"Loaded runner args from config: {args_list}")
+            return args_list
+        else:
+            log.warning(f"Invalid format for {config_key} in config file: must be a list or string")
+            return []
+    except FileNotFoundError:
+        pass  # config is optional
+    except Exception as e:
+        log.warning(f"Failed to load config: {e}")
+
+    return []
 
 
 def _install_packages(
@@ -81,15 +156,25 @@ def _install_packages(
     registry = create_registry(*recipe_dirs)
     log.debug(f"Registry: {registry.package_count} recipes from {[str(p) for p in registry.search_paths]}")
 
-    resolver = PackageResolver(registry)
-    requested = [{"name": p.name, "version": p.version} for p in cfg.packages]
-    resolved = resolver.resolve(requested)
-
-    log.info(f"Packages to install: {', '.join(r.name + ' v' + r.version for r in resolved)}")
-
-    # Lockfile
+    # The lockfile is read before resolving, so an unpinned package lands on
+    # the version the last resolution recorded rather than on whatever is
+    # newest now. It was only ever written before, which pinned nothing.
     lock_path = cfg.source_dir / Lockfile.FILENAME
     lockfile = Lockfile(lock_path)
+    try:
+        lockfile.load()
+    except LockfileError as e:
+        # A lock that cannot be read is a resolution the user has to settle,
+        # reported through the handler every caller of this function has.
+        raise ResolveError(str(e)) from e
+    if lockfile.package_names:
+        log.debug(f"Lockfile read: {lock_path} ({len(lockfile.package_names)} packages)")
+
+    resolver = PackageResolver(registry)
+    requested = [{"name": p.name, "version": p.version} for p in cfg.packages]
+    resolved = resolver.resolve(requested, lockfile=lockfile)
+
+    log.info(f"Packages to install: {', '.join(r.name + ' v' + r.version for r in resolved)}")
 
     # Cache and fetcher
     pkg_cache_dir = build_dir / "packages"
@@ -1029,7 +1114,8 @@ def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str],
         log.success(f"Generated {_shown(build_path / 'compile_commands.json')}")
 
         log.step("Invoking ninja...")
-        ninja_cmd = [sys.executable, "-m", "ninja", "-f", str(build_path / "build.ninja")]
+        from ebuild.build.dispatch import ninja_command
+        ninja_cmd = ninja_command() + ["-f", str(build_path / "build.ninja")]
         if log.verbose:
             ninja_cmd.append("-v")
 
@@ -1572,20 +1658,41 @@ def firmware(log: Logger, config_path: str, build_dir: str, rtos: str, board: st
         raise SystemExit(1)
 
 
-@cli.command()
+@cli.command(context_settings=dict(ignore_unknown_options=True))
 @click.argument("image", type=click.Path(exists=True))
 @click.option("--tool", default="openocd",
               type=click.Choice(["openocd", "pyocd", "nrfjprog", "esptool", "stflash"]),
               help="Flash tool to use.")
 @click.option("--target", default="stm32f4", help="Target MCU/board.")
 @click.option("--address", default="0x08000000", help="Flash base address (hex).")
-@click.option("--reset-after", is_flag=True, default=False, help="Reset target after flashing.")
+@click.option(
+    "--reset-after", is_flag=True, default=False, help="Reset target after flashing."
+)
+@click.option(
+    "--config",
+    "config_path",
+    default="build.yaml",
+    type=click.Path(),
+    help="Path to build config.",
+)
+@click.option(
+    "--no-runner-args",
+    is_flag=True,
+    default=False,
+    help="Clear runner args (overrides config and environment).",
+)
+@click.argument("cli_args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
 def flash(log: Logger, image: str, tool: str, target: str, address: str,
-          reset_after: bool) -> None:
+          reset_after: bool, config_path: str, no_runner_args: bool, cli_args: tuple) -> None:
     """Flash a firmware image to the target device.
 
     Supports OpenOCD, pyOCD, nrfjprog, esptool, and st-flash.
+
+    Underlying tool arguments (runner args) can be set by, in order of precedence,
+    extra args on the CLI (unrecognized options will be passed as runner args),
+    by setting the EBUILD_FLASH_RUNNER_ARGS environment variable,
+    or by defining a `runner_args` list in the `flash` section of build.yaml.
 
     Examples:
 
@@ -1596,6 +1703,8 @@ def flash(log: Logger, image: str, tool: str, target: str, address: str,
         ebuild flash firmware.bin --tool esptool --address 0x10000
 
         ebuild flash firmware.bin --tool pyocd --target nrf52840 --reset-after
+
+        ebuild flash firmware.bin --tool esptool -- --port /dev/ttyUSB0
     """
     log.header("ebuild — Flash")
 
@@ -1605,10 +1714,24 @@ def flash(log: Logger, image: str, tool: str, target: str, address: str,
         image_path = Path(image)
         addr = int(address, 0)
 
+        runner_args = _resolve_runner_args(
+            cli_args,
+            "EBUILD_FLASH_RUNNER_ARGS",
+            lambda: load_config(config_path),
+            "flash_config",
+            _RUNNER_ARGS_CONFIG_KEY,
+            log,
+            clear_args=no_runner_args,
+        )
+
         log.step(f"Flashing {image_path.name} to {target} via {tool}...")
         log.info(f"  Address: {hex(addr)}")
+        if runner_args:
+            log.info(f"  Runner args: {' '.join(runner_args)}")
 
-        do_flash(image_path, tool=tool, target=target, address=addr)
+        do_flash(
+            image_path, tool=tool, target=target, address=addr, extra_args=runner_args
+        )
         log.success(f"Flash complete: {image_path.name}")
 
         if reset_after:
