@@ -7,7 +7,7 @@
   Downloads and validates central/mirror package repository indices into a local cache
   (`~/.ebuild/index/`), caching full recipe definitions. Enforces HTTPS transport,
   path-traversal sanitization (`^[a-zA-Z0-9_-]+$`), 10s socket timeouts, and 10MB response
-  size limits. Index synchronization supports air-gapped operation via `--offline` and `EBUILD_OFFLINE=1`; package archive fetching is not yet offline-gated.
+  size limits. Index synchronization supports air-gapped operation via `--offline` and `EBUILD_OFFLINE=1`; package archive fetching is offline-gated too (a cached archive still extracts).
 - **Package Discovery & Multi-Source Search (`ebuild search`, `ebuild/packages/repository.py`).**
   Search across local project recipes, system-shipped recipes, and cached remote indices.
   Supports `--all`, `--json`, `--build-system`, and `--license` filters.
@@ -22,6 +22,23 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **Package archive downloads can no longer hang or poison the cache.**
+  `PackageFetcher` downloaded with `urlretrieve()`, which has no timeout: one
+  unresponsive mirror left `ebuild build` hanging until the user killed it.
+  Downloads are now streamed through `urllib.request.urlopen(..., timeout=...)`
+  (30 s default, configurable via `PackageFetcher(..., timeout=...)`), refuse
+  anything larger than 512 MB while streaming (so a server that lies about or
+  omits `Content-Length` still cannot fill the disk), and are written to a
+  `.part` file renamed into place only when complete — a connection that dies
+  mid-body no longer leaves a truncated archive in the download cache to
+  satisfy every later fetch (`ebuild/packages/fetcher.py`).
+- **Archive fetching is now gated in offline mode.** `EBUILD_OFFLINE=1` and
+  `ebuild update-index --offline` already governed index synchronization;
+  package archive fetching was exempt and hit the network anyway. A fetch
+  whose archive is not already in the download cache now fails with a message
+  naming the missing archive; a cached archive still extracts offline, so
+  air-gapped rebuilds work from a warmed cache
+  (`ebuild/packages/fetcher.py`).
 - Shared-library Ninja link commands now preserve toolchain `extra_ldflags`
   and `sysroot`, before target linker flags and package library paths, matching
   executable targets. Previously those toolchain settings were silently ignored.
