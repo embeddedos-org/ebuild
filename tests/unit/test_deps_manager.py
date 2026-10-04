@@ -44,3 +44,14 @@ def test_git_clone_with_branch_passes_branch(tmp_path):
 
         assert "--branch" in command
         assert "develop" in command
+
+
+def test_default_config_branches_are_master():
+    # Regression test for #81: DEFAULT_CONFIG once named "main" for eos and
+    # eBoot, a branch neither repo has, so `ebuild setup` failed on every
+    # first run. Every defaulted branch must be "master".
+    from ebuild.deps import DEFAULT_CONFIG
+
+    assert set(DEFAULT_CONFIG["repos"]) >= {"eos", "eboot"}
+    for name, cfg in DEFAULT_CONFIG["repos"].items():
+        assert cfg["branch"] == "master", f"{name}: {cfg['branch']!r}"
