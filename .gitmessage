@@ -1,0 +1,17 @@
+# ============ Subject (50 chars max) ============
+# <type>(<scope>): <subject>
+
+
+# =================== Body (72 chars per line max) ===================
+
+
+
+Fixes/resolves/closes #<issue number>
+
+# Don't forget to use git commit -s for DCO sign-off
+
+# --- Commit Message Guidelines ---
+# Type: feat, fix, docs, style, refactor, test, chore
+# Scope: ebuild, core, docs, ci, etc.
+# Subject: Imperative mood, no capitalization, no period
+# Body: Explain WHAT and WHY, not HOW

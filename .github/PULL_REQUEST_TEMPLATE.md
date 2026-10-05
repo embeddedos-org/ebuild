@@ -27,7 +27,7 @@
 
 <!-- How was this tested? Which test suites were run? -->
 
-- [ ] Unit tests pass (`ctest --test-dir build --output-on-failure`)
+- [ ] Unit tests pass (`ctest --test-dir build --output-on-failure` or Python `pytest`)
 - [ ] Integration tests pass
 - [ ] Manual testing performed
 - [ ] New tests added for new functionality

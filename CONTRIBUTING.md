@@ -2,23 +2,26 @@
 
 ## Developer Certificate of Origin (DCO)
 
-All contributions require a DCO sign-off. Add to your commit message:
+## Requirements
 
-    Signed-off-by: Your Name <your.email@example.com>
-
-Use: git commit -s -m "your message"
+1. **DCO Sign-off**: Every commit must carry a `Signed-off-by` line (use `git commit -s`).
+2. **License Headers**: Every new source file must have an SPDX header.
+3. **Tests**: New behavior requires a test. Uncovered code will block the PR.
+4. **Conventional Commits**: Commit messages must follow the `<type>(<scope>): <message>` format.
 
 This certifies you have the right to submit the code under the MIT license.
 
 ## Process
 
 1. Fork the repository
-2. Create a feature branch: git checkout -b feat/my-feature
-3. Write code with SPDX headers on all new files
-4. Add tests for new functionality
-5. Run: cmake -B build -DEOS_BUILD_TESTS=ON && cmake --build build && cd build && ctest
-6. Commit with DCO sign-off: git commit -s
-7. Push and create Pull Request
+2. Create a feature branch: `git checkout -b feat/my-feature`
+   (**Keep it up to date** to prevent "evil merges" (accidentally dropping other people's code during conflict resolution))
+3. (Optional) Configure the commit template: `git config commit.template .gitmessage`
+4. Write code with SPDX headers on all new files
+5. Add tests for new functionality
+6. Run tests for C/CMake: `cmake -B build -DEOS_BUILD_TESTS=ON && cmake --build build && cd build && ctest` and Python: `pytest`
+7. Commit with DCO sign-off: `git commit -s`
+8. Push and create Pull Request
 
 **Windows contributors:** `.gitattributes` pins `*.yml` and `*.yaml` to LF so
 yamllint sees the same bytes on every platform. The attribute governs future
