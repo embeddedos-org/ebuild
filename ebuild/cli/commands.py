@@ -4,7 +4,7 @@
 """CLI commands for ebuild using Click.
 
 Provides build, clean, configure, info, install, add, list-packages,
-pipeline, and hardware analysis commands.
+pipeline, quantize, and hardware analysis commands.
 """
 
 from __future__ import annotations
@@ -3050,6 +3050,105 @@ def _serial_ports() -> List[str]:
     for pattern in ("/dev/ttyUSB*", "/dev/ttyACM*", "/dev/tty.usb*"):
         found.extend(sorted(glob.glob(pattern)))
     return found
+
+
+# ═════════════════════════════════════════════════════════════
+#  quantize — Track 1 model pipeline (skeleton)
+# ═════════════════════════════════════════════════════════════
+# Quantize/convert a model for an on-device accelerator target. The CLI
+# contract is settled (see docs/quantize.md); backend kernels are not yet
+# implemented, so the command validates everything, prints the plan, and
+# exits 2 rather than silently no-op'ing. Wiring a backend turns the
+# _run_backend() stub into real work without changing the CLI.
+
+
+@cli.command()
+@click.option(
+    "--model",
+    "model_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Model file to quantize (.onnx or .tflite).",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["int8", "int16"]),
+    default="int8",
+    show_default=True,
+    help="Quantization format.",
+)
+@click.option(
+    "--calibration",
+    "calibration",
+    required=True,
+    type=click.Path(exists=True),
+    help="Calibration data file or directory.",
+)
+@click.option(
+    "--target",
+    required=True,
+    type=click.Choice(["cmsis-nn", "esp-nn", "aie"]),
+    help="Accelerator backend target (tiny: cmsis-nn/esp-nn; large: aie).",
+)
+@click.option(
+    "--validate/--no-validate",
+    default=False,
+    help="Run the bit-exactness validation harness after conversion.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    default=None,
+    type=click.Path(dir_okay=False, writable=True),
+    help="Output path for the quantized model (default: <stem>.quantized.<fmt><ext>).",
+)
+@pass_logger
+def quantize(
+    log: "Logger",
+    model_path: str,
+    fmt: str,
+    calibration: str,
+    target: str,
+    validate: bool,
+    output_path: Optional[str],
+) -> None:
+    """Quantize MODEL for an on-device accelerator TARGET (Track 1).
+
+    Example:\n
+        ebuild quantize --model mobilenet.tflite --format int8 \\
+            --calibration data/calib/ --target cmsis-nn --validate
+    """
+    model = Path(model_path)
+    if model.suffix.lower() not in (".onnx", ".tflite"):
+        log.error(f"Unsupported model format {model.suffix!r}: want .onnx or .tflite.")
+        raise SystemExit(2)
+    if output_path is None:
+        output_path = str(model.with_name(f"{model.stem}.quantized.{fmt}{model.suffix}"))
+
+    log.header("Quantize plan")
+    log.info(f"  model:       {model_path}")
+    log.info(f"  format:      {fmt}")
+    log.info(f"  calibration: {calibration}")
+    log.info(f"  target:      {target}")
+    log.info(f"  output:      {output_path}")
+    log.info(f"  validate:    {'yes' if validate else 'no'}")
+
+    if target == "aie":
+        log.error(
+            "Target 'aie' (large-tier accelerator-HAL profile) is not implemented yet. "
+            "See docs/track1/accelerator-hal-profiles.md in embeddedos-org/eos."
+        )
+        raise SystemExit(2)
+
+    # Backend kernels (cmsis-nn / esp-nn) are not implemented yet. The
+    # --validate harness hooks in here once they are; until then the
+    # command refuses to pretend it converted anything.
+    log.warning("Backend kernels not yet implemented; nothing was written.")
+    if validate:
+        log.warning("--validate requested: the bit-exactness harness has no backend to check yet.")
+    raise SystemExit(2)
 
 
 # ═════════════════════════════════════════════════════════════
