@@ -1,15 +1,12 @@
 # Contributing to EoS
 
-## Developer Certificate of Origin (DCO)
-
 ## Requirements
 
 1. **DCO Sign-off**: Every commit must carry a `Signed-off-by` line (use `git commit -s`).
+   This is the Developer Certificate of Origin: it certifies you have the right to submit the code under the MIT license.
 2. **License Headers**: Every new source file must have an SPDX header.
-3. **Tests**: New behavior requires a test. Uncovered code will block the PR.
+3. **Tests**: New behavior requires a test. CI runs `python -m pytest tests/`; there is no coverage threshold yet (`--cov-fail-under=0` in `.github/workflows/ci.yml`), so reviewers enforce this.
 4. **Conventional Commits**: Commit messages must follow the `<type>(<scope>): <message>` format.
-
-This certifies you have the right to submit the code under the MIT license.
 
 ## Process
 
@@ -19,7 +16,7 @@ This certifies you have the right to submit the code under the MIT license.
 3. (Optional) Configure the commit template: `git config commit.template .gitmessage`
 4. Write code with SPDX headers on all new files
 5. Add tests for new functionality
-6. Run tests for C/CMake: `cmake -B build -DEOS_BUILD_TESTS=ON && cmake --build build && cd build && ctest` and Python: `pytest`
+6. Run what CI runs: `ruff check .` and `python -m pytest tests/`; for the C/CMake side, `cmake -B build -DEOS_BUILD_TESTS=ON && cmake --build build && cd build && ctest`
 7. Commit with DCO sign-off: `git commit -s`
 8. Push and create Pull Request
 
