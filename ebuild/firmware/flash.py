@@ -22,8 +22,8 @@ FLASH_TOOLS = {
     "openocd": ["openocd", "-f", "interface/stlink.cfg"],
     "pyocd": ["pyocd", "flash"],
     "nrfjprog": ["nrfjprog", "--program"],
-    "esptool": ["esptool.py", "--chip", "esp32", "write_flash"],
-    "stflash": ["st-flash", "write"],
+    "esptool": ["esptool.py", "--chip", "esp32"],
+    "stflash": ["st-flash"],
 }
 
 
@@ -53,6 +53,7 @@ def flash(
 
     if tool == "openocd":
         cmd.extend(["-f", f"target/{target}.cfg"])
+        cmd.extend(extra_args or [])
         image_str = str(image_path)
         if image_str.count("{") != image_str.count("}"):
             raise FlashError(
@@ -68,15 +69,16 @@ def flash(
         cmd.extend(["-c", f"program {{{image_path}}} {hex(address)} verify reset exit"])
     elif tool == "pyocd":
         cmd.extend([str(image_path), "--target", target, "--base-address", hex(address)])
+        cmd.extend(extra_args or [])
     elif tool == "nrfjprog":
         cmd.extend([str(image_path), "--sectorerase", "--verify"])
+        cmd.extend(extra_args or [])
     elif tool == "esptool":
-        cmd.extend([hex(address), str(image_path)])
+        cmd.extend(extra_args or [])
+        cmd.extend(["write_flash", hex(address), str(image_path)])
     elif tool == "stflash":
-        cmd.extend([str(image_path), hex(address)])
-
-    if extra_args:
-        cmd.extend(extra_args)
+        cmd.extend(extra_args or [])
+        cmd.extend(["write", str(image_path), hex(address)])
 
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:

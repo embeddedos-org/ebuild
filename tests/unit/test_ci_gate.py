@@ -43,8 +43,6 @@ NO_GATE = {
     "auto-assign.yml":
         "assigns a reviewer; it verifies nothing, so requiring it would block "
         "merges on a housekeeping step",
-    "claude-code-review.yml":
-        "posts advisory review comments and never fails on content",
     "codeql.yml":
         "already reports a single stable name, `CodeQL`, which should be "
         "required directly rather than wrapped in a gate",
@@ -58,6 +56,14 @@ NO_GATE = {
     "vendor-drift.yml":
         "reports third-party drift for triage and is expected to fail while a "
         "vendored dependency is behind",
+    "eosim-sanity.yml":
+        "its pull_request trigger is filtered to paths: "
+        "['.github/workflows/eosim-sanity.yml'], so on a pull request that "
+        "touches nothing else it reports no status at all, and a required "
+        "check that never arrives hangs the merge instead of failing it. It "
+        "has a fail-closed gate (`EoSim Sanity Gate`, iterating "
+        "toJSON(needs)) for the runs it does make; the trigger exists so a "
+        "change to the workflow proves itself",
 }
 
 

@@ -9,10 +9,14 @@ Generates build.ninja and compile_commands.json from a ProjectConfig.
 from __future__ import annotations
 
 import json
+import shlex
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
+
+from ebuild.build.layout import executable_output_path
 
 
 @dataclass
@@ -24,45 +28,11 @@ class PackagePaths:
     libraries: List[str] = field(default_factory=list)
 
 
-# Flags that already request position-independent code. If one of these is
-# present (or explicitly disabled with -fno-*) we must not add -fPIC again.
-_PIC_FLAGS = {"-fPIC", "-fpic", "-fPIE", "-fpie", "-fno-pic", "-fno-PIC",
-              "-fno-pie", "-fno-PIE"}
-
-
-def _exe_suffix() -> str:
-    """The extension the compiler driver gives an executable.
-
-    gcc on Windows appends .exe when -o names no extension, so an edge
-    declaring "app" produced "app.exe" on disk: ninja never saw its own
-    output, treated the target as dirty and relinked on every build.
-    """
-    return ".exe" if sys.platform == "win32" else ""
-
-
-def executable_output_path(build_dir: Path, target_name: str) -> Path:
-    """Return the linked binary path NinjaBackend emits for *target_name*.
-
-    Args:
-        build_dir: Directory that contains ``build.ninja`` and the linked
-            outputs.
-        target_name: The ``name`` of an ``executable`` or ``test`` target.
-
-    Returns:
-        ``build_dir / target_name`` on POSIX, or that path with ``.exe``
-        appended on Windows -- the same path the Ninja edge in
-        ``_write_ninja`` already names via ``_exe_suffix()``. A consumer
-        that rebuilds this path independently instead of calling this
-        function can silently drop the suffix and go looking for a binary
-        the edge never produced.
-
-    Example:
-        >>> from pathlib import Path
-        >>> executable_output_path(Path("_build"), "hello").name in (
-        ...     "hello", "hello.exe")
-        True
-    """
-    return Path(build_dir) / (target_name + _exe_suffix())
+# Flags that explicitly control PIC generation. PIE is intentionally excluded:
+# its output is suitable for executables, not shared libraries.
+_PIC_FLAGS = {"-fPIC", "-fpic", "-fno-pic", "-fno-PIC"}
+_PIE_FLAGS = {"-fPIE", "-fpie", "-fno-pie", "-fno-PIE"}
+_POSITION_INDEPENDENCE_FLAGS = _PIC_FLAGS | _PIE_FLAGS
 
 
 def _shared_flag() -> str:
@@ -146,7 +116,9 @@ class NinjaBackend:
         """Resolve all cflags for a target (toolchain + target + packages).
 
         Combines toolchain flags, target-specific flags, include paths,
-        defines, and package include directories into a single list.
+        defines, and package include directories into a single list. Shared
+        library sources default to position-independent code unless the target
+        or toolchain explicitly selects a PIC policy.
 
         Args:
             target: A TargetConfig with cflags, includes, defines, and uses.
@@ -166,6 +138,15 @@ class NinjaBackend:
                 for inc_dir in pkg.include_dirs:
                     cflags.append(f"-I{inc_dir}")
 
+        if target.target_type == "shared_library":
+            effective_flag = None
+            for flag in reversed(cflags):
+                if flag in _POSITION_INDEPENDENCE_FLAGS:
+                    effective_flag = flag
+                    break
+            if effective_flag not in _PIC_FLAGS:
+                cflags.append("-fPIC")
+
         return cflags
 
     def _object_path(self, target, src: str) -> Path:
@@ -178,15 +159,28 @@ class NinjaBackend:
         source made both targets claim one output, which ninja rejects with
         "multiple rules generate ...".
 
+        Keep the source extension too: start.c and start.S in one target
+        must produce start.c.o and start.S.o rather than sharing start.o.
+
         Example:
             >>> backend._object_path(target, "src/main.c")   # target.name == "app"
-            PosixPath('_build/obj/app/src/main.o')
+            PosixPath('_build/obj/app/src/main.c.o')
         """
-        return (self.build_dir / "obj" / target.name / src).with_suffix(".o")
+        return self.build_dir / "obj" / target.name / (src + ".o")
 
     def _write_ninja(self) -> None:
         """Write the build.ninja file."""
         ninja_path = self.build_dir / "build.ninja"
+        # Invoke recreate_archive.py by absolute path so Ninja does not need
+        # `ebuild` on sys.path (cwd/PYTHONPATH checkouts, not only installs).
+        # Quote for the shell Ninja will use, and escape `$` so Ninja does not
+        # treat path fragments as variables.
+        helper = Path(__file__).with_name("recreate_archive.py")
+        archive_command = (
+            subprocess.list2cmdline([sys.executable, str(helper)])
+            if sys.platform == "win32"
+            else f"{shlex.quote(sys.executable)} {shlex.quote(str(helper))}"
+        ).replace("$", "$$")
         lines = [
             f"# Generated by ebuild",
             f"cc = {self.toolchain.cc}",
@@ -204,7 +198,12 @@ class NinjaBackend:
             "  description = LINK $out",
             "",
             "rule ar_rule",
-            "  command = $ar rcs $out $in",
+            # `ar rcs` replaces named members but keeps omitted ones, so an
+            # incremental rebuild after removing a source can leave its .o in
+            # the archive. recreate_archive deletes $out first. A path-based
+            # helper keeps this portable (no `rm`) without requiring `import
+            # ebuild` at build time.
+            f"  command = {archive_command} $out $ar rcs $out $in",
             "  description = AR $out",
             "",
             # A shared_library edge names this rule. Without the rule the
@@ -280,7 +279,7 @@ class NinjaBackend:
                     # get, which the rule preamble alone does not supply. The
                     # "build a shared object" flag itself lives in the
                     # link_shared rule, so it must not be repeated here.
-                    ldflags = list(target.ldflags)
+                    ldflags = toolchain_ldflags + list(target.ldflags)
                     libs = []
                     for pkg_name in target.uses:
                         pkg = self.package_paths.get(pkg_name)

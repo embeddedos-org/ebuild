@@ -3,7 +3,10 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ebuild"
+# The PyPI name. "ebuild" on PyPI is an unrelated project (neutree/ebuild),
+# so `pip install ebuild` never installed this one. The import package and
+# the `ebuild` command keep their names.
+name = "embeddedos-ebuild"
 version = "3.0.1"
 description = "Unified embedded build system — supports Make, CMake, Meson, Cargo, Buildroot, Zephyr, FreeRTOS, NuttX"
 readme = "README.md"
@@ -31,6 +34,12 @@ ebuild = "ebuild.cli.commands:cli"
 
 [tool.setuptools.packages.find]
 include = ["ebuild*"]
+
+# Project templates and package recipes are data, not modules; without this
+# they are missing from the wheel and `ebuild new` / `ebuild install` break
+# for anyone who installed ebuild with pip.
+[tool.setuptools.package-data]
+ebuild = ["templates/*/*.template", "recipes/*.yaml"]
 
 [tool.ruff]
 exclude = [

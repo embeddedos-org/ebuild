@@ -27,10 +27,85 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
+
+# Same ceiling the package-index fetcher uses. An LLM analysis is a YAML
+# recommendation, not a stream; a response larger than this is a fault, not
+# a useful answer, and urllib would otherwise read it into memory unbounded.
+MAX_LLM_RESPONSE_BYTES = 10 * 1024 * 1024
+
+_ALLOWED_SCHEMES = {"http", "https"}
+_BEARER_RE = re.compile(r"Bearer \S+", re.IGNORECASE)
+_KEY_QUERY_RE = re.compile(
+    r"(api[_-]?key|token|secret)=([^&\s]+)", re.IGNORECASE
+)
+
+
+def _http_url(url: str) -> str:
+    """Return *url* if it names an HTTP(S) endpoint.
+
+    ``urllib.request.urlopen`` opens ``file://`` and other schemes. An LLM
+    endpoint is an HTTP service; anything else is either a programming error
+    or SSRF. Unlike the package index, HTTP (not only HTTPS) is allowed:
+    Ollama's default listener is ``http://localhost:11434``.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in _ALLOWED_SCHEMES or not parsed.netloc:
+        scheme = parsed.scheme or "empty"
+        raise ValueError(f"LLM endpoint must be an http(s) URL (got {scheme})")
+    return url
+
+
+def _openai_chat_url(base_url: str) -> str:
+    """Join *base_url* to the chat-completions path without doubling ``/v1``.
+
+    OpenAI-compatible servers document the base as either the origin
+    (``https://api.openai.com``) or the v1 root (``https://api.openai.com/v1``).
+    Always appending ``/v1/chat/completions`` made the second form 404.
+    """
+    base = _http_url(base_url).rstrip("/")
+    if base.endswith("/v1"):
+        return f"{base}/chat/completions"
+    return f"{base}/v1/chat/completions"
+
+
+def _error_text(exc: BaseException) -> str:
+    """Render *exc* for the caller without echoing credentials."""
+    text = str(exc)
+    text = _BEARER_RE.sub("Bearer [redacted]", text)
+    text = _KEY_QUERY_RE.sub(r"\1=[redacted]", text)
+    return text
+
+
+def _read_limited(resp, limit: int = MAX_LLM_RESPONSE_BYTES) -> bytes:
+    data = resp.read(limit + 1)
+    if len(data) > limit:
+        raise ValueError(f"LLM response exceeded {limit} bytes")
+    return data
+
+
+def _completed(text: str, model: str, provider: str, tokens_used: int) -> LLMResponse:
+    if not text.strip():
+        return LLMResponse(
+            text="",
+            model=model,
+            provider=provider,
+            tokens_used=tokens_used,
+            success=False,
+            error="LLM returned an empty response",
+        )
+    return LLMResponse(
+        text=text,
+        model=model,
+        provider=provider,
+        tokens_used=tokens_used,
+        success=True,
+    )
 
 
 @dataclass
@@ -111,16 +186,25 @@ class LLMClient:
         return cls(provider="none", model="none")
 
     @staticmethod
-    def _check_ollama() -> bool:
-        """Check if Ollama is running locally."""
+    def _check_ollama(base_url: Optional[str] = None) -> bool:
+        """Return True if an Ollama server answers at *base_url*.
+
+        Availability must probe the URL the client will actually call. The
+        previous probe always hit ``OLLAMA_URL`` (localhost:11434), so a
+        client constructed with ``base_url=http://gpu-box:11434`` reported
+        itself available whenever a *different* Ollama was running locally,
+        and unavailable when only the configured host was up.
+        """
+        url = (base_url or LLMClient.OLLAMA_URL).rstrip("/")
         try:
-            req = urllib.request.Request(
-                f"{LLMClient.OLLAMA_URL}/api/tags",
-                method="GET",
-            )
+            _http_url(url)
+        except ValueError:
+            return False
+        try:
+            req = urllib.request.Request(f"{url}/api/tags", method="GET")
             with urllib.request.urlopen(req, timeout=3) as resp:
                 return resp.status == 200
-        except (urllib.error.URLError, OSError, TimeoutError):
+        except (urllib.error.URLError, OSError, TimeoutError, ValueError):
             return False
 
     def is_available(self) -> bool:
@@ -128,9 +212,15 @@ class LLMClient:
         if self.provider == "none":
             return False
         if self.provider == "ollama":
-            return self._check_ollama()
+            return self._check_ollama(self.base_url)
         if self.provider in ("openai", "custom"):
-            return bool(self.api_key and self.base_url)
+            if not (self.api_key and self.base_url):
+                return False
+            try:
+                _http_url(self.base_url)
+            except ValueError:
+                return False
+            return True
         return False
 
     def analyze(self, prompt: str, system: str = "") -> LLMResponse:
@@ -161,17 +251,17 @@ class LLMClient:
         try:
             if self.provider == "ollama":
                 return self._call_ollama(prompt, system)
-            else:
-                return self._call_openai_compat(prompt, system)
+            return self._call_openai_compat(prompt, system)
         except Exception as e:
             return LLMResponse(
                 text="", model=self.model, provider=self.provider,
-                success=False, error=str(e),
+                success=False, error=_error_text(e),
             )
 
     def _call_ollama(self, prompt: str, system: str) -> LLMResponse:
         """Call Ollama local API."""
-        url = f"{self.base_url}/api/generate"
+        base = _http_url(self.base_url or "").rstrip("/")
+        url = f"{base}/api/generate"
         payload = {
             "model": self.model,
             "prompt": prompt,
@@ -187,19 +277,18 @@ class LLMClient:
         )
 
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+            body = json.loads(_read_limited(resp).decode("utf-8"))
 
-        return LLMResponse(
-            text=body.get("response", ""),
+        return _completed(
+            text=body.get("response") or "",
             model=body.get("model", self.model),
             provider="ollama",
-            tokens_used=body.get("eval_count", 0),
-            success=True,
+            tokens_used=int(body.get("eval_count") or 0),
         )
 
     def _call_openai_compat(self, prompt: str, system: str) -> LLMResponse:
         """Call OpenAI-compatible chat completions API."""
-        url = f"{self.base_url}/v1/chat/completions"
+        url = _openai_chat_url(self.base_url or "")
         payload = {
             "model": self.model,
             "messages": [
@@ -218,18 +307,18 @@ class LLMClient:
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
+            body = json.loads(_read_limited(resp).decode("utf-8"))
 
-        choice = body.get("choices", [{}])[0]
-        message = choice.get("message", {})
-        usage = body.get("usage", {})
+        choices = body.get("choices") or [{}]
+        choice = choices[0] if choices else {}
+        message = choice.get("message") or {}
+        usage = body.get("usage") or {}
 
-        return LLMResponse(
-            text=message.get("content", ""),
+        return _completed(
+            text=message.get("content") or "",
             model=body.get("model", self.model),
             provider=self.provider,
-            tokens_used=usage.get("total_tokens", 0),
-            success=True,
+            tokens_used=int(usage.get("total_tokens") or 0),
         )
 
     def get_provider_info(self) -> str:

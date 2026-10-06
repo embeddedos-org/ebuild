@@ -24,7 +24,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-RECIPES_DIR = Path(__file__).resolve().parents[2] / "recipes"
+RECIPES_DIR = Path(__file__).resolve().parents[2] / "ebuild" / "recipes"
 SHA256_RE = re.compile(r"^(?:sha256:)?[0-9a-f]{64}$")
 
 RECIPE_FILES = sorted(RECIPES_DIR.glob("*.yaml"))

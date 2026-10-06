@@ -245,12 +245,12 @@ class TestCLIFootprintReport:
         """
         from types import SimpleNamespace
 
-        from ebuild.build import ninja_backend
+        from ebuild.build import layout
         from ebuild.cli import commands
         from ebuild.core.config import ProjectConfig, TargetConfig
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
+        monkeypatch.setattr(layout, "_exe_suffix", lambda: ".exe")
         monkeypatch.setattr(
             "ebuild.build.footprint.find_size_tool",
             lambda prefix: "/usr/bin/size")

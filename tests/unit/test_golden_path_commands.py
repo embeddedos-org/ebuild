@@ -182,12 +182,12 @@ class TestTestTargetType:
         """
         from types import SimpleNamespace
 
-        from ebuild.build import ninja_backend
+        from ebuild.build import layout
         from ebuild.build.ninja_backend import NinjaBackend
         from ebuild.cli import commands
         from ebuild.core.config import ProjectConfig
 
-        monkeypatch.setattr(ninja_backend, "_exe_suffix", lambda: ".exe")
+        monkeypatch.setattr(layout, "_exe_suffix", lambda: ".exe")
 
         cfg = ProjectConfig(
             name="p", version="1", source_dir=tmp_path,

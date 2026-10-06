@@ -24,12 +24,6 @@ targets:
       - eos
     depends: []
 
-firmware:
-  board: {{BOARD_NAME}}
-  core: {{CORE}}
-  tick_rate: 1000
-  watchdog_ms: 100
-
   - name: test_{{PROJECT_NAME}}
     type: test
     sources:
@@ -39,3 +33,9 @@ firmware:
     uses:
       - eos
     depends: []
+
+firmware:
+  board: {{BOARD_NAME}}
+  core: {{CORE}}
+  tick_rate: 1000
+  watchdog_ms: 100

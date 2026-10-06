@@ -11,10 +11,14 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 
 | ID | Task | Owner | Mode | Status | Depends on |
 |----|------|-------|------|--------|------------|
+| T-006 | Preserve toolchain linker settings for shared libraries ([#125](https://github.com/embeddedos-org/ebuild/pull/125)) | backend | Verification | review | none |
 | T-002 | Fix Windows Ninja test-target path parsing | backend | Maintenance | review | none |
 | T-003 | `ebuild package` looks for the unsuffixed binary on Windows (`_build/app` rather than `_build/app.exe`) | backend | Maintenance | review | none |
 | T-004 | `_report_footprint` (the flash/RAM report `ebuild build` prints) looks for the unsuffixed binary on Windows, and fails silently rather than logging why | backend | Maintenance | review | none |
 | T-005 | Move `executable_output_path()` out of the Ninja-specific backend into a backend-neutral module (`ebuild/build/layout.py`), re-exported from `ninja_backend` for compatibility | backend | Maintenance | todo | none |
+| T-006 | Make optional LLM analysis honest: probe configured Ollama URL, join OpenAI `/v1` once, reject non-HTTP(S), do not report `--llm` success on a failed call | backend | Maintenance | review | none |
+| T-007 | Flash/RAM size regex requires `[mk]b` immediately before `flash`/`ram`, so `"2MB SPI flash"` yields `flash_size=0` and `generate_boot_yaml` silently defaults to 1 MB | backend | Maintenance | todo | none |
+| T-008 | `IndexSyncManager.sync` calls `PackageRecipe.to_dict()`, which does not exist; `tests/unit/test_index_sync.py` currently fails 9 tests on that AttributeError. Unrelated to T-006. | backend | Maintenance | todo | none |
 
 ### Evidence (self-reported by implementer; pending independent review per `.ai/reviewer.md` — "if you implemented it, you do not approve it")
 
@@ -46,9 +50,18 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
   process cwd's own `eos.yaml`/`board.yaml`, if any, cannot change what it
   measures; confirmed to fail against the pre-fix lookup (no report
   emitted) and pass against the fix.
-- **Suite result** (single run, both changes present, this Windows host):
-  **560 passed, 6 skipped, exit code 0**. Supersedes any other count quoted
-  for T-003 or T-004 elsewhere in this repo or in PR #110's description.
+- **T-006**: `LLMClient.is_available()` probes `self.base_url` rather than
+  hardcoded localhost; `_openai_chat_url()` joins `/v1` once; non-HTTP(S)
+  schemes never reach `urlopen`; a failed `analyze_with_llm` appends
+  `llm_failed:<provider>` and `ebuild analyze --llm` warns instead of
+  printing success. Covered by `tests/ebuild/test_llm_integration.py`
+  (**33 passed**). The `/v1` join test was confirmed to fail against the
+  pre-fix `f"{base}/v1/chat/completions"` (3 parametrized cases produced
+  `/v1/v1/chat/completions`) and pass against the fix. `llm_integration.py`
+  coverage **99.46%** on that file. Full `tests/ebuild` + `tests/unit`:
+  **699 passed, 3 skipped, 9 failed** — the 9 are pre-existing
+  `PackageRecipe.to_dict` errors in `index_sync.py`, recorded as T-008.
+
 
 ## Completed
 
@@ -56,6 +69,7 @@ Status is one of: `todo`, `in-progress`, `blocked`, `review`, `done`.
 |----|------|-------|-------------|----------|
 | T-001 | Make initramfs creation portable and self-contained | backend | independent reviewer | Focused archive tests: **5 passed, 1 skipped** (symlink creation unavailable on this Windows host). Independent `bsdtar` extraction validated hard-link identity and payload. Full Python suite: **288 passed, 2 skipped, 1 unrelated failure** in the pre-existing Windows Ninja path assertion, recorded as T-002. QEMU boot was not run on Windows. |
 | T-003 | Address PR #111 review findings 1, 2, 3, 6, 7, 8 | backend | reviewer | Unit tests in `tests/unit/test_index_sync.py` (22 passed) verify keep-set filename matching, empty index floor and fallback status, .yml preservation and pruning, lack-of-URL recipe preservation, CLI prune reporting, and trailing newline in `CHANGELOG.md`. Static analysis with `ruff` on all PR-touched files reports 0 errors; `mypy` on modified packages reports 0 errors without suppressions. Full test suite passes 605 tests on Linux. |
+| T-006 | Preserve source extensions in Ninja object paths | backend | independent reviewer | `start.c` and `start.S` produce `start.c.o` and `start.S.o` within the target namespace. Focused regression suite: **19 passed**, including real Ninja dry runs; before the fix, **3 failed, 16 passed**. Changed-file Ruff and diff checks passed. Full suite: **667 passed, 10 failed, 7 skipped**; the same 10 failures reproduce with the original backend (nine missing `PackageRecipe.to_dict()` errors and one environment permission error). Existing build directories must be cleaned once because static archives can retain objects named by the previous layout; durable archive recreation is tracked by #136 / PR #137. |
 
 ---
 
@@ -109,3 +123,13 @@ These commands were derived from the manifests at the repository root. Confirm o
   [ORCHESTRATION.md](./ORCHESTRATION.md) is met and the verification commands
   were actually run.
 - `blocked` requires a note naming what it is blocked on and who can unblock it.
+
+## Baseline findings during static-archive validation
+
+Unchanged commit `76970c9` and the archive fix both have nine failing tests
+caused by missing `PackageRecipe.to_dict`, plus one offline-index test denied
+access to the home cache by the local sandbox. Mypy also reports the missing
+method. Ruff reports four existing findings in `test_build_dir_resolution.py`,
+`test_package_recipe.py`, and `test_ci_gate.py`. These are outside the archive
+fix; the before/after full-suite results are respectively 669/672 passed,
+10 failed, and 2 skipped on macOS with Python 3.13.

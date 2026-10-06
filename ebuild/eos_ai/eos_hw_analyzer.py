@@ -637,6 +637,11 @@ class EosHardwareAnalyzer:
 
         This is optional — the analyzer works without any LLM.
         Returns the original profile unchanged if no LLM is available.
+
+        On a successful call, appends ``llm_analyzed:<provider>`` to
+        ``profile.features``. On a failed call, appends
+        ``llm_failed:<provider>`` and leaves peripherals unchanged, so a
+        caller can tell the two cases apart.
         """
         if not self.llm_client.is_available():
             return profile
@@ -645,6 +650,8 @@ class EosHardwareAnalyzer:
         response = self.llm_client.analyze(prompt)
 
         if not response.success:
+            # Distinguish "call failed" from "LLM was never asked".
+            profile.features.append(f"llm_failed:{self.llm_client.provider}")
             return profile
 
         # Parse LLM response for additional peripheral recommendations

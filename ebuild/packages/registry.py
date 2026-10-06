@@ -224,7 +224,8 @@ def find_recipe_dirs(
             dirs.append(local_recipes)
 
     # Shipped system recipes
-    pkg_recipes = Path(__file__).resolve().parent.parent.parent / "recipes"
+    # Shipped inside the package so installed copies of ebuild have them.
+    pkg_recipes = Path(__file__).resolve().parent.parent / "recipes"
     if pkg_recipes.is_dir() and pkg_recipes not in dirs:
         dirs.append(pkg_recipes)
 
