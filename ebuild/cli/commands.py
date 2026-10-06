@@ -2349,6 +2349,27 @@ def generate_boot(log: Logger, boot_yaml: str, output_dir: str) -> None:
 #  Dependency management commands
 # ═══════════════════════════════════════════════════════════════
 
+def _warn_cached_repo(log: Logger, name: str, repo_dir: Path) -> None:
+    """Say plainly that ``setup`` reused an existing clone without pulling it.
+
+    ``DepsManager.setup`` deliberately leaves an existing clone alone (it
+    must not move a pinned branch or tag), so a clone made weeks ago would
+    otherwise be reported exactly like a fresh one (issue #180).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "log", "-1", "--format=%h %cs"],
+            capture_output=True, text=True, check=True,
+        )
+        where = f"at {result.stdout.strip()}"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        where = "at an unknown commit"
+    log.warning(
+        f"  {name} was already cloned ({where}); setup does not pull. "
+        f"Run `ebuild repos update` to get the latest."
+    )
+
+
 @cli.command()
 @click.option("--eos-url", default=None, help="Git URL for eos repo (overrides default).")
 @click.option("--eboot-url", default=None, help="Git URL for eboot repo (overrides default).")
@@ -2388,12 +2409,18 @@ def setup(
 
     try:
         log.step("Setting up eos...")
+        eos_cached = eos_path is None and (mgr.cache_dir / "eos").is_dir()
         eos_dir = mgr.setup("eos", url=eos_url, branch=eos_branch, path=eos_path)
         log.success(f"  eos: {eos_dir}")
+        if eos_cached:
+            _warn_cached_repo(log, "eos", eos_dir)
 
         log.step("Setting up eboot...")
+        eboot_cached = eboot_path is None and (mgr.cache_dir / "eboot").is_dir()
         eboot_dir = mgr.setup("eboot", url=eboot_url, branch=eboot_branch, path=eboot_path)
         log.success(f"  eboot: {eboot_dir}")
+        if eboot_cached:
+            _warn_cached_repo(log, "eboot", eboot_dir)
 
         log.success("Setup complete. Repos are ready.")
     except Exception as e:
