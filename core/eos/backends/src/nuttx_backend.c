@@ -3,18 +3,14 @@
 // ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
 
 #include "eos/backend.h"
-#include "eos/log.h"
+#include "eos/shell_cmd.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static EosResult nuttx_configure(EosBackend *self, const char *src_dir,
                                  const char *build_dir, const char *toolchain_file,
                                  const EosKeyValue *options, int option_count) {
-    (void)self;
-    (void)build_dir;
-    char cmd[2048];
-
+    (void)self; (void)build_dir;
     /* NuttX uses its own tools/configure.sh <board>:<config> flow */
     const char *board_config = "sim:nsh";
     for (int i = 0; i < option_count; i++) {
@@ -24,56 +20,77 @@ static EosResult nuttx_configure(EosBackend *self, const char *src_dir,
         }
     }
 
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cd ");
+    eos_shell_cmd_arg(&cmd, src_dir);
+    eos_shell_cmd_text(&cmd, " && ");
     if (toolchain_file && toolchain_file[0]) {
-        snprintf(cmd, sizeof(cmd),
-                 "cd \"%s\" && CROSS_COMPILE=%s- ./tools/configure.sh %s",
-                 src_dir, toolchain_file, board_config);
-    } else {
-        snprintf(cmd, sizeof(cmd),
-                 "cd \"%s\" && ./tools/configure.sh %s",
-                 src_dir, board_config);
+        eos_shell_cmd_text(&cmd, "CROSS_COMPILE=");
+        eos_shell_cmd_word(&cmd, toolchain_file);
+        eos_shell_cmd_text(&cmd, "- ");
     }
-
-    EOS_INFO("NuttX configure: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    eos_shell_cmd_text(&cmd, "./tools/configure.sh ");
+    eos_shell_cmd_word(&cmd, board_config);
+    return eos_shell_cmd_run(&cmd, "NuttX configure");
 }
 
 static EosResult nuttx_build(EosBackend *self, const char *build_dir, int jobs) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "make -C \"%s\" -j%d", build_dir, jobs > 0 ? jobs : 4);
-    EOS_INFO("NuttX build: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "make -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -j");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    return eos_shell_cmd_run(&cmd, "NuttX build");
+}
+
+static EosResult nuttx_clean(EosBackend *self, const char *build_dir) {
+    (void)self;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "make -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " distclean");
+    return eos_shell_cmd_run(&cmd, "NuttX clean");
 }
 
 static EosResult nuttx_install(EosBackend *self, const char *build_dir,
                                const char *install_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd),
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
 #ifdef _WIN32
-             "if not exist \"%s\" mkdir \"%s\" && copy /Y \"%s\\nuttx.bin\" \"%s\\firmware.bin\" 2>nul",
-             install_dir, install_dir, build_dir, install_dir
+    eos_shell_cmd_text(&cmd, "if not exist ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " mkdir ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " && copy /Y ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "\\nuttx.bin ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "\\firmware.bin 2>nul");
 #else
-             "mkdir -p \"%s\" && cp -f \"%s/nuttx.bin\" \"%s/firmware.bin\" 2>/dev/null || "
-             "cp -f \"%s/nuttx\" \"%s/firmware.elf\" 2>/dev/null || true",
-             install_dir, build_dir, install_dir, build_dir, install_dir
+    eos_shell_cmd_text(&cmd, "mkdir -p ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " && if [ -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/nuttx.bin ]; then cp -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/nuttx.bin ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "/firmware.bin; elif [ -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/nuttx ]; then cp -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/nuttx ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "/firmware.elf; else echo \"nuttx_install: no nuttx.bin or nuttx image in\" ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " >&2; exit 1; fi");
 #endif
-    );
-    EOS_INFO("NuttX install: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
-}
-
-static EosResult nuttx_clean(EosBackend *self, const char *build_dir) {
-    (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "make -C \"%s\" distclean", build_dir);
-    EOS_INFO("NuttX clean: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    return eos_shell_cmd_run(&cmd, "NuttX install");
 }
 
 void eos_backend_nuttx_init(EosBackend *b) {

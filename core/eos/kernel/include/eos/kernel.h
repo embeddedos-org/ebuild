@@ -80,12 +80,14 @@ typedef struct {
     const char *name;
     eos_task_state_t state;
     uint8_t priority;
+    uint8_t base_priority;
     uint32_t stack_size;
     eos_task_func_t entry;
     void *arg;
     uint32_t *stack_base;
     uint32_t *stack_ptr;
     uint32_t wake_tick;
+    uint8_t  wake_armed;   /* 1 when wake_tick holds a real deadline */
     uint32_t run_count;
 } eos_task_t;
 
@@ -98,7 +100,27 @@ bool eos_kernel_is_running(void);
 int eos_task_create(const char *name, eos_task_func_t entry, void *arg,
                      uint8_t priority, uint32_t stack_size);
 
+/**
+ * @brief Delete a task; its slot becomes available to eos_task_create().
+ * @param handle  Task handle (slot index) returned by eos_task_create().
+ * @return EOS_KERN_OK on success; EOS_KERN_INVALID for handle 0, an
+ *         out-of-range handle, or a slot that holds no task.
+ *
+ * Handle 0 is the idle task, and it is permanent: it is the task the
+ * scheduler falls back to when nothing else is runnable, so it can be
+ * neither deleted nor suspended.
+ */
 int  eos_task_delete(eos_task_handle_t handle);
+
+/**
+ * @brief Suspend a task until eos_task_resume() is called on it.
+ * @param handle  Task handle (slot index) returned by eos_task_create().
+ * @return EOS_KERN_OK on success; EOS_KERN_INVALID for handle 0, an
+ *         out-of-range handle, or a slot whose entry is NULL (never
+ *         created, or deleted through eos_task_delete()).
+ *
+ * Handle 0 is the idle task and is permanent; see eos_task_delete().
+ */
 int  eos_task_suspend(eos_task_handle_t handle);
 int  eos_task_resume(eos_task_handle_t handle);
 void eos_task_yield(void);
@@ -106,6 +128,44 @@ void eos_task_delay_ms(uint32_t ms);
 eos_task_handle_t eos_task_get_current(void);
 eos_task_state_t  eos_task_get_state(eos_task_handle_t handle);
 const char       *eos_task_get_name(eos_task_handle_t handle);
+
+/* ============================================================
+ * Task Runtime Statistics
+ * ============================================================ */
+
+/**
+ * @brief Per-task runtime statistics snapshot.
+ *
+ * Populated by eos_task_get_stats() / eos_task_get_all_stats().
+ * Useful for debugging stack usage and CPU utilization on
+ * resource-constrained targets.
+ */
+typedef struct {
+    uint8_t          id;          /**< Task slot index */
+    const char      *name;       /**< Task name (may be NULL) */
+    uint8_t          priority;   /**< Current priority (0 = highest) */
+    eos_task_state_t state;      /**< Current task state */
+    uint32_t         run_count;  /**< Number of times the task was scheduled */
+    uint32_t         stack_used; /**< Estimated stack bytes consumed */
+    uint32_t         stack_size; /**< Total stack allocation in bytes */
+} eos_task_stats_t;
+
+/**
+ * @brief Get runtime statistics for a single task.
+ * @param handle  Task handle (slot index).
+ * @param out     Pointer to stats structure to fill.
+ * @return EOS_KERN_OK on success.
+ */
+int eos_task_get_stats(eos_task_handle_t handle, eos_task_stats_t *out);
+
+/**
+ * @brief Get runtime statistics for all active tasks.
+ * @param out         Array to fill with stats entries.
+ * @param max_entries Maximum number of entries in @p out.
+ * @param count       Output: actual number of entries written.
+ * @return EOS_KERN_OK on success.
+ */
+int eos_task_get_all_stats(eos_task_stats_t *out, int max_entries, int *count);
 
 /* ============================================================
  * Mutex
@@ -165,6 +225,19 @@ int eos_swtimer_delete(eos_swtimer_handle_t handle);
  * ============================================================ */
 
 void eos_kernel_tick(void);
+uint32_t eos_tick_get(void);
+
+/**
+ * @brief Current value of the free-running kernel tick counter.
+ *
+ * Defined in kernel/src/task.c. It had no declaration in any header, so every
+ * caller outside that translation unit relied on an implicit declaration —
+ * which -Werror rejects, and which C23 removes entirely.
+ *
+ * The counter wraps at UINT32_MAX. Compare deadlines with a signed difference,
+ * never with `now >= deadline`.
+ */
+uint32_t eos_tick_get(void);
 
 #ifdef __cplusplus
 }

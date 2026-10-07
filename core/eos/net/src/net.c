@@ -14,6 +14,16 @@
 
 static bool net_initialized = false;
 
+/* The socket layer below is the freestanding fallback. On a host, ADR-014
+ * point 3 maps this API onto POSIX sockets instead; CMake compiles
+ * net_posix.c and defines EOS_NET_POSIX, and these stubs step aside so there
+ * is exactly one definition of each symbol.
+ *
+ * Left returning -1 rather than deleted: on a target with no IP stack yet,
+ * failing is the honest answer, and it is what ADR-014 records as the
+ * Planned state for the Nano and Edge profiles until lwIP lands. */
+#ifndef EOS_NET_POSIX
+
 int eos_net_init(void)
 {
     net_initialized = true;
@@ -27,8 +37,14 @@ void eos_net_deinit(void)
 
 eos_socket_t eos_net_socket(eos_net_proto_t proto)
 {
-    (void)proto;
-    if (!net_initialized) return EOS_SOCKET_INVALID;
+    if (!net_initialized) {
+        return EOS_SOCKET_INVALID;
+    }
+
+    if (proto != EOS_NET_TCP && proto != EOS_NET_UDP) {
+        return EOS_SOCKET_INVALID;
+    }
+
     static int next_fd = 1;
     return (eos_socket_t)next_fd++;
 }
@@ -99,6 +115,9 @@ int eos_net_resolve(const char *hostname, uint32_t *ip)
 }
 
 /* ---- HTTP ---- */
+
+
+#endif /* !EOS_NET_POSIX */
 
 int eos_http_get(const char *url, eos_http_response_t *resp)
 {
