@@ -1,4 +1,4 @@
-add_executable(eos main.c)
+add_executable(eos main.c exec_argv.c)
 
 target_link_libraries(eos PRIVATE
     eos_core

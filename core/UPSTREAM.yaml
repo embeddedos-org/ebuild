@@ -15,8 +15,8 @@
 vendored:
   - path: core/eos
     repository: https://github.com/embeddedos-org/eos.git
-    revision: 5544c98df94ff460c3a074fb4280c614b784b464
-    baseline_drift: 44
+    revision: dc13c59d89f228c501c2399bcab76b5244426af5
+    baseline_drift: 41
 
   - path: core/eboot
     repository: https://github.com/embeddedos-org/eBoot.git

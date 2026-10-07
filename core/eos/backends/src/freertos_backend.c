@@ -3,77 +3,137 @@
 // ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
 
 #include "eos/backend.h"
+#include "eos/shell_cmd.h"
 #include "eos/log.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+/* -D<key>=<value> for every option; the key unquoted as one word, the value
+ * quoted. A value with spaces used to split into two arguments. */
+static void append_defines(EosShellCmd *cmd, const EosKeyValue *options,
+                           int option_count, const char *skip_key) {
+    for (int i = 0; i < option_count; i++) {
+        if (skip_key && strcmp(options[i].key, skip_key) == 0) continue;
+        eos_shell_cmd_text(cmd, " -D");
+        eos_shell_cmd_word(cmd, options[i].key);
+        eos_shell_cmd_text(cmd, "=");
+        eos_shell_cmd_arg(cmd, options[i].value);
+    }
+}
 
 static EosResult freertos_configure(EosBackend *self, const char *src_dir,
                                     const char *build_dir, const char *toolchain_file,
                                     const EosKeyValue *options, int option_count) {
     (void)self;
-    char cmd[2048];
-    int offset = snprintf(cmd, sizeof(cmd),
-                          "cmake -S \"%s\" -B \"%s\" -G Ninja",
-                          src_dir, build_dir);
-
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake -S ");
+    eos_shell_cmd_arg(&cmd, src_dir);
+    eos_shell_cmd_text(&cmd, " -B ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -G Ninja");
     if (toolchain_file && toolchain_file[0]) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -DCMAKE_TOOLCHAIN_FILE=\"%s\"", toolchain_file);
+        eos_shell_cmd_text(&cmd, " -DCMAKE_TOOLCHAIN_FILE=");
+        eos_shell_cmd_arg(&cmd, toolchain_file);
     }
-
-    /* Pass FREERTOS_KERNEL_PATH if available */
-    for (int i = 0; i < option_count && offset < (int)sizeof(cmd) - 64; i++) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -D%s=%s", options[i].key, options[i].value);
-    }
-
-    EOS_INFO("FreeRTOS configure: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    /* Pass FREERTOS_KERNEL_PATH and the rest as -D options. */
+    append_defines(&cmd, options, option_count, NULL);
+    return eos_shell_cmd_run(&cmd, "FreeRTOS configure");
 }
 
 static EosResult freertos_build(EosBackend *self, const char *build_dir, int jobs) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "cmake --build \"%s\" -j %d", build_dir, jobs > 0 ? jobs : 4);
-    EOS_INFO("FreeRTOS build: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --build ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -j ");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    return eos_shell_cmd_run(&cmd, "FreeRTOS build");
 }
+
+#ifdef _WIN32
+/* Copy every build_dir\*.<ext> into install_dir. Returns 0, or -1 if a match
+ * could not be copied or its path did not fit. No match is not an error. */
+static int copy_kind_win32(const char *build_dir, const char *install_dir, const char *ext) {
+    char pattern[MAX_PATH], src[MAX_PATH], dst[MAX_PATH];
+    int n = snprintf(pattern, sizeof(pattern), "%s\\*.%s", build_dir, ext);
+    if (n < 0 || (size_t)n >= sizeof(pattern)) return -1;
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pattern, &fd);
+    if (h == INVALID_HANDLE_VALUE)
+        return GetLastError() == ERROR_FILE_NOT_FOUND ? 0 : -1;
+    int rc = 0;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        n = snprintf(src, sizeof(src), "%s\\%s", build_dir, fd.cFileName);
+        if (n < 0 || (size_t)n >= sizeof(src)) { rc = -1; continue; }
+        n = snprintf(dst, sizeof(dst), "%s\\%s", install_dir, fd.cFileName);
+        if (n < 0 || (size_t)n >= sizeof(dst)) { rc = -1; continue; }
+        if (!CopyFileA(src, dst, FALSE)) rc = -1;
+    } while (FindNextFileA(h, &fd));
+    FindClose(h);
+    return rc;
+}
+#endif
 
 static EosResult freertos_install(EosBackend *self, const char *build_dir,
                                   const char *install_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd),
 #ifdef _WIN32
-             "if not exist \"%s\" mkdir \"%s\" && copy /Y \"%s\\*.bin\" \"%s\\\" 2>nul & "
-             "copy /Y \"%s\\*.elf\" \"%s\\\" 2>nul & "
-             "copy /Y \"%s\\*.hex\" \"%s\\\" 2>nul",
-             install_dir, install_dir,
-             build_dir, install_dir,
-             build_dir, install_dir,
-             build_dir, install_dir
+    /* In-process, like the POSIX find: a cmd.exe chain of
+     * "copy *.bin & copy *.elf & copy *.hex" took its exit status from the
+     * last copy, so a build with a .bin but no .hex failed to install. */
+    /* The same refusal every backend gives (test_shell_cmd.c checks it):
+     * nothing here goes through a shell, but a value the shell builder would
+     * refuse is not a directory name this code should act on. */
+    if (!eos_shell_arg_is_safe(build_dir) || !eos_shell_arg_is_safe(install_dir)) {
+        EOS_ERROR("FreeRTOS install: refusing an unsafe directory name");
+        return EOS_ERR_INVALID;
+    }
+    DWORD attrs = GetFileAttributesA(build_dir);
+    if (attrs == INVALID_FILE_ATTRIBUTES || !(attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+        EOS_ERROR("FreeRTOS install: build directory not found: %s", build_dir);
+        return EOS_ERR_NOT_FOUND;
+    }
+    if (!CreateDirectoryA(install_dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) {
+        EOS_ERROR("FreeRTOS install: cannot create %s", install_dir);
+        return EOS_ERR_IO;
+    }
+    static const char *const kinds[] = { "bin", "elf", "hex" };
+    for (size_t i = 0; i < sizeof(kinds) / sizeof(kinds[0]); i++) {
+        if (copy_kind_win32(build_dir, install_dir, kinds[i]) != 0) {
+            EOS_ERROR("FreeRTOS install: copying *.%s from %s failed", kinds[i], build_dir);
+            return EOS_ERR_IO;
+        }
+    }
+    EOS_INFO("FreeRTOS install: images from %s copied to %s", build_dir, install_dir);
+    return EOS_OK;
 #else
-             "mkdir -p \"%s\" && "
-             "find \"%s\" -maxdepth 2 \\( -name '*.bin' -o -name '*.elf' -o -name '*.hex' \\) "
-             "-exec cp {} \"%s/\" \\; 2>/dev/null || true",
-             install_dir, build_dir, install_dir
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "mkdir -p ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " && find ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -maxdepth 2 \\( -name '*.bin' -o -name '*.elf' -o -name '*.hex' \\) -exec cp {} ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "/ \\;");
+    return eos_shell_cmd_run(&cmd, "FreeRTOS install");
 #endif
-    );
-    EOS_INFO("FreeRTOS install: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
 }
 
 static EosResult freertos_clean(EosBackend *self, const char *build_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "cmake --build \"%s\" --target clean", build_dir);
-    EOS_INFO("FreeRTOS clean: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --build ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " --target clean");
+    return eos_shell_cmd_run(&cmd, "FreeRTOS clean");
 }
 
 void eos_backend_freertos_init(EosBackend *b) {

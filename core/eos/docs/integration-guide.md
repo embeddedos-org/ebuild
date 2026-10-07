@@ -82,7 +82,7 @@ EXTRA_OECMAKE = "-DEOS_PRODUCT=gateway"
 
 ```bash
 cd EoS/eboot
-cmake -B build -DEBLDR_BOARD=nrf52
+cmake -B build -DEBLDR_BOARD=nrf52 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
@@ -126,7 +126,7 @@ Build your eos app with the linker script:
 ```bash
 cd EoS/eos
 cmake -B build -DEOS_PRODUCT=iot \
-  -DCMAKE_TOOLCHAIN_FILE=toolchains/arm-none-eabi.cmake \
+  -DCMAKE_TOOLCHAIN_FILE=toolchains/arm-cortex-m4.cmake \
   -DEOS_LINKER_SCRIPT=../ebuild/_generated/eboot_linker.ld
 cmake --build build
 ```
@@ -135,7 +135,7 @@ cmake --build build
 
 ```bash
 # Generate signing key (first time only)
-cd EoS/eboot/tools
+cd eBoot/tools
 python3 sign_image.py --generate-key firmware-key.pem
 
 # Sign the firmware
@@ -191,7 +191,7 @@ cmake --build build
 
 # Build eboot
 cd ../eboot
-cmake -B build -DEBLDR_BOARD=nrf52
+cmake -B build -DEBLDR_BOARD=nrf52 -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 
