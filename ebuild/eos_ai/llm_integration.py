@@ -61,17 +61,34 @@ def _http_url(url: str) -> str:
     return url
 
 
+def _ensure_scheme(url: str) -> str:
+    """Prefix ``http://`` to a schemeless host such as ``OLLAMA_HOST``.
+
+    Ollama documents ``OLLAMA_HOST`` as ``host:port`` (``0.0.0.0:11434``),
+    which ``urlparse`` reads as scheme ``0.0.0.0`` and ``_http_url`` refuses.
+    A value that already names a scheme is returned unchanged.
+    """
+    url = url.strip()
+    return url if "://" in url else f"http://{url}"
+
+
 def _openai_chat_url(base_url: str) -> str:
     """Join *base_url* to the chat-completions path without doubling ``/v1``.
 
     OpenAI-compatible servers document the base as either the origin
     (``https://api.openai.com``) or the v1 root (``https://api.openai.com/v1``).
-    Always appending ``/v1/chat/completions`` made the second form 404.
+    Always appending ``/v1/chat/completions`` made the second form 404. A URL
+    that already ends in ``/chat/completions`` is returned as it is.
     """
     base = _http_url(base_url).rstrip("/")
+    if base.endswith("/chat/completions"):
+        return base
     if base.endswith("/v1"):
         return f"{base}/chat/completions"
     return f"{base}/v1/chat/completions"
+
+
+_normalize_openai_url = _openai_chat_url
 
 
 def _error_text(exc: BaseException) -> str:
@@ -132,28 +149,52 @@ class LLMClient:
     OLLAMA_URL = "http://localhost:11434"
     OPENAI_URL = "https://api.openai.com"
 
+    # Per-provider default model, used only when neither the caller nor the
+    # provider's environment variable names one. ``model`` defaults to None
+    # rather than a real model name: a sentinel such as "llama3" cannot tell
+    # "not given" from an explicit model="llama3".
+    DEFAULT_MODELS = {
+        "ollama": "llama3",
+        "openai": "gpt-4o-mini",
+        "custom": "default",
+    }
+    MODEL_ENV = {
+        "ollama": "OLLAMA_MODEL",
+        "openai": "OPENAI_MODEL",
+        "custom": "EOS_LLM_MODEL",
+    }
+
     def __init__(
         self,
         provider: str = "ollama",
-        model: str = "llama3",
+        model: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         timeout: int = 120,
     ):
         self.provider = provider
-        self.model = model
         self.api_key = api_key
         self.base_url = base_url
         self.timeout = timeout
 
+        env_var = self.MODEL_ENV.get(provider)
+        env_model = os.environ.get(env_var, "") if env_var else ""
+        self.model = model or env_model or self.DEFAULT_MODELS.get(provider, "none")
+
         if provider == "ollama":
-            self.base_url = base_url or self.OLLAMA_URL
+            self.base_url = base_url or self._ollama_env_url() or self.OLLAMA_URL
         elif provider == "openai":
-            self.base_url = base_url or self.OPENAI_URL
+            self.base_url = base_url or os.environ.get("OPENAI_BASE_URL", "") or self.OPENAI_URL
             self.api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
         elif provider == "custom":
-            self.base_url = base_url or ""
+            self.base_url = base_url or os.environ.get("EOS_LLM_URL", "")
             self.api_key = api_key or os.environ.get("EOS_LLM_API_KEY", "")
+
+    @staticmethod
+    def _ollama_env_url() -> str:
+        """``OLLAMA_HOST`` as a URL, or "" when it is unset."""
+        host = os.environ.get("OLLAMA_HOST", "").strip()
+        return _ensure_scheme(host) if host else ""
 
     @classmethod
     def auto(cls) -> "LLMClient":
@@ -165,22 +206,19 @@ class LLMClient:
         3. EOS_LLM_API_KEY + EOS_LLM_URL in environment
         4. None (returns a client that will fail gracefully)
         """
-        # Try Ollama
-        if cls._check_ollama():
-            return cls(provider="ollama", model="llama3")
+        # Try Ollama, where OLLAMA_HOST says it is (localhost by default)
+        if cls._check_ollama(cls._ollama_env_url() or None):
+            return cls(provider="ollama")
 
         # Try OpenAI
         openai_key = os.environ.get("OPENAI_API_KEY", "")
         if openai_key:
-            return cls(provider="openai", model="gpt-4o-mini", api_key=openai_key)
+            return cls(provider="openai", api_key=openai_key)
 
-        # Try custom
-        custom_key = os.environ.get("EOS_LLM_API_KEY", "")
-        custom_url = os.environ.get("EOS_LLM_URL", "")
-        if custom_key and custom_url:
-            model = os.environ.get("EOS_LLM_MODEL", "default")
-            return cls(provider="custom", model=model,
-                       api_key=custom_key, base_url=custom_url)
+        # Try custom. The key is optional: local OpenAI-compatible servers
+        # (vLLM, llama.cpp, LM Studio) usually run without one.
+        if os.environ.get("EOS_LLM_URL", ""):
+            return cls(provider="custom")
 
         # No provider available
         return cls(provider="none", model="none")
@@ -214,7 +252,9 @@ class LLMClient:
         if self.provider == "ollama":
             return self._check_ollama(self.base_url)
         if self.provider in ("openai", "custom"):
-            if not (self.api_key and self.base_url):
+            # openai needs a key; a custom endpoint may be a keyless local
+            # server, so only its URL is required.
+            if not self.base_url or (self.provider == "openai" and not self.api_key):
                 return False
             try:
                 _http_url(self.base_url)
@@ -300,25 +340,47 @@ class LLMClient:
         }
 
         data = json.dumps(payload).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        req = urllib.request.Request(
+            url, data=data, headers=self._build_headers(), method="POST"
+        )
 
         with urllib.request.urlopen(req, timeout=self.timeout) as resp:
             body = json.loads(_read_limited(resp).decode("utf-8"))
 
-        choices = body.get("choices") or [{}]
-        choice = choices[0] if choices else {}
-        message = choice.get("message") or {}
-        usage = body.get("usage") or {}
+        return self._parse_openai_response(body)
 
+    def _build_headers(self) -> dict:
+        """Request headers; Authorization only when there is a key.
+
+        A bare ``Authorization: Bearer `` (empty key) is rejected by some
+        keyless local servers and says nothing to the rest.
+        """
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+        return headers
+
+    def _parse_openai_response(self, body: dict) -> LLMResponse:
+        """Turn a chat-completions body into an LLMResponse.
+
+        No choices is a failure with its own message, not an empty success.
+        """
+        choices = body.get("choices") or []
+        model = body.get("model", self.model)
+        usage = body.get("usage") or {}
+        tokens = int(usage.get("total_tokens") or 0)
+        if not choices:
+            return LLMResponse(
+                text="", model=model, provider=self.provider,
+                tokens_used=tokens, success=False,
+                error="LLM returned no completion choices",
+            )
+        message = (choices[0] or {}).get("message") or {}
         return _completed(
             text=message.get("content") or "",
-            model=body.get("model", self.model),
+            model=model,
             provider=self.provider,
-            tokens_used=int(usage.get("total_tokens") or 0),
+            tokens_used=tokens,
         )
 
     def get_provider_info(self) -> str:
