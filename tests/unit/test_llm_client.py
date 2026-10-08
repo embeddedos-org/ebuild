@@ -302,3 +302,46 @@ class TestGetProviderInfo:
         info = client.get_provider_info()
         assert "OpenAI" in info
         assert "gpt-4o" in info
+
+
+# ── Review items (ebuild#127, 2026-09-14) ─────────────────────────────────────
+
+
+class TestReviewItems:
+    """Regressions for the four points raised in review."""
+
+    def test_explicit_llama3_is_kept_for_openai(self):
+        # A "llama3" sentinel replaced an explicit model="llama3" for openai.
+        client = LLMClient(provider="openai", model="llama3", api_key="k")
+        assert client.model == "llama3"
+
+    def test_per_provider_default_when_no_model_given(self):
+        assert LLMClient(provider="ollama").model == "llama3"
+        assert LLMClient(provider="openai", api_key="k").model == "gpt-4o-mini"
+        assert LLMClient(provider="custom", base_url="http://x:1").model == "default"
+
+    def test_keyless_custom_endpoint_is_available(self):
+        client = LLMClient(provider="custom", base_url="http://localhost:8000", api_key="")
+        assert client.is_available() is True
+
+    def test_custom_without_url_is_not_available(self):
+        assert LLMClient(provider="custom", api_key="k").is_available() is False
+
+    def test_auto_picks_keyless_custom(self, monkeypatch):
+        monkeypatch.setenv("EOS_LLM_URL", "http://localhost:8000/v1")
+        with patch.object(LLMClient, "_check_ollama", return_value=False):
+            client = LLMClient.auto()
+        assert client.provider == "custom"
+        assert client.is_available() is True
+
+    def test_is_available_probes_the_configured_ollama_url(self):
+        client = LLMClient(provider="ollama", base_url="http://gpu-box:11434")
+        with patch.object(LLMClient, "_check_ollama", return_value=True) as probe:
+            assert client.is_available() is True
+        probe.assert_called_once_with("http://gpu-box:11434")
+
+    def test_auto_probes_ollama_host(self, monkeypatch):
+        monkeypatch.setenv("OLLAMA_HOST", "0.0.0.0:11434")
+        with patch.object(LLMClient, "_check_ollama", return_value=False) as probe:
+            LLMClient.auto()
+        probe.assert_called_once_with("http://0.0.0.0:11434")
