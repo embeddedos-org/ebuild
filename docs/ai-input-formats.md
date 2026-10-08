@@ -95,16 +95,22 @@ ebuild analyze notes.txt          # → Text + component DB
 # Auto-detects Ollama (local) or uses OPENAI_API_KEY from environment
 ebuild analyze "nRF52840 BLE sensor" --llm
 
-# Explicit provider
-ebuild analyze design.kicad_sch --llm-provider ollama --llm-model llama3
-ebuild analyze design.kicad_sch --llm-provider openai --llm-model gpt-4o
+# File input still needs --file; the first argument is a text description.
+ebuild analyze --file design.kicad_sch --llm
 ```
 
+`--llm-provider` and `--llm-model` are not CLI flags. Provider selection is
+environment-based (and Ollama auto-detects on localhost):
+
 **LLM Provider Auto-Detection:**
-1. **Ollama** (local, free) — checks `http://localhost:11434`
+1. **Ollama** (local, free) — probes the client's configured URL, default `http://localhost:11434`
 2. **OpenAI** — uses `OPENAI_API_KEY` env var
-3. **Custom** — uses `EOS_LLM_API_KEY` + `EOS_LLM_URL` + `EOS_LLM_MODEL` env vars
+3. **Custom** — uses `EOS_LLM_API_KEY` + `EOS_LLM_URL` + `EOS_LLM_MODEL` env vars. `EOS_LLM_URL` may be the origin (`https://api.example.com`) or the v1 root (`https://api.example.com/v1`); both resolve to `/v1/chat/completions`. Only `http://` and `https://` URLs are accepted.
 4. **None** — works without LLM (rule engine only)
+
+A failed LLM call does **not** fail the command. The rule-engine profile is
+kept, and the CLI warns that LLM analysis did not complete rather than
+printing success.
 
 ---
 
@@ -212,7 +218,10 @@ The generated prompt asks the LLM for:
 4. Pin assignments for detected peripherals
 5. Recommended RTOS and rationale
 
-**This is manual** — you paste the prompt into ChatGPT, Claude, or a local LLM. The LLM response is not automatically consumed by ebuild.
+`ebuild analyze --llm` sends this prompt to the configured provider and
+merges extra peripherals back into the profile. The same `llm_prompt.txt`
+is still written under `--output-dir` so you can paste it into a model
+yourself when `--llm` is off, or when the provider call fails.
 
 ---
 

@@ -12,6 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
+import shutil
+
+
+class ToolchainError(Exception):
+    """A toolchain cannot be resolved or is not usable."""
+
 
 @dataclass
 class ResolvedToolchain:
@@ -52,11 +58,40 @@ PREDEFINED_TOOLCHAINS: Dict[str, Dict[str, str]] = {
 }
 
 
+#: Compiler drivers `compiler:` may name, longest first so that `clang++`
+#: is matched before `clang` and `g++` before `cc`.
+_COMPILER_DRIVERS = ("clang++", "clang", "g++", "gcc", "c++", "cc")
+
+#: The C++ driver that goes with each C driver.
+_CXX_DRIVER = {"gcc": "g++", "clang": "clang++", "cc": "c++"}
+
+
+def _split_driver(compiler: str) -> tuple:
+    """Split a compiler name into (prefix, driver).
+
+    ``arm-none-eabi-gcc`` -> ``("arm-none-eabi-", "gcc")``; ``clang`` ->
+    ``("", "clang")``. A name that carries no recognised driver is used as
+    the compiler verbatim, with no prefix inferred -- a custom driver then
+    fails loudly at build time rather than silently becoming host gcc.
+    """
+    for driver in _COMPILER_DRIVERS:
+        if compiler == driver:
+            return "", driver
+        if compiler.endswith("-" + driver):
+            return compiler[: -len(driver)], driver
+    return "", compiler
+
+
 def resolve_toolchain(toolchain_config) -> ResolvedToolchain:
     """Resolve a ToolchainConfig into a ResolvedToolchain.
 
-    Looks up predefined toolchains by compiler name, then applies
-    any overrides from the config (prefix, sysroot, extra flags).
+    Looks up predefined toolchains by the `target` name first (the spelling
+    the project templates emit), then by compiler name, then applies any
+    overrides from the config (prefix, sysroot, extra flags).
+
+    A `target` that names no known toolchain, or whose compiler is not
+    installed, raises ToolchainError here -- failing fast instead of
+    silently producing a host binary (issue #171).
 
     Args:
         toolchain_config: A ToolchainConfig dataclass or None for host.
@@ -70,19 +105,53 @@ def resolve_toolchain(toolchain_config) -> ResolvedToolchain:
     compiler = getattr(toolchain_config, "compiler", "gcc")
     arch = getattr(toolchain_config, "arch", "x86_64")
     prefix = getattr(toolchain_config, "prefix", None) or ""
+    target = getattr(toolchain_config, "target", None)
     sysroot = getattr(toolchain_config, "sysroot", None)
     extra_cflags = getattr(toolchain_config, "extra_cflags", [])
     extra_ldflags = getattr(toolchain_config, "extra_ldflags", [])
 
-    predef = PREDEFINED_TOOLCHAINS.get(compiler, {})
-    if not prefix and predef.get("prefix"):
-        prefix = predef["prefix"]
-    if arch == "x86_64" and predef.get("arch"):
-        arch = predef["arch"]
+    if target is not None:
+        # `target:` names a predefined toolchain (e.g. `arm-none-eabi`).
+        # An unknown name is a typo: fail here, not as a host binary later.
+        predef = PREDEFINED_TOOLCHAINS.get(target)
+        if predef is None:
+            raise ToolchainError(
+                f"unknown toolchain target {target!r}; "
+                f"known targets: {sorted(PREDEFINED_TOOLCHAINS)}."
+            )
+    else:
+        predef = PREDEFINED_TOOLCHAINS.get(compiler)
+    if predef is not None:
+        # `compiler`/`target` named one of the toolchains above, which is a
+        # shorthand for a prefix and an arch. Those toolchains are all GCC.
+        if not prefix and predef.get("prefix"):
+            prefix = predef["prefix"]
+        if arch == "x86_64" and predef.get("arch"):
+            arch = predef["arch"]
+        driver = "gcc"
+    else:
+        # Otherwise `compiler` names the compiler binary, which is how the
+        # documentation spells it (`compiler: gcc` with `prefix:` alongside,
+        # docs/task_cortex_r5_example.md). It used to be read only as a key
+        # into the table above: anything not in it -- `clang`, `cc`, or the
+        # `arm-none-eabi-gcc` spelling -- fell through to a bare `gcc`, with
+        # no warning, so a cross-compile config produced a host binary and
+        # reported success.
+        derived_prefix, driver = _split_driver(compiler)
+        if not prefix:
+            prefix = derived_prefix
 
+    cc = f"{prefix}{driver}"
+    if target is not None and shutil.which(cc) is None:
+        # The config names a cross toolchain that is not installed. Building
+        # on would invoke a missing compiler; fail with the reason instead.
+        raise ToolchainError(
+            f"toolchain target {target!r} resolves to {cc!r}, which was not "
+            f"found on PATH. Install the toolchain or fix 'toolchain.target'."
+        )
     return ResolvedToolchain(
-        cc=f"{prefix}gcc",
-        cxx=f"{prefix}g++",
+        cc=cc,
+        cxx=f"{prefix}{_CXX_DRIVER.get(driver, driver)}",
         ar=f"{prefix}ar",
         objcopy=f"{prefix}objcopy",
         prefix=prefix,

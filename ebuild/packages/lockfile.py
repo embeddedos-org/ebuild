@@ -17,6 +17,16 @@ import yaml
 from ebuild.packages.recipe import PackageRecipe
 
 
+class LockfileError(Exception):
+    """``ebuild.lock`` exists but could not be read.
+
+    Distinct from a lock of the wrong *shape*, which :meth:`Lockfile.load`
+    sanitises to an empty lock: a file that is not YAML, or cannot be opened,
+    is a condition the user has to resolve, and the CLI reports it as a
+    resolution error rather than a traceback.
+    """
+
+
 class Lockfile:
     """Manages the ebuild.lock file for reproducible package resolution.
 
@@ -25,6 +35,15 @@ class Lockfile:
     """
 
     FILENAME = "ebuild.lock"
+
+    # Lock field -> PackageRecipe attribute, for every field lock() records
+    # that identifies the artifact. The resolver compares each of these; a
+    # field recorded here and compared nowhere is what this file used to be.
+    CHECKED_FIELDS = (
+        ("url", "url"),
+        ("checksum", "checksum"),
+        ("build", "build_system"),
+    )
 
     def __init__(self, lock_path: str | Path) -> None:
         self.lock_path = Path(lock_path)
@@ -39,15 +58,37 @@ class Lockfile:
         if not self.lock_path.exists():
             return
 
-        with open(self.lock_path, "r", encoding="utf-8") as f:
-            raw = yaml.safe_load(f)
+        try:
+            with open(self.lock_path, "r", encoding="utf-8") as f:
+                raw = yaml.safe_load(f)
+        except (yaml.YAMLError, UnicodeDecodeError) as e:
+            # A lock that is not UTF-8 (a foreign editor, a bad binary merge)
+            # fails in the codec, not the parser, and UnicodeDecodeError is a
+            # ValueError -- neither a YAMLError nor an OSError. Same message:
+            # the file is not something this tool wrote, and the remedy is
+            # the same.
+            raise LockfileError(
+                f"{self.lock_path} is not valid YAML: {e}. "
+                f"Fix it, or delete it to resolve afresh."
+            ) from e
+        except OSError as e:
+            raise LockfileError(
+                f"{self.lock_path} could not be read: {e}. "
+                f"Fix it, or delete it to resolve afresh."
+            ) from e
 
         if not isinstance(raw, dict):
             return
 
         packages = raw.get("packages", {})
         if isinstance(packages, dict):
-            self._entries = packages
+            # Keep only well-formed entries; a hand-edited or truncated file
+            # must not turn into a KeyError deep inside the resolver.
+            self._entries = {
+                str(name): {str(k): str(v) for k, v in entry.items() if v is not None}
+                for name, entry in packages.items()
+                if isinstance(entry, dict)
+            }
 
     def save(self) -> None:
         """Write the lockfile to disk."""

@@ -13,6 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ebuild.build import layout
 from ebuild.build.ninja_backend import NinjaBackend, escape_ninja_path
 from ebuild.build.toolchain import ResolvedToolchain
 from ebuild.core.config import ProjectConfig, TargetConfig
@@ -20,6 +21,13 @@ from ebuild.core.config import ProjectConfig, TargetConfig
 
 def _toolchain():
     return SimpleNamespace(cc="cc", cxx="c++", ar="ar")
+
+
+def test_executable_path_is_reexported_for_backend_compatibility():
+    """Existing Ninja imports must resolve to the neutral layout helper."""
+    from ebuild.build.ninja_backend import executable_output_path as legacy_path
+
+    assert legacy_path is layout.executable_output_path
 
 
 class TestNinjaBackendSharedLibrary(unittest.TestCase):
@@ -182,7 +190,11 @@ class TestObjectPathNamespacing:
         assert "-DBUILD_LIB=1" in ninja_content
         assert "-DBUILD_APP=1" in ninja_content
 
-    def test_shared_source_manifest_is_valid_ninja(self, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("app_sources", [
+        ["src/main.c", "src/util.c"],
+        ["src/util.c", "src/util.S"],
+    ])
+    def test_shared_source_manifest_is_valid_ninja(self, tmp_path, monkeypatch, app_sources):
         """The generated manifest must load in real ninja, not just look right.
 
         Ninja treats two edges producing one output as an error, so this is
@@ -203,8 +215,9 @@ class TestObjectPathNamespacing:
             "int main(void) { return util_answer() == 42 ? 0 : 1; }\n",
             encoding="utf-8",
         )
+        (src_dir / "util.S").write_text("", encoding="utf-8")
 
-        config = self._shared_source_config(tmp_path, ["src/main.c", "src/util.c"])
+        config = self._shared_source_config(tmp_path, app_sources)
 
         monkeypatch.chdir(tmp_path)
         build_dir = Path("_build")
@@ -222,6 +235,34 @@ class TestObjectPathNamespacing:
             "ninja rejected the generated manifest:\n"
             f"{result.stdout}\n{result.stderr}"
         )
+
+    @pytest.mark.parametrize("sources", [["src/main.c"], ["src/start.c", "src/start.S"]])
+    def test_object_outputs_preserve_source_extensions(self, tmp_path, sources):
+        """Distinct source filenames must stay distinct in both generated files."""
+        config = ProjectConfig(
+            name="source_extensions", version="1.0", source_dir=tmp_path,
+            targets=[TargetConfig(name="app", target_type="executable", sources=sources)],
+        )
+        build_dir = tmp_path / "_build"
+        NinjaBackend(config, build_dir, ResolvedToolchain()).generate()
+
+        manifest = (build_dir / "build.ninja").read_text(encoding="utf-8")
+        compile_edges = [line for line in manifest.splitlines() if ": cc " in line]
+        objects = [build_dir / "obj" / "app" / (src + ".o") for src in sources]
+        assert compile_edges == [
+            f"build {escape_ninja_path(obj)}: cc {escape_ninja_path(src)}"
+            for src, obj in zip(sources, objects)
+        ]
+        link_edge = next(line for line in manifest.splitlines() if ": link " in line)
+        assert link_edge.split(": link ", 1)[1] == " ".join(
+            escape_ninja_path(obj) for obj in objects
+        )
+
+        commands = json.loads((build_dir / "compile_commands.json").read_text(encoding="utf-8"))
+        assert [entry["file"] for entry in commands] == sources
+        assert [entry["command"].split(" -o ", 1)[1] for entry in commands] == [
+            str(obj) for obj in objects
+        ]
 
     def test_compile_commands_distinguishes_shared_source_entries(self, tmp_path):
         """compile_commands.json entries for a shared source must differ.
@@ -358,6 +399,383 @@ class TestNinjaPathEscaping:
         for entry in cc_data:
             assert "$:" not in entry["command"]
             assert "$ " not in entry["command"]
+
+
+def _stub_tool(tmp_path, name: str, script_body: str) -> Path:
+    """A host tool stand-in driven by sys.executable.
+
+    Same pattern as ``tests/unit/test_package_efw.py``: Windows cannot run a
+    ``#!/bin/sh`` script, so the launcher is a ``.bat`` there and a shell
+    wrapper elsewhere.
+    """
+    import os
+    import stat
+
+    script = tmp_path / f"_{name}_impl.py"
+    script.write_text(script_body, encoding="utf-8")
+    if os.name == "nt":
+        tool = tmp_path / f"{name}.bat"
+        tool.write_text(
+            f'@echo off\r\n"{sys.executable}" "{script}" %*\r\n', encoding="utf-8"
+        )
+    else:
+        tool = tmp_path / name
+        tool.write_text(
+            f'#!/bin/sh\nexec "{sys.executable}" "{script}" "$@"\n', encoding="utf-8"
+        )
+        tool.chmod(tool.stat().st_mode | stat.S_IEXEC)
+    return tool
+
+
+def _stub_cc(tmp_path) -> Path:
+    """Compile by writing the object and a trivial depfile — no real compiler."""
+    return _stub_tool(
+        tmp_path,
+        "cc",
+        "\n".join(
+            [
+                "import pathlib, sys",
+                "argv = sys.argv[1:]",
+                "out = dep = src = None",
+                "i = 0",
+                "while i < len(argv):",
+                "    if argv[i] == '-o' and i + 1 < len(argv):",
+                "        out = argv[i + 1]; i += 2",
+                "    elif argv[i] == '-MF' and i + 1 < len(argv):",
+                "        dep = argv[i + 1]; i += 2",
+                "    elif argv[i] == '-c' and i + 1 < len(argv):",
+                "        src = argv[i + 1]; i += 2",
+                "    else:",
+                "        i += 1",
+                "path = pathlib.Path(out)",
+                "path.parent.mkdir(parents=True, exist_ok=True)",
+                "path.write_bytes(b'obj:' + pathlib.Path(src).name.encode())",
+                "if dep:",
+                "    pathlib.Path(dep).write_text(f'{out}: {src}\\n', encoding='utf-8')",
+                "",
+            ]
+        ),
+    )
+
+
+def _stub_ar(tmp_path) -> Path:
+    """Archiver with real ``ar r`` update semantics: omitted members stay.
+
+    That is the defect under test. If the Ninja rule only runs ``ar rcs``
+    against an existing archive, removed objects survive. Recreating the
+    archive first makes this stub retain only the current inputs.
+    """
+    return _stub_tool(
+        tmp_path,
+        "ar",
+        "\n".join(
+            [
+                "import pathlib, sys",
+                "op = sys.argv[1]",
+                "archive = pathlib.Path(sys.argv[2])",
+                "members = sys.argv[3:]",
+                "if op == 't':",
+                "    sys.stdout.write(archive.read_text(encoding='utf-8') if archive.exists() else '')",
+                "    raise SystemExit(0)",
+                "if 'r' not in op:",
+                "    raise SystemExit(f'unsupported ar op: {op}')",
+                "names = {}",
+                "if archive.exists():",
+                "    for line in archive.read_text(encoding='utf-8').splitlines():",
+                "        if line:",
+                "            names[pathlib.Path(line).name] = pathlib.Path(line).name",
+                "for member in members:",
+                "    names[pathlib.Path(member).name] = pathlib.Path(member).name",
+                "archive.parent.mkdir(parents=True, exist_ok=True)",
+                "archive.write_text(('\\n'.join(names.values()) + '\\n') if names else '', encoding='utf-8')",
+                "",
+            ]
+        ),
+    )
+
+
+@pytest.mark.ebuild
+class TestStaticArchiveRecreation:
+    """Removing a static-library source must drop its object from the archive."""
+
+    def test_ar_rule_invokes_helper_by_path(self, tmp_path):
+        """The generated rule must delete-then-archive via the helper script."""
+        target = TargetConfig(
+            name="helpers", target_type="static_library", sources=["keep.c"]
+        )
+        config = ProjectConfig(
+            name="proj", version="1.0", targets=[target], source_dir=tmp_path
+        )
+        build_dir = tmp_path / "build"
+        NinjaBackend(config, build_dir, _toolchain()).generate()
+        ninja = (build_dir / "build.ninja").read_text(encoding="utf-8")
+
+        ar_rule = ninja.split("rule ar_rule\n", 1)[1].split("\nrule ", 1)[0]
+        assert "recreate_archive.py" in ar_rule
+        assert "-m ebuild.build.recreate_archive" not in ar_rule
+        assert ar_rule.strip().startswith("command =")
+        # The bare update form is exactly the bug; it must not be the rule body.
+        assert "command = $ar rcs $out $in" not in ninja
+
+    def test_removing_source_drops_archive_member_with_stub_tools(self, tmp_path):
+        """Incremental rebuild must not keep a removed object in the archive.
+
+        Uses Python stub ``cc``/``ar`` tools so this runs without a host
+        toolchain (including on Windows CI runners that have no gcc).
+        """
+        pytest.importorskip("ninja", reason="ninja package not installed")
+
+        source_dir = tmp_path / "project"
+        source_dir.mkdir()
+        (source_dir / "keep.c").write_text("int keep(void) { return 1; }\n", encoding="utf-8")
+        (source_dir / "removed.c").write_text(
+            "int removed(void) { return 42; }\n", encoding="utf-8"
+        )
+
+        cc = _stub_cc(tmp_path)
+        ar = _stub_ar(tmp_path)
+        library = TargetConfig(
+            name="helpers",
+            target_type="static_library",
+            sources=["keep.c", "removed.c"],
+        )
+        config = ProjectConfig(
+            name="archive-regression",
+            version="1.0",
+            source_dir=source_dir,
+            targets=[library],
+        )
+        build_dir = source_dir / "build"
+        archive = build_dir / "libhelpers.a"
+        toolchain = SimpleNamespace(cc=str(cc), cxx=str(cc), ar=str(ar))
+
+        def build():
+            NinjaBackend(config, build_dir, toolchain).generate()
+            result = subprocess.run(
+                [sys.executable, "-m", "ninja", "-f", str(build_dir / "build.ninja")],
+                cwd=str(source_dir),
+                capture_output=True,
+                text=True,
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
+
+        def members():
+            return subprocess.check_output(
+                [str(ar), "t", str(archive)], text=True
+            ).splitlines()
+
+        build()
+        assert set(members()) == {"keep.c.o", "removed.c.o"}
+
+        library.sources.remove("removed.c")
+        (source_dir / "removed.c").unlink()
+        # Drop the stale object file too: Ninja would not rebuild it, but a
+        # real ``ar rcs`` update would still leave its member in the archive.
+        removed_obj = build_dir / "obj" / "helpers" / "removed.c.o"
+        if removed_obj.exists():
+            removed_obj.unlink()
+
+        build()
+        assert "removed.c.o" not in members(), members()
+        assert "keep.c.o" in members(), members()
+
+    def test_archive_rule_works_without_ebuild_on_path(self, tmp_path):
+        """The AR helper must not require ``import ebuild`` at build time.
+
+        ``python -m ebuild.build.recreate_archive`` fails when ebuild is only
+        reachable via cwd/PYTHONPATH (or when site-packages are disabled).
+        Invoking the helper by absolute path must still succeed.
+        """
+        import os
+
+        source_dir = tmp_path / "project"
+        source_dir.mkdir()
+        (source_dir / "lib.c").write_text("int value(void) { return 1; }\n", encoding="utf-8")
+
+        ar = _stub_ar(tmp_path)
+        config = ProjectConfig(
+            name="no-import",
+            version="1.0",
+            source_dir=source_dir,
+            targets=[
+                TargetConfig(
+                    name="helpers",
+                    target_type="static_library",
+                    sources=["lib.c"],
+                )
+            ],
+        )
+        build_dir = source_dir / "build"
+        NinjaBackend(
+            config, build_dir, SimpleNamespace(cc="cc", cxx="c++", ar=str(ar))
+        ).generate()
+
+        ninja = (build_dir / "build.ninja").read_text(encoding="utf-8")
+        ar_rule = ninja.split("rule ar_rule\n", 1)[1].split("\nrule ", 1)[0]
+        assert "recreate_archive.py" in ar_rule
+        assert "-m ebuild" not in ar_rule
+
+        from ebuild.build import recreate_archive as recreate_mod
+
+        helper = Path(recreate_mod.__file__).resolve()
+        archive = build_dir / "libhelpers.a"
+        obj = build_dir / "obj" / "helpers" / "lib.o"
+        obj.parent.mkdir(parents=True)
+        obj.write_bytes(b"obj:lib.c")
+
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        env["PYTHONPATH"] = ""
+
+        module_form = subprocess.run(
+            [
+                sys.executable,
+                "-S",
+                "-m",
+                "ebuild.build.recreate_archive",
+                str(archive),
+                str(ar),
+                "rcs",
+                str(archive),
+                str(obj),
+            ],
+            cwd=str(outside),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert module_form.returncode != 0
+        assert "No module named 'ebuild'" in module_form.stderr + module_form.stdout
+
+        path_form = subprocess.run(
+            [
+                sys.executable,
+                "-S",
+                str(helper),
+                str(archive),
+                str(ar),
+                "rcs",
+                str(archive),
+                str(obj),
+            ],
+            cwd=str(outside),
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        assert path_form.returncode == 0, path_form.stdout + path_form.stderr
+        assert archive.exists()
+        assert "lib.o" in archive.read_text(encoding="utf-8")
+
+    def test_missing_archiver_preserves_existing_archive(self, tmp_path, capsys):
+        """A missing `$ar` must fail without deleting a previously good archive."""
+        from ebuild.build.recreate_archive import main
+
+        archive = tmp_path / "lib.a"
+        archive.write_text("stale\n", encoding="utf-8")
+        code = main([str(archive), str(tmp_path / "no-such-ar"), "rcs", str(archive)])
+        assert code == 1
+        assert archive.exists()
+        assert archive.read_text(encoding="utf-8") == "stale\n"
+        assert "not found" in capsys.readouterr().err
+
+    def test_directory_archiver_preserves_existing_archive(self, tmp_path, capsys):
+        """A directory where ``ar`` was expected must not destroy a good archive."""
+        from ebuild.build.recreate_archive import main
+
+        archive = tmp_path / "lib.a"
+        archive.write_text("stale\n", encoding="utf-8")
+        as_dir = tmp_path / "ar-as-dir"
+        as_dir.mkdir()
+        code = main([str(archive), str(as_dir), "rcs", str(archive)])
+        assert code == 1
+        assert archive.read_text(encoding="utf-8") == "stale\n"
+        assert "present but not executable" in capsys.readouterr().err
+
+    def test_non_executable_archiver_preserves_existing_archive(self, tmp_path, capsys):
+        """A present but non-executable `$ar` must not destroy a good archive."""
+        import os
+        import stat
+
+        from ebuild.build.recreate_archive import main
+
+        blocked = tmp_path / "ar-not-exec"
+        blocked.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        blocked.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
+        if os.access(blocked, os.X_OK):
+            # Windows treats readable files as executable.
+            pytest.skip("os.access(X_OK) is true for readable files on this platform")
+
+        archive = tmp_path / "lib.a"
+        archive.write_text("stale\n", encoding="utf-8")
+        code = main([str(archive), str(blocked), "rcs", str(archive)])
+        assert code == 1
+        assert archive.read_text(encoding="utf-8") == "stale\n"
+        assert "present but not executable" in capsys.readouterr().err
+
+    def test_cwd_only_archiver_is_resolved_absolutely(self, tmp_path, monkeypatch):
+        """A bare archiver name that only exists in cwd must still run.
+
+        ``os.path.isfile("ar")`` is cwd-relative, but ``subprocess.call(["ar"])``
+        searches PATH and skips cwd. Resolving to an absolute path keeps the
+        guard and the invoke agreeing so a good archive is not destroyed.
+        """
+        import os
+        import stat
+
+        from ebuild.build.recreate_archive import main
+
+        ar_impl = tmp_path / "_ar_impl.py"
+        ar_impl.write_text(
+            "\n".join(
+                [
+                    "import pathlib, sys",
+                    "op = sys.argv[1]",
+                    "archive = pathlib.Path(sys.argv[2])",
+                    "members = sys.argv[3:]",
+                    "if op == 't':",
+                    "    sys.stdout.write(",
+                    "        archive.read_text(encoding='utf-8') if archive.exists() else '')",
+                    "    raise SystemExit(0)",
+                    "names = {pathlib.Path(m).name for m in members}",
+                    "archive.write_text(",
+                    "    ('\\n'.join(sorted(names)) + '\\n') if names else '',",
+                    "    encoding='utf-8')",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        if os.name == "nt":
+            archiver_name = "ar.bat"
+            (tmp_path / archiver_name).write_text(
+                f'@echo off\r\n"{sys.executable}" "{ar_impl}" %*\r\n',
+                encoding="utf-8",
+            )
+        else:
+            archiver_name = "ar"
+            ar = tmp_path / archiver_name
+            ar.write_text(
+                f'#!/bin/sh\nexec "{sys.executable}" "{ar_impl}" "$@"\n',
+                encoding="utf-8",
+            )
+            ar.chmod(ar.stat().st_mode | stat.S_IEXEC)
+
+        empty_path = tmp_path / "empty-path"
+        empty_path.mkdir()
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("PATH", str(empty_path))
+
+        archive = tmp_path / "lib.a"
+        archive.write_text("stale\n", encoding="utf-8")
+        obj = tmp_path / "keep.o"
+        obj.write_bytes(b"obj:keep.c")
+
+        code = main([str(archive), archiver_name, "rcs", str(archive), str(obj)])
+        assert code == 0, "cwd-only archiver must run via absolute resolution"
+        assert "keep.o" in archive.read_text(encoding="utf-8")
+        assert "stale" not in archive.read_text(encoding="utf-8")
 
 
 if __name__ == "__main__":

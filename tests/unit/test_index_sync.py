@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 from click.testing import CliRunner
 
 from ebuild.cli.commands import cli
@@ -108,6 +109,42 @@ def test_index_sync_success(tmp_path):
     content = recipe_file.read_text(encoding="utf-8")
     assert "mock-pkg" in content
     assert "1.0.0" in content
+
+
+def test_index_sync_caches_install_args(tmp_path):
+    """An index entry's install_args must reach the cached recipe YAML.
+
+    The entry-to-recipe mapping listed every list field except this one, and
+    to_dict() never emitted it, so the cached copy of a package silently lost
+    the arguments its install step needs.
+    """
+    mgr = IndexSyncManager(index_dir=tmp_path)
+
+    sample_index = [
+        {
+            "name": "staged-pkg",
+            "version": "2.0.0",
+            "url": "https://example.com/staged-pkg-2.0.0.tar.gz",
+            "checksum": "sha256:" + "ab" * 32,
+            "build_system": "make",
+            "install_args": ["DESTDIR=/tmp/stage", "PREFIX=/usr"],
+        }
+    ]
+    raw_json = json.dumps(sample_index).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = raw_json
+    mock_resp.headers = {"Content-Length": str(len(raw_json))}
+    mock_resp.__enter__.return_value = mock_resp
+
+    with patch("urllib.request.urlopen", return_value=mock_resp):
+        res = mgr.sync(url="https://example.com/index.json", force=True)
+
+    assert res.package_count == 1
+    cached = yaml.safe_load(
+        (mgr.recipes_dir / "staged-pkg.yaml").read_text(encoding="utf-8")
+    )
+    assert cached["install_args"] == ["DESTDIR=/tmp/stage", "PREFIX=/usr"]
 
 
 def test_index_sync_corrupted_json(tmp_path):

@@ -90,38 +90,34 @@ class PackageRecipe:
             )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Serialize this recipe to a dict using the canonical YAML schema.
-
-        Keys match the *external* YAML format (``package``, ``build``, etc.)
-        rather than the internal dataclass field names (``name``,
-        ``build_system``), so the result round-trips cleanly through
-        :func:`parse_recipe`.
-
-        Only non-empty optional fields are included to keep the output
-        minimal and readable.
-        """
+        """Convert recipe to dictionary for YAML serialization."""
         data: Dict[str, Any] = {
             "package": self.name,
             "version": self.version,
-            "url": self.url,
-            "build": self.build_system,
         }
+        if self.description:
+            data["description"] = self.description
+        if self.license:
+            data["license"] = self.license
+        data["url"] = self.url
         if self.checksum:
             data["checksum"] = self.checksum
+        data["build"] = self.build_system
+        # Copies, not the live lists: a caller that appends to what it got
+        # back must not edit the recipe behind its back. The key order is the
+        # one index_sync's recipe_dict uses, with install_args after
+        # build_args; parse_recipe() reads every key by name, so a dump and a
+        # reload agree field for field regardless of order.
         if self.dependencies:
             data["dependencies"] = list(self.dependencies)
-        if self.patches:
-            data["patches"] = list(self.patches)
         if self.configure_args:
             data["configure_args"] = list(self.configure_args)
         if self.build_args:
             data["build_args"] = list(self.build_args)
         if self.install_args:
             data["install_args"] = list(self.install_args)
-        if self.description:
-            data["description"] = self.description
-        if self.license:
-            data["license"] = self.license
+        if self.patches:
+            data["patches"] = list(self.patches)
         return data
 
 

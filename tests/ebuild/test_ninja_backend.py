@@ -62,6 +62,70 @@ def test_shared_library_links_with_the_platform_shared_flag(tmp_path):
     assert ": link_shared " in ninja_file
 
 
+def test_shared_library_sources_default_to_fpic(tmp_path):
+    config = _shared_library_config(tmp_path)
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar")
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    ninja_file = (tmp_path / "build" / "build.ninja").read_text(encoding="utf-8")
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+
+    assert "-fPIC" in ninja_file
+    assert "-fPIC" in compile_commands[0]["command"].split()
+
+
+def test_shared_library_respects_explicit_pic_policy(tmp_path):
+    config = _shared_library_config(tmp_path, target_cflags=["-fno-pic"])
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar")
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+    flags = compile_commands[0]["command"].split()
+
+    assert "-fno-pic" in flags
+    assert "-fPIC" not in flags
+
+
+@pytest.mark.parametrize("pie_flag", ["-fPIE", "-fpie", "-fno-PIE", "-fno-pie"])
+def test_shared_library_does_not_treat_pie_as_pic(tmp_path, pie_flag):
+    config = _shared_library_config(tmp_path)
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar", cflags=[pie_flag])
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+    flags = compile_commands[0]["command"].split()
+
+    assert pie_flag in flags
+    assert "-fPIC" in flags
+
+
+@pytest.mark.parametrize("pie_flag", ["-fPIE", "-fpie", "-fno-PIE", "-fno-pie"])
+def test_shared_library_respects_the_last_position_independence_flag(
+    tmp_path, pie_flag
+):
+    config = _shared_library_config(tmp_path, target_cflags=[pie_flag])
+    toolchain = SimpleNamespace(cc="cc", cxx="c++", ar="ar", cflags=["-fPIC"])
+
+    NinjaBackend(config, tmp_path / "build", toolchain).generate()
+
+    compile_commands = json.loads(
+        (tmp_path / "build" / "compile_commands.json").read_text(encoding="utf-8")
+    )
+    flags = compile_commands[0]["command"].split()
+    pic_and_pie_flags = [flag for flag in flags if flag in {"-fPIC", pie_flag}]
+
+    assert pic_and_pie_flags == ["-fPIC", pie_flag, "-fPIC"]
+
+
 def test_cc_rule_emits_and_consumes_a_depfile(tmp_path):
     """The compile rule must generate a depfile and tell Ninja to read it.
 
@@ -194,3 +258,90 @@ def test_editing_a_header_triggers_a_rebuild(tmp_path):
         "was reused and the build wrongly reported success"
     )
     assert "header was recompiled" in (second.stdout + second.stderr)
+
+
+@pytest.mark.parametrize("directory", ["project", "project with spaces"])
+def test_removing_source_removes_archive_member(tmp_path, directory):
+    """Incremental archives must contain only the current source objects."""
+    cc = shutil.which("cc") or shutil.which("gcc")
+    ar = shutil.which("ar")
+    if not cc or not ar or importlib.util.find_spec("ninja") is None:
+        pytest.skip("host C compiler, ar, and ninja are required")
+
+    source_dir = tmp_path / directory
+    source_dir.mkdir()
+    (source_dir / "keep.c").write_text("int keep(void) { return 1; }\n")
+    (source_dir / "removed.c").write_text("int removed(void) { return 42; }\n")
+    main = source_dir / "main.c"
+    main.write_text("int removed(void); int main(void) { return removed(); }\n")
+    library = TargetConfig(
+        name="helpers", target_type="static_library",
+        sources=["keep.c", "removed.c"],
+    )
+    config = ProjectConfig(
+        name="archive-regression", version="1.0", source_dir=source_dir,
+        targets=[library],
+    )
+    build_dir = source_dir / "build"
+    archive = build_dir / "libhelpers.a"
+    toolchain = SimpleNamespace(cc=cc, cxx="c++", ar=ar)
+
+    def build():
+        NinjaBackend(config, build_dir, toolchain).generate()
+        result = subprocess.run(
+            [sys.executable, "-m", "ninja", "-f", str(build_dir / "build.ninja")],
+            cwd=source_dir, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+    def link():
+        return subprocess.run(
+            [cc, str(main), str(archive), "-o", str(build_dir / "app")],
+            capture_output=True, text=True,
+        )
+
+    build()
+    assert link().returncode == 0
+    initial_mtime = archive.stat().st_mtime_ns
+    build()
+    assert archive.stat().st_mtime_ns == initial_mtime, "unchanged archive rebuilt"
+
+    library.sources.remove("removed.c")
+    (source_dir / "removed.c").unlink()
+    build()
+    members = subprocess.check_output([ar, "t", str(archive)], text=True)
+    # Objects keep their source extension (src/main.c -> main.c.o) so that
+    # start.c and start.S in one target cannot collide; see _object_path.
+    assert "removed.c.o" not in members.splitlines(), members
+    assert "keep.c.o" in members.splitlines(), members
+    assert link().returncode != 0, "deleted function still links from stale code"
+
+    # The retained function still links, so this is not merely a broken archive.
+    main.write_text("int keep(void); int main(void) { return keep() - 1; }\n")
+    result = link()
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_archive_failure_is_reported_by_ninja(tmp_path):
+    """The Python wrapper must preserve the archiver's failure status."""
+    cc = shutil.which("cc") or shutil.which("gcc")
+    if not cc or importlib.util.find_spec("ninja") is None:
+        pytest.skip("host C compiler and ninja are required")
+    (tmp_path / "lib.c").write_text("int value(void) { return 1; }\n")
+    config = ProjectConfig(
+        name="archive-failure", version="1.0", source_dir=tmp_path,
+        targets=[TargetConfig(
+            name="helpers", target_type="static_library", sources=["lib.c"],
+        )],
+    )
+    # Python receives 'rcs' as a script name and fails: a portable stand-in
+    # for an archiver returning a nonzero status, without a shell script.
+    toolchain = SimpleNamespace(cc=cc, cxx="c++", ar=sys.executable)
+    build_dir = tmp_path / "build"
+    NinjaBackend(config, build_dir, toolchain).generate()
+    result = subprocess.run(
+        [sys.executable, "-m", "ninja", "-f", str(build_dir / "build.ninja")],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "rcs" in result.stdout + result.stderr

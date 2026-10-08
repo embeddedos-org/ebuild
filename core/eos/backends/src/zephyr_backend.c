@@ -3,18 +3,27 @@
 // ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
 
 #include "eos/backend.h"
-#include "eos/log.h"
+#include "eos/shell_cmd.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+
+/* -D<key>=<value> for every option; the key unquoted as one word, the value
+ * quoted. A value with spaces used to split into two arguments. */
+static void append_defines(EosShellCmd *cmd, const EosKeyValue *options,
+                           int option_count, const char *skip_key) {
+    for (int i = 0; i < option_count; i++) {
+        if (skip_key && strcmp(options[i].key, skip_key) == 0) continue;
+        eos_shell_cmd_text(cmd, " -D");
+        eos_shell_cmd_word(cmd, options[i].key);
+        eos_shell_cmd_text(cmd, "=");
+        eos_shell_cmd_arg(cmd, options[i].value);
+    }
+}
 
 static EosResult zephyr_configure(EosBackend *self, const char *src_dir,
                                   const char *build_dir, const char *toolchain_file,
                                   const EosKeyValue *options, int option_count) {
     (void)self;
-    char cmd[2048];
-    int offset = 0;
-
     /* Zephyr uses west + CMake under the hood */
     const char *board = NULL;
     for (int i = 0; i < option_count; i++) {
@@ -24,81 +33,95 @@ static EosResult zephyr_configure(EosBackend *self, const char *src_dir,
         }
     }
 
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
     if (board) {
-        offset = snprintf(cmd, sizeof(cmd),
-                          "west build -b %s -d \"%s\" \"%s\"",
-                          board, build_dir, src_dir);
+        eos_shell_cmd_text(&cmd, "west build -b ");
+        eos_shell_cmd_word(&cmd, board);
+        eos_shell_cmd_text(&cmd, " -d ");
+        eos_shell_cmd_arg(&cmd, build_dir);
+        eos_shell_cmd_text(&cmd, " ");
+        eos_shell_cmd_arg(&cmd, src_dir);
     } else {
-        offset = snprintf(cmd, sizeof(cmd),
-                          "cmake -S \"%s\" -B \"%s\" -G Ninja -DBOARD=native_posix",
-                          src_dir, build_dir);
+        eos_shell_cmd_text(&cmd, "cmake -S ");
+        eos_shell_cmd_arg(&cmd, src_dir);
+        eos_shell_cmd_text(&cmd, " -B ");
+        eos_shell_cmd_arg(&cmd, build_dir);
+        eos_shell_cmd_text(&cmd, " -G Ninja -DBOARD=native_posix");
     }
-
     if (toolchain_file && toolchain_file[0]) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -DCMAKE_TOOLCHAIN_FILE=\"%s\"", toolchain_file);
+        eos_shell_cmd_text(&cmd, " -DCMAKE_TOOLCHAIN_FILE=");
+        eos_shell_cmd_arg(&cmd, toolchain_file);
     }
-
-    for (int i = 0; i < option_count && offset < (int)sizeof(cmd) - 64; i++) {
-        if (strcmp(options[i].key, "board") == 0) continue;
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -D%s=%s", options[i].key, options[i].value);
-    }
-
-    EOS_INFO("Zephyr configure: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    append_defines(&cmd, options, option_count, "board");
+    return eos_shell_cmd_run(&cmd, "Zephyr configure");
 }
 
 static EosResult zephyr_build(EosBackend *self, const char *build_dir, int jobs) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "west build -d \"%s\" -- -j%d",
-             build_dir, jobs > 0 ? jobs : 4);
-    EOS_INFO("Zephyr build: %s", cmd);
-    int rc = system(cmd);
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "west build -d ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -- -j");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    EosResult res = eos_shell_cmd_run(&cmd, "Zephyr build");
+    if (res != EOS_ERR_BUILD) return res;   /* ran and succeeded, or was refused */
 
-    if (rc != 0) {
-        snprintf(cmd, sizeof(cmd), "cmake --build \"%s\" -j %d",
-                 build_dir, jobs > 0 ? jobs : 4);
-        EOS_INFO("Zephyr fallback build: %s", cmd);
-        rc = system(cmd);
-    }
-
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    /* west is not there or failed: the build directory is a CMake tree too. */
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --build ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -j ");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    return eos_shell_cmd_run(&cmd, "Zephyr build (cmake)");
 }
 
 static EosResult zephyr_install(EosBackend *self, const char *build_dir,
                                 const char *install_dir) {
     (void)self;
-    char cmd[1024];
-    /* Copy firmware outputs to install dir */
-    snprintf(cmd, sizeof(cmd),
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
 #ifdef _WIN32
-             "if not exist \"%s\" mkdir \"%s\" && copy /Y \"%s\\zephyr\\zephyr.bin\" \"%s\\firmware.bin\"",
-             install_dir, install_dir, build_dir, install_dir
+    eos_shell_cmd_text(&cmd, "if not exist ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " mkdir ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " && copy /Y ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "\\zephyr\\zephyr.bin ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "\\firmware.bin");
 #else
-             "mkdir -p \"%s\" && cp -f \"%s/zephyr/zephyr.bin\" \"%s/firmware.bin\" 2>/dev/null || "
-             "cp -f \"%s/zephyr/zephyr.elf\" \"%s/firmware.elf\" 2>/dev/null || true",
-             install_dir, build_dir, install_dir, build_dir, install_dir
+    eos_shell_cmd_text(&cmd, "mkdir -p ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " && if [ -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/zephyr/zephyr.bin ]; then cp -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/zephyr/zephyr.bin ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "/firmware.bin; elif [ -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/zephyr/zephyr.elf ]; then cp -f ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/zephyr/zephyr.elf ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, "/firmware.elf; else echo \"zephyr_install: no zephyr.bin or zephyr.elf in\" ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, "/zephyr >&2; exit 1; fi");
 #endif
-    );
-    EOS_INFO("Zephyr install: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    return eos_shell_cmd_run(&cmd, "Zephyr install");
 }
 
 static EosResult zephyr_clean(EosBackend *self, const char *build_dir) {
     (void)self;
-    char cmd[1024];
-#ifdef _WIN32
-    snprintf(cmd, sizeof(cmd), "if exist \"%s\" rmdir /s /q \"%s\"", build_dir, build_dir);
-#else
-    snprintf(cmd, sizeof(cmd), "rm -rf \"%s\"", build_dir);
-#endif
-    EOS_INFO("Zephyr clean: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --build ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " --target clean");
+    return eos_shell_cmd_run(&cmd, "Zephyr clean");
 }
 
 void eos_backend_zephyr_init(EosBackend *b) {

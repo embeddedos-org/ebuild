@@ -3,61 +3,73 @@
 // ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
 
 #include "eos/backend.h"
-#include "eos/log.h"
+#include "eos/shell_cmd.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
+/* -D<key>=<value> for every option; the key unquoted as one word, the value
+ * quoted. A value with spaces used to split into two arguments. */
+static void append_defines(EosShellCmd *cmd, const EosKeyValue *options,
+                           int option_count, const char *skip_key) {
+    for (int i = 0; i < option_count; i++) {
+        if (skip_key && strcmp(options[i].key, skip_key) == 0) continue;
+        eos_shell_cmd_text(cmd, " -D");
+        eos_shell_cmd_word(cmd, options[i].key);
+        eos_shell_cmd_text(cmd, "=");
+        eos_shell_cmd_arg(cmd, options[i].value);
+    }
+}
+
 static EosResult cmake_configure(EosBackend *self, const char *src_dir,
-                                    const char *build_dir, const char *toolchain_file,
-                                    const EosKeyValue *options, int option_count) {
+                                 const char *build_dir, const char *toolchain_file,
+                                 const EosKeyValue *options, int option_count) {
     (void)self;
-    char cmd[2048];
-    int offset = snprintf(cmd, sizeof(cmd), "cmake -S \"%s\" -B \"%s\" -G Ninja",
-                          src_dir, build_dir);
-
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake -S ");
+    eos_shell_cmd_arg(&cmd, src_dir);
+    eos_shell_cmd_text(&cmd, " -B ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -G Ninja");
     if (toolchain_file && toolchain_file[0]) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -DCMAKE_TOOLCHAIN_FILE=\"%s\"", toolchain_file);
+        eos_shell_cmd_text(&cmd, " -DCMAKE_TOOLCHAIN_FILE=");
+        eos_shell_cmd_arg(&cmd, toolchain_file);
     }
-
-    for (int i = 0; i < option_count && offset < (int)sizeof(cmd) - 64; i++) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -D%s=%s", options[i].key, options[i].value);
-    }
-
-    EOS_INFO("CMake configure: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    append_defines(&cmd, options, option_count, NULL);
+    return eos_shell_cmd_run(&cmd, "CMake configure");
 }
 
 static EosResult cmake_build(EosBackend *self, const char *build_dir, int jobs) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "cmake --build \"%s\" -j %d", build_dir, jobs > 0 ? jobs : 4);
-    EOS_INFO("CMake build: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --build ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -j ");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    return eos_shell_cmd_run(&cmd, "CMake build");
 }
 
 static EosResult cmake_install(EosBackend *self, const char *build_dir,
-                                  const char *install_dir) {
+                               const char *install_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "cmake --install \"%s\" --prefix \"%s\"",
-             build_dir, install_dir);
-    EOS_INFO("CMake install: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --install ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " --prefix ");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    return eos_shell_cmd_run(&cmd, "CMake install");
 }
 
 static EosResult cmake_clean(EosBackend *self, const char *build_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "cmake --build \"%s\" --target clean", build_dir);
-    EOS_INFO("CMake clean: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cmake --build ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " --target clean");
+    return eos_shell_cmd_run(&cmd, "CMake clean");
 }
 
 void eos_backend_cmake_init(EosBackend *b) {

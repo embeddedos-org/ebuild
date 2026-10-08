@@ -13,10 +13,10 @@ required check does not cover.
 
 import itertools
 import re
+from pathlib import Path
 
 import yaml
 import pytest
-from pathlib import Path
 
 
 WORKFLOWS_DIR = Path(__file__).resolve().parents[2] / ".github" / "workflows"
@@ -43,8 +43,6 @@ NO_GATE = {
     "auto-assign.yml":
         "assigns a reviewer; it verifies nothing, so requiring it would block "
         "merges on a housekeeping step",
-    "claude-code-review.yml":
-        "posts advisory review comments and never fails on content",
     "codeql.yml":
         "already reports a single stable name, `CodeQL`, which should be "
         "required directly rather than wrapped in a gate",
@@ -58,6 +56,14 @@ NO_GATE = {
     "vendor-drift.yml":
         "reports third-party drift for triage and is expected to fail while a "
         "vendored dependency is behind",
+    "eosim-sanity.yml":
+        "its pull_request trigger is filtered to paths: "
+        "['.github/workflows/eosim-sanity.yml'], so on a pull request that "
+        "touches nothing else it reports no status at all, and a required "
+        "check that never arrives hangs the merge instead of failing it. It "
+        "has a fail-closed gate (`EoSim Sanity Gate`, iterating "
+        "toJSON(needs)) for the runs it does make; the trigger exists so a "
+        "change to the workflow proves itself",
 }
 
 
@@ -213,8 +219,6 @@ def test_gate_fails_on_any_non_success_result(jobs):
 # added to the template. That is not cosmetic -- a required rule naming that
 # check cannot say which of the three it means, and a Windows-only failure is
 # indistinguishable from the other two legs without opening the run.
-
-
 
 # `include` and `exclude` shape a matrix but are not dimensions of it, so they
 # are not part of the cartesian product.

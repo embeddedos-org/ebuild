@@ -81,9 +81,11 @@ int  eos_fs_stat(eos_fs_stat_t *stat);
 eos_file_t eos_fs_open(const char *path, uint32_t flags);
 int  eos_fs_close(eos_file_t fd);
 int  eos_fs_read(eos_file_t fd, void *buf, size_t len);
+/* Writing after seeking beyond EOF zero-fills the intervening gap. */
 int  eos_fs_write(eos_file_t fd, const void *data, size_t len);
 int  eos_fs_seek(eos_file_t fd, int32_t offset, eos_seek_whence_t whence);
 int  eos_fs_tell(eos_file_t fd, uint32_t *pos);
+/* Shrink or grow a file; bytes added by growth read back as zero. */
 int  eos_fs_truncate(eos_file_t fd, uint32_t size);
 int  eos_fs_sync(eos_file_t fd);
 
@@ -94,8 +96,17 @@ int  eos_fs_readdir(eos_dir_t dir, eos_dirent_t *entry);
 int  eos_fs_closedir(eos_dir_t dir);
 
 /* Path operations */
+
+/* Unlink a path. POSIX semantics: the name is removed immediately, but a file
+ * with descriptors still open on it keeps its storage until the last one is
+ * closed. Until then it is invisible to eos_fs_exists() and eos_fs_readdir()
+ * while still counting towards eos_fs_stat()'s used_bytes. */
 int  eos_fs_remove(const char *path);
+
+/* Rename a path, replacing new_path if it already exists (as POSIX rename()
+ * does). Renaming a path onto itself succeeds and changes nothing. */
 int  eos_fs_rename(const char *old_path, const char *new_path);
+
 bool eos_fs_exists(const char *path);
 
 #ifdef __cplusplus

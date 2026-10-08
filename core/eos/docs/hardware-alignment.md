@@ -50,6 +50,8 @@ Legacy/Niche:
 
 **Result: 25/25 boards aligned.** Every eboot board has a matching eos board definition, and every eos board has a matching eboot port.
 
+> Superseded: measured 2026-09-14, the full inventories are 84 eos board YAMLs against 83 eBoot board directories, and only 7 names match across them; the 25 rows above are the subset the original audit chose, not the whole. Both halves of the sentence above are false for the full inventories. See `docs/three-way-alignment.md` for the measured status table.
+
 ---
 
 ## Detailed Board Inventory
@@ -96,7 +98,7 @@ Legacy/Niche:
 | `imx8m/` | ARM64 | `EOS_PLATFORM_ARM_CA53` | Cortex-A53 | eMMC | 2 GB |
 | `am64x/` | ARM | `EOS_PLATFORM_ARM_CA53` | A53+R5F | 64 MB | 2 GB |
 | `stm32mp1/` | ARM | `EOS_PLATFORM_ARM_CA72` | A7+M4 | eMMC | 512 MB |
-| `qemu-arm64/` | ARM64 | `EOS_PLATFORM_ARM_CA53` | Cortex-A57 | virtio | 512 MB |
+| `qemu_arm64/` | ARM64 | `EOS_PLATFORM_ARM_CA53` | Cortex-A57 | virtio | 512 MB |
 | `riscv64_virt/` | RISC-V | `EOS_PLATFORM_RISCV64` | RV64GC | virtio | 256 MB |
 | `sifive_u/` | RISC-V | `EOS_PLATFORM_RISCV64` | U74 | SPI | 8 GB |
 | `esp32/` | Xtensa | `EOS_PLATFORM_XTENSA` | LX6 | 4 MB | 520 KB |
@@ -123,7 +125,7 @@ Legacy/Niche:
 | Architecture | eos Toolchain | eos Boards | eboot Boards | Platform Enum |
 |-------------|--------------|-----------|-------------|---------------|
 | **ARM Cortex-M** | `arm-none-eabi` | nRF52840, STM32F4, STM32H7, SAMD51 | nrf52, stm32f4, stm32h7, samd51 | `ARM_CM0`..`ARM_CM33` |
-| **ARM Cortex-A** | `aarch64-linux-gnu` | RPi4, i.MX8M, AM64x, STM32MP1, QEMU | rpi4, imx8m, am64x, stm32mp1, qemu-arm64 | `ARM_CA53`, `ARM_CA72` |
+| **ARM Cortex-A** | `aarch64-linux-gnu` | RPi4, i.MX8M, AM64x, STM32MP1, QEMU | rpi4, imx8m, am64x, stm32mp1, qemu_arm64 (eos: `qemu-arm64.yaml` — names differ) | `ARM_CA53`, `ARM_CA72` |
 | **RISC-V 64** | `riscv64-linux-gnu` | generic-riscv64, SiFive U | riscv64_virt, sifive_u | `RISCV64` |
 | **Xtensa** | (vendor SDK) | ESP32 | esp32 | `XTENSA` |
 | **x86 / x86_64** | `x86_64-linux-gnu` | generic-x86, generic-x86_64 | x86, x86_64_efi | `X86`, `X86_64` |

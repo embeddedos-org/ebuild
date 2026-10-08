@@ -40,7 +40,36 @@ Observed in the source tree:
   (`ebuild new`, `ebuild generate-project`, `ebuild generate-board`,
   `ebuild generate-boot`).
 - **Layers & recipes** — reusable board/OS composition under `layers/` and
-  `recipes/`.
+  `ebuild/recipes/`.
+
+## Pinned eCAD validation gate
+
+Hardware-derived generation can be wrapped by `HardwareGenerationGate` so no
+output callback runs until a product's immutable eCAD contract bundle has been
+verified. A request pins the canonical eCAD repository, full 40-character Git
+commit, contract version, complete schema-set digest, receipt-schema digest,
+product-bundle digest, receipt digest, and product ID.
+
+The verifier independently checks all bundled document and evidence bytes,
+source cleanliness, product and provenance consistency, known requirements and
+tools, exact V0–V4 coverage, child execution states, aggregate verdicts, and
+eligibility. Branches, tags, `latest`, dirty sources, missing evidence,
+unavailable tools, timeouts, warnings on required checks, and every non-pass
+required result deny generation. Authorization occurs before the supplied
+generation callback can create or mutate output.
+
+```python
+from ebuild.eos_ai.hardware_gate import HardwareGenerationGate
+
+result = HardwareGenerationGate().authorize_and_generate(
+    verification_request,
+    lambda authorization: generate_from_verified_contract(authorization),
+)
+```
+
+This is the authorization foundation for issue #156. Existing CLI generators
+must not be described as contract-gated until each entry point has been routed
+through this API and covered by a denial-before-mutation test.
 
 ## What's inside
 
@@ -49,8 +78,8 @@ Observed in the source tree:
 | `ebuild/` | The Python package: `cli/`, `build/`, `core/`, `system/`, `firmware/`, `deps/`, `packages/`, `plugins/`, `eos_ai/` |
 | `core/` | Native support components (e.g. `eboot/`) |
 | `examples/` | `hello_world`, `linux_image`, `multi_target`, `rtos_firmware`, `cortex_r5_safety`, `eradar360`, `with_packages` |
-| `templates/` | Project/board templates used by the generators |
-| `recipes/`, `layers/` | Reusable build recipes and board/OS layers |
+| `ebuild/templates/` | Project templates used by `ebuild new` / `ebuild init` (shipped in the wheel) |
+| `ebuild/recipes/`, `layers/` | Reusable build recipes and board/OS layers |
 | `hardware/` | Board/hardware definitions |
 | `sdk/` | SDK generation support |
 | `tools/` | Helper scripts |
@@ -60,6 +89,9 @@ Observed in the source tree:
 
 Requires Python 3.8+.
 
+Building a `static_library` target also invokes that Python interpreter at
+build time: the generated Ninja `ar_rule` runs a small helper to recreate the
+archive so removed object members cannot linger.
 ```bash
 pip install -e .        # from the repo root
 # or:
@@ -68,8 +100,9 @@ pip install -e .        # from the repo root
 ```
 
 Runtime dependencies (`click`, `pyyaml`, `ninja`) are installed automatically.
-Note the `ninja` **pip package** is required — a system `ninja` binary alone is
-not enough, because ebuild invokes `python -m ninja`.
+ebuild prefers a `ninja` binary on PATH and falls back to `python -m ninja`
+if none is present, so a system ninja install is enough. The pip `ninja`
+package is the fallback when no binary is on PATH.
 
 ## Usage
 

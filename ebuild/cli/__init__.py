@@ -6,7 +6,8 @@ from importlib.metadata import version, PackageNotFoundError
 
 try:
     # Dynamically pull the version from pyproject.toml package metadata
-    __version__ = version("ebuild")
+    # Distribution name, not import name: see [project].name in pyproject.toml.
+    __version__ = version("embeddedos-ebuild")
 except PackageNotFoundError:
     # Fallback if the package is run directly without being installed
     __version__ = "unknown"

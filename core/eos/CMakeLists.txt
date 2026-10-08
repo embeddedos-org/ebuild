@@ -44,10 +44,17 @@ add_library(eos_hal STATIC
     hal/src/hal_extended_stubs.c
 )
 
-if(EOS_PLATFORM STREQUAL "linux" OR NOT CMAKE_CROSSCOMPILING)
+# Which backend source is compiled, and which one eos_hal_init() falls back to,
+# have to be the same decision: hal_common.c reads EOS_HAL_BACKEND_* (eos dc13c59).
+if((EOS_PLATFORM STREQUAL "linux" OR NOT CMAKE_CROSSCOMPILING) AND UNIX)
     target_sources(eos_hal PRIVATE hal/src/hal_linux.c)
+    target_compile_definitions(eos_hal PRIVATE EOS_HAL_BACKEND_HOST)
+elseif(WIN32)
+    target_sources(eos_hal PRIVATE hal/src/hal_win32.c)
+    target_compile_definitions(eos_hal PRIVATE EOS_HAL_BACKEND_WIN32)
 else()
     target_sources(eos_hal PRIVATE hal/src/hal_rtos.c)
+    target_compile_definitions(eos_hal PRIVATE EOS_HAL_BACKEND_RTOS)
 endif()
 
 target_include_directories(eos_hal PUBLIC

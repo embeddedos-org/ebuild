@@ -35,20 +35,54 @@ static const EosPackage *find_package_by_name(const EosPackageSet *pkgs,
     return NULL;
 }
 
+/**
+ * Append to a fixed buffer and return the new length, never past the end.
+ *
+ * snprintf() returns the length it *would* have written, not what it wrote.
+ * Accumulating that return value walks the offset past the end of the buffer
+ * as soon as any one append truncates; the next call then gets a pointer past
+ * the end and a size of `sizeof(buf) - len`, which underflows size_t to a
+ * huge value. This clamps to what is actually in the buffer instead.
+ */
+static size_t append_clamped(char *buf, size_t cap, size_t len,
+                             const char *fmt, const char *a, const char *b) {
+    if (len >= cap - 1u) return cap - 1u;
+    int n = b ? snprintf(buf + len, cap - len, fmt, a, b)
+              : snprintf(buf + len, cap - len, fmt, a);
+    if (n < 0) return len;
+    return ((size_t)n >= cap - len) ? cap - 1u : len + (size_t)n;
+}
+
 static void compute_cache_key(const EosPackage *pkg, const char *toolchain,
                               char *key, size_t key_sz) {
     char input[2048];
-    int len = snprintf(input, sizeof(input), "%s:%s:%s:%s",
-                       pkg->name, pkg->version,
-                       eos_build_type_str(pkg->build_type),
-                       toolchain ? toolchain : "host");
-    for (int i = 0; i < pkg->option_count && len < (int)sizeof(input) - 128; i++) {
-        len += snprintf(input + len, sizeof(input) - (size_t)len,
-                        ":%s=%s", pkg->options[i].key, pkg->options[i].value);
+    int  n = snprintf(input, sizeof(input), "%s:%s:%s:%s",
+                      pkg->name, pkg->version,
+                      eos_build_type_str(pkg->build_type),
+                      toolchain ? toolchain : "host");
+    size_t len = (n < 0) ? 0u
+               : ((size_t)n >= sizeof(input) ? sizeof(input) - 1u : (size_t)n);
+
+    /* Reserve room for the content hash so options can never crowd it out.
+     * The hash is what identifies the source; dropping it while keeping the
+     * options would let two different sources share a cache key. The old
+     * `len < sizeof(input) - 128` guard was reaching for this, but it was
+     * checked only before an iteration, so one long option still ran past it. */
+    size_t options_cap = sizeof(input);
+    if (pkg->hash[0]) {
+        size_t hash_room = strlen(pkg->hash) + 2u; /* ':' + hash + NUL */
+        options_cap = (hash_room < sizeof(input)) ? sizeof(input) - hash_room + 1u
+                                                  : 1u;
+    }
+
+    for (int i = 0; i < pkg->option_count && len < options_cap - 1u; i++) {
+        len = append_clamped(input, options_cap, len, ":%s=%s",
+                             pkg->options[i].key, pkg->options[i].value);
     }
     if (pkg->hash[0]) {
-        snprintf(input + len, sizeof(input) - (size_t)len, ":%s", pkg->hash);
+        len = append_clamped(input, sizeof(input), len, ":%s", pkg->hash, NULL);
     }
+    (void)len;
 
     char hash[EOS_HASH_LEN];
     eos_cache_compute_hash(input, (size_t)strlen(input), hash, sizeof(hash));
