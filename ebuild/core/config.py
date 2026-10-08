@@ -85,6 +85,7 @@ class ToolchainConfig:
     compiler: str = "gcc"
     arch: str = "x86_64"
     prefix: Optional[str] = None
+    target: Optional[str] = None
     sysroot: Optional[str] = None
     extra_cflags: List[str] = field(default_factory=list)
     extra_ldflags: List[str] = field(default_factory=list)
@@ -165,15 +166,35 @@ def _parse_target(raw: Any) -> TargetConfig:
     return target
 
 
+#: Keys `toolchain:` accepts. Anything else is a typo or a stale template
+#: key; accepting it silently is how `target:` was dropped for months while
+#: every project template emitted it (issue #171).
+_TOOLCHAIN_FIELDS = frozenset({
+    "compiler", "arch", "prefix", "target", "sysroot",
+    "extra_cflags", "extra_ldflags",
+})
+
+
 def _parse_toolchain(raw: Dict[str, Any]) -> ToolchainConfig:
     """Parse toolchain section into a ToolchainConfig."""
+    unknown = sorted(set(raw) - _TOOLCHAIN_FIELDS)
+    if unknown:
+        raise ConfigError(
+            f"unknown 'toolchain' key(s): {', '.join(unknown)}; "
+            f"expected a subset of {sorted(_TOOLCHAIN_FIELDS)}."
+        )
     extra_cflags = _parse_toolchain_flag_list(raw, "extra_cflags")
     extra_ldflags = _parse_toolchain_flag_list(raw, "extra_ldflags")
+
+    target = raw.get("target")
+    if target is not None and not isinstance(target, str):
+        raise ConfigError("'toolchain.target' must be a string.")
 
     return ToolchainConfig(
         compiler=raw.get("compiler", "gcc"),
         arch=raw.get("arch", "x86_64"),
         prefix=raw.get("prefix"),
+        target=target,
         sysroot=raw.get("sysroot"),
         extra_cflags=extra_cflags,
         extra_ldflags=extra_ldflags,

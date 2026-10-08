@@ -565,19 +565,19 @@ class TestStaticArchiveRecreation:
             ).splitlines()
 
         build()
-        assert set(members()) == {"keep.o", "removed.o"}
+        assert set(members()) == {"keep.c.o", "removed.c.o"}
 
         library.sources.remove("removed.c")
         (source_dir / "removed.c").unlink()
         # Drop the stale object file too: Ninja would not rebuild it, but a
         # real ``ar rcs`` update would still leave its member in the archive.
-        removed_obj = build_dir / "obj" / "helpers" / "removed.o"
+        removed_obj = build_dir / "obj" / "helpers" / "removed.c.o"
         if removed_obj.exists():
             removed_obj.unlink()
 
         build()
-        assert "removed.o" not in members(), members()
-        assert "keep.o" in members(), members()
+        assert "removed.c.o" not in members(), members()
+        assert "keep.c.o" in members(), members()
 
     def test_archive_rule_works_without_ebuild_on_path(self, tmp_path):
         """The AR helper must not require ``import ebuild`` at build time.

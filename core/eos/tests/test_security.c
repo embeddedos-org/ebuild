@@ -39,6 +39,29 @@ TEST(test_secureboot_init) {
     ASSERT(strcmp(sb.hash_algo, "sha256") == 0);
 }
 
+/* A NULL path must fail the boot, not crash it. eos_secureboot_verify_image()
+ * already refused an absent public key near the end of the function, but the
+ * three strncpy() calls at the top ran first, so the refusal was unreachable
+ * and the call died with SIGSEGV instead. Without this case nothing in the
+ * suite ever passes NULL, which is how it survived. */
+TEST(test_secureboot_null_paths) {
+    EosSecureBoot sb;
+
+    eos_secureboot_init(&sb);
+    ASSERT(eos_secureboot_verify_image(&sb, NULL, "sig", "key") == -1);
+    ASSERT(sb.status == EOS_BOOT_FAILED);
+
+    eos_secureboot_init(&sb);
+    ASSERT(eos_secureboot_verify_image(&sb, "img", NULL, "key") == -1);
+    ASSERT(sb.status == EOS_BOOT_FAILED);
+
+    eos_secureboot_init(&sb);
+    ASSERT(eos_secureboot_verify_image(&sb, "img", "sig", NULL) == -1);
+    ASSERT(sb.status == EOS_BOOT_FAILED);
+
+    ASSERT(eos_secureboot_verify_image(NULL, "img", "sig", "key") == -1);
+}
+
 TEST(test_keystore_add_find) {
     EosKeyStore ks;
     eos_keystore_init(&ks, NULL);
@@ -114,6 +137,7 @@ TEST(test_acl_last_match_wins) {
 int main(void) {
     printf("=== EoS: Security Services Unit Tests ===\n\n");
     run_test_secureboot_init();
+    run_test_secureboot_null_paths();
     run_test_keystore_add_find();
     run_test_keystore_not_found();
     run_test_keystore_multiple_keys();
@@ -121,7 +145,7 @@ int main(void) {
     run_test_acl_default_deny();
     run_test_acl_wildcard();
     run_test_acl_last_match_wins();
-    tests_run = 8;
+    tests_run = 9;
     printf("\n%d/%d tests passed\n", tests_passed, tests_run);
     return (tests_passed == tests_run) ? 0 : 1;
 }

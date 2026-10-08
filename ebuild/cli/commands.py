@@ -4,7 +4,7 @@
 """CLI commands for ebuild using Click.
 
 Provides build, clean, configure, info, install, add, list-packages,
-pipeline, and hardware analysis commands.
+pipeline, quantize, and hardware analysis commands.
 """
 
 from __future__ import annotations
@@ -12,12 +12,13 @@ from __future__ import annotations
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import threading
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import Any, Callable, Dict, List, Optional, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
@@ -40,7 +41,7 @@ from ebuild.core.scheduler import run_graph
 from ebuild.packages.builder import BuildError, PackageBuilder
 from ebuild.packages.cache import PackageCache
 from ebuild.packages.fetcher import FetchError, PackageFetcher
-from ebuild.packages.lockfile import Lockfile
+from ebuild.packages.lockfile import Lockfile, LockfileError
 from ebuild.packages.recipe import RecipeError
 from ebuild.packages.registry import create_registry, find_recipe_dirs
 from ebuild.packages.resolver import PackageResolver, ResolveError
@@ -51,6 +52,80 @@ pass_logger = click.make_pass_decorator(Logger, ensure=True)
 # Canonical recipe search path discovery
 _find_recipe_dirs = find_recipe_dirs
 
+# yaml key for the runner args config
+_RUNNER_ARGS_CONFIG_KEY = "runner_args"
+
+
+def _resolve_runner_args(
+    cli_args: tuple,
+    env_key: str,
+    cfg_loader: "Callable[[], ProjectConfig]",
+    config_section: str,
+    config_key: str,
+    log: "Logger",
+    clear_args: bool = False,
+) -> list[str]:
+    """Resolve tool arguments following a precedence chain: CLI > Environment > Configuration File.
+
+    This function short-circuits to avoid unnecessary config file reads if CLI or environment
+    arguments are present.
+
+    Args:
+        cli_args: Tuple of unparsed CLI arguments captured by Click.
+        env_key: The environment variable name to check for arguments.
+        cfg_loader: A callable that returns the parsed ProjectConfig.
+        config_section: The section name within the parsed ProjectConfig (e.g. 'flash_config').
+        config_key: The key within the section mapping that holds the arguments list.
+        log: Logger instance for recording debug or warning messages.
+        clear_args: If true, explicitly clear the arguments, ignoring config and environment.
+
+    Returns:
+        A list of string arguments to pass to the underlying tool. Returns empty list if none found.
+    """
+    if clear_args:
+        log.debug("Runner args explicitly cleared via flag")
+        return []
+
+    # CLI args (highest precedence)
+    if cli_args:
+        args_list = list(cli_args)
+        log.debug(f"Loaded runner args from CLI: {args_list}")
+        return args_list
+
+    # Environment variable
+    env_args = os.environ.get(env_key)
+    if env_args and env_args.strip():
+        args_list = shlex.split(env_args.strip())
+        log.debug(f"Loaded runner args from environment ({env_key}): {args_list}")
+        return args_list
+
+    # Config file
+    try:
+        cfg = cfg_loader()
+        section = getattr(cfg, config_section, {})
+        if not isinstance(section, dict):
+            section = {}
+
+        config_args = section.get(config_key, [])
+        if isinstance(config_args, list):
+            args_list = [str(a) for a in config_args]
+            if args_list:
+                log.debug(f"Loaded runner args from config: {args_list}")
+            return args_list
+        elif isinstance(config_args, str):
+            args_list = shlex.split(config_args)
+            if args_list:
+                log.debug(f"Loaded runner args from config: {args_list}")
+            return args_list
+        else:
+            log.warning(f"Invalid format for {config_key} in config file: must be a list or string")
+            return []
+    except FileNotFoundError:
+        pass  # config is optional
+    except Exception as e:
+        log.warning(f"Failed to load config: {e}")
+
+    return []
 
 
 def _install_packages(
@@ -81,15 +156,25 @@ def _install_packages(
     registry = create_registry(*recipe_dirs)
     log.debug(f"Registry: {registry.package_count} recipes from {[str(p) for p in registry.search_paths]}")
 
-    resolver = PackageResolver(registry)
-    requested = [{"name": p.name, "version": p.version} for p in cfg.packages]
-    resolved = resolver.resolve(requested)
-
-    log.info(f"Packages to install: {', '.join(r.name + ' v' + r.version for r in resolved)}")
-
-    # Lockfile
+    # The lockfile is read before resolving, so an unpinned package lands on
+    # the version the last resolution recorded rather than on whatever is
+    # newest now. It was only ever written before, which pinned nothing.
     lock_path = cfg.source_dir / Lockfile.FILENAME
     lockfile = Lockfile(lock_path)
+    try:
+        lockfile.load()
+    except LockfileError as e:
+        # A lock that cannot be read is a resolution the user has to settle,
+        # reported through the handler every caller of this function has.
+        raise ResolveError(str(e)) from e
+    if lockfile.package_names:
+        log.debug(f"Lockfile read: {lock_path} ({len(lockfile.package_names)} packages)")
+
+    resolver = PackageResolver(registry)
+    requested = [{"name": p.name, "version": p.version} for p in cfg.packages]
+    resolved = resolver.resolve(requested, lockfile=lockfile)
+
+    log.info(f"Packages to install: {', '.join(r.name + ' v' + r.version for r in resolved)}")
 
     # Cache and fetcher
     pkg_cache_dir = build_dir / "packages"
@@ -1029,7 +1114,8 @@ def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str],
         log.success(f"Generated {_shown(build_path / 'compile_commands.json')}")
 
         log.step("Invoking ninja...")
-        ninja_cmd = [sys.executable, "-m", "ninja", "-f", str(build_path / "build.ninja")]
+        from ebuild.build.dispatch import ninja_command
+        ninja_cmd = ninja_command() + ["-f", str(build_path / "build.ninja")]
         if log.verbose:
             ninja_cmd.append("-v")
 
@@ -1572,20 +1658,41 @@ def firmware(log: Logger, config_path: str, build_dir: str, rtos: str, board: st
         raise SystemExit(1)
 
 
-@cli.command()
+@cli.command(context_settings=dict(ignore_unknown_options=True))
 @click.argument("image", type=click.Path(exists=True))
 @click.option("--tool", default="openocd",
               type=click.Choice(["openocd", "pyocd", "nrfjprog", "esptool", "stflash"]),
               help="Flash tool to use.")
 @click.option("--target", default="stm32f4", help="Target MCU/board.")
 @click.option("--address", default="0x08000000", help="Flash base address (hex).")
-@click.option("--reset-after", is_flag=True, default=False, help="Reset target after flashing.")
+@click.option(
+    "--reset-after", is_flag=True, default=False, help="Reset target after flashing."
+)
+@click.option(
+    "--config",
+    "config_path",
+    default="build.yaml",
+    type=click.Path(),
+    help="Path to build config.",
+)
+@click.option(
+    "--no-runner-args",
+    is_flag=True,
+    default=False,
+    help="Clear runner args (overrides config and environment).",
+)
+@click.argument("cli_args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
 def flash(log: Logger, image: str, tool: str, target: str, address: str,
-          reset_after: bool) -> None:
+          reset_after: bool, config_path: str, no_runner_args: bool, cli_args: tuple) -> None:
     """Flash a firmware image to the target device.
 
     Supports OpenOCD, pyOCD, nrfjprog, esptool, and st-flash.
+
+    Underlying tool arguments (runner args) can be set by, in order of precedence,
+    extra args on the CLI (unrecognized options will be passed as runner args),
+    by setting the EBUILD_FLASH_RUNNER_ARGS environment variable,
+    or by defining a `runner_args` list in the `flash` section of build.yaml.
 
     Examples:
 
@@ -1596,6 +1703,8 @@ def flash(log: Logger, image: str, tool: str, target: str, address: str,
         ebuild flash firmware.bin --tool esptool --address 0x10000
 
         ebuild flash firmware.bin --tool pyocd --target nrf52840 --reset-after
+
+        ebuild flash firmware.bin --tool esptool -- --port /dev/ttyUSB0
     """
     log.header("ebuild — Flash")
 
@@ -1605,10 +1714,24 @@ def flash(log: Logger, image: str, tool: str, target: str, address: str,
         image_path = Path(image)
         addr = int(address, 0)
 
+        runner_args = _resolve_runner_args(
+            cli_args,
+            "EBUILD_FLASH_RUNNER_ARGS",
+            lambda: load_config(config_path),
+            "flash_config",
+            _RUNNER_ARGS_CONFIG_KEY,
+            log,
+            clear_args=no_runner_args,
+        )
+
         log.step(f"Flashing {image_path.name} to {target} via {tool}...")
         log.info(f"  Address: {hex(addr)}")
+        if runner_args:
+            log.info(f"  Runner args: {' '.join(runner_args)}")
 
-        do_flash(image_path, tool=tool, target=target, address=addr)
+        do_flash(
+            image_path, tool=tool, target=target, address=addr, extra_args=runner_args
+        )
         log.success(f"Flash complete: {image_path.name}")
 
         if reset_after:
@@ -2103,7 +2226,9 @@ def new(log: Logger, project_name: str, template_name: str, board_name: str,
     log.header("ebuild — New Project")
 
     # Resolve template directory
-    templates_dir = Path(__file__).resolve().parent.parent.parent / "templates"
+    # Inside the package, so a pip-installed ebuild has them too. At the repo
+    # root they were left out of the wheel and `ebuild new` crashed on iterdir().
+    templates_dir = Path(__file__).resolve().parent.parent / "templates"
     template_dir = templates_dir / template_name
 
     if not template_dir.is_dir():
@@ -2158,6 +2283,9 @@ def new(log: Logger, project_name: str, template_name: str, board_name: str,
         "build.yaml.template": project_dir / "build.yaml",
         "eos.yaml.template": project_dir / "eos.yaml",
         "README.md.template": project_dir / "README.md",
+        # Every template's build.yaml declares a test target built from
+        # tests/test_main.c; without this file `ebuild build` fails at once.
+        "test_main.c.template": project_dir / "tests" / "test_main.c",
     }
 
     for template_file, output_path in file_mapping.items():
@@ -2170,6 +2298,7 @@ def new(log: Logger, project_name: str, template_name: str, board_name: str,
         for key, val in replacements.items():
             content = content.replace(key, val)
 
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(content, encoding="utf-8")
         log.success(f"  {output_path.relative_to(parent)}")
 
@@ -2220,6 +2349,27 @@ def generate_boot(log: Logger, boot_yaml: str, output_dir: str) -> None:
 #  Dependency management commands
 # ═══════════════════════════════════════════════════════════════
 
+def _warn_cached_repo(log: Logger, name: str, repo_dir: Path) -> None:
+    """Say plainly that ``setup`` reused an existing clone without pulling it.
+
+    ``DepsManager.setup`` deliberately leaves an existing clone alone (it
+    must not move a pinned branch or tag), so a clone made weeks ago would
+    otherwise be reported exactly like a fresh one (issue #180).
+    """
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repo_dir), "log", "-1", "--format=%h %cs"],
+            capture_output=True, text=True, check=True,
+        )
+        where = f"at {result.stdout.strip()}"
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        where = "at an unknown commit"
+    log.warning(
+        f"  {name} was already cloned ({where}); setup does not pull. "
+        f"Run `ebuild repos update` to get the latest."
+    )
+
+
 @cli.command()
 @click.option("--eos-url", default=None, help="Git URL for eos repo (overrides default).")
 @click.option("--eboot-url", default=None, help="Git URL for eboot repo (overrides default).")
@@ -2259,12 +2409,18 @@ def setup(
 
     try:
         log.step("Setting up eos...")
+        eos_cached = eos_path is None and (mgr.cache_dir / "eos").is_dir()
         eos_dir = mgr.setup("eos", url=eos_url, branch=eos_branch, path=eos_path)
         log.success(f"  eos: {eos_dir}")
+        if eos_cached:
+            _warn_cached_repo(log, "eos", eos_dir)
 
         log.step("Setting up eboot...")
+        eboot_cached = eboot_path is None and (mgr.cache_dir / "eboot").is_dir()
         eboot_dir = mgr.setup("eboot", url=eboot_url, branch=eboot_branch, path=eboot_path)
         log.success(f"  eboot: {eboot_dir}")
+        if eboot_cached:
+            _warn_cached_repo(log, "eboot", eboot_dir)
 
         log.success("Setup complete. Repos are ready.")
     except Exception as e:
@@ -2292,7 +2448,7 @@ def repos_status(log: Logger) -> None:
     for info in entries:
         log.step(f"{info['name']}")
         log.info(f"  URL:    {info['url']}")
-        log.info(f"  Branch: {info['branch']}")
+        log.info(f"  Branch: {info['branch'] or '(remote default)'}")
         if info.get("config_path"):
             log.info(f"  Linked: {info['config_path']}")
         if info.get("cached"):
@@ -2924,6 +3080,105 @@ def _serial_ports() -> List[str]:
 
 
 # ═════════════════════════════════════════════════════════════
+#  quantize — Track 1 model pipeline (skeleton)
+# ═════════════════════════════════════════════════════════════
+# Quantize/convert a model for an on-device accelerator target. The CLI
+# contract is settled (see docs/quantize.md); backend kernels are not yet
+# implemented, so the command validates everything, prints the plan, and
+# exits 2 rather than silently no-op'ing. Wiring a backend turns the
+# _run_backend() stub into real work without changing the CLI.
+
+
+@cli.command()
+@click.option(
+    "--model",
+    "model_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Model file to quantize (.onnx or .tflite).",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(["int8", "int16"]),
+    default="int8",
+    show_default=True,
+    help="Quantization format.",
+)
+@click.option(
+    "--calibration",
+    "calibration",
+    required=True,
+    type=click.Path(exists=True),
+    help="Calibration data file or directory.",
+)
+@click.option(
+    "--target",
+    required=True,
+    type=click.Choice(["cmsis-nn", "esp-nn", "aie"]),
+    help="Accelerator backend target (tiny: cmsis-nn/esp-nn; large: aie).",
+)
+@click.option(
+    "--validate/--no-validate",
+    default=False,
+    help="Run the bit-exactness validation harness after conversion.",
+)
+@click.option(
+    "--output",
+    "-o",
+    "output_path",
+    default=None,
+    type=click.Path(dir_okay=False, writable=True),
+    help="Output path for the quantized model (default: <stem>.quantized.<fmt><ext>).",
+)
+@pass_logger
+def quantize(
+    log: "Logger",
+    model_path: str,
+    fmt: str,
+    calibration: str,
+    target: str,
+    validate: bool,
+    output_path: Optional[str],
+) -> None:
+    """Quantize MODEL for an on-device accelerator TARGET (Track 1).
+
+    Example:\n
+        ebuild quantize --model mobilenet.tflite --format int8 \\
+            --calibration data/calib/ --target cmsis-nn --validate
+    """
+    model = Path(model_path)
+    if model.suffix.lower() not in (".onnx", ".tflite"):
+        log.error(f"Unsupported model format {model.suffix!r}: want .onnx or .tflite.")
+        raise SystemExit(2)
+    if output_path is None:
+        output_path = str(model.with_name(f"{model.stem}.quantized.{fmt}{model.suffix}"))
+
+    log.header("Quantize plan")
+    log.info(f"  model:       {model_path}")
+    log.info(f"  format:      {fmt}")
+    log.info(f"  calibration: {calibration}")
+    log.info(f"  target:      {target}")
+    log.info(f"  output:      {output_path}")
+    log.info(f"  validate:    {'yes' if validate else 'no'}")
+
+    if target == "aie":
+        log.error(
+            "Target 'aie' (large-tier accelerator-HAL profile) is not implemented yet. "
+            "See docs/track1/accelerator-hal-profiles.md in embeddedos-org/eos."
+        )
+        raise SystemExit(2)
+
+    # Backend kernels (cmsis-nn / esp-nn) are not implemented yet. The
+    # --validate harness hooks in here once they are; until then the
+    # command refuses to pretend it converted anything.
+    log.warning("Backend kernels not yet implemented; nothing was written.")
+    if validate:
+        log.warning("--validate requested: the bit-exactness harness has no backend to check yet.")
+    raise SystemExit(2)
+
+
+# ═════════════════════════════════════════════════════════════
 #  Integration commands
 # ═════════════════════════════════════════════════════════════
 # `integration`, `qemu`, `sdk`, `package` and `models` live in
@@ -2936,3 +3191,5 @@ def _serial_ports() -> List[str]:
 # itself, so both entry points -- and anything that imports `cli` -- see
 # the same CLI.
 _register_integration_commands(cli)
+from ebuild.cli.golden_path import register_commands as _register_golden_path_commands  # noqa: E402
+_register_golden_path_commands(cli)

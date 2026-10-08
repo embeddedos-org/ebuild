@@ -39,6 +39,11 @@ static int indent_level(const char *line) {
     return n / 2;
 }
 
+/* A package index is only safe to dereference when a `- name:` entry claimed
+ * a slot for it. It is -1 before the first entry and after one is refused for
+ * exceeding EOS_MAX_PACKAGES, so both ends have to be checked. */
+#define PKG_IDX_VALID(i) ((i) >= 0 && (i) < EOS_MAX_PACKAGES)
+
 static int parse_kv(const char *line, char *key, size_t ksz, char *val, size_t vsz) {
     const char *colon = strchr(line, ':');
     if (!colon) return -1;
@@ -119,7 +124,8 @@ EosResult eos_config_load(EosConfig *cfg, const char *path) {
             } else if (section == SEC_PACKAGES ||
                        section == SEC_PKG_ENTRY ||
                        section == SEC_PKG_BUILD ||
-                       section == SEC_PKG_OPTIONS) {
+                       section == SEC_PKG_OPTIONS ||
+                       section == SEC_PKG_DEPS) {
                 if (parse_kv(item, key, sizeof(key), val, sizeof(val)) == 0 &&
                     strcmp(key, "name") == 0) {
                     pkg_idx = cfg->package_count;
@@ -127,13 +133,27 @@ EosResult eos_config_load(EosConfig *cfg, const char *path) {
                         strncpy(cfg->packages[pkg_idx].name, val, EOS_MAX_NAME - 1);
                         cfg->package_count++;
                         section = SEC_PKG_ENTRY;
+                    } else {
+                        /* Bug fix: EOS_MAX_PACKAGES exceeded. pkg_idx is now
+                         * out of range for cfg->packages[]. Fall back to the
+                         * neutral SEC_PACKAGES state so the "key: val" lines
+                         * that follow (belonging to this rejected package)
+                         * are NOT dispatched into SEC_PKG_ENTRY/SEC_PKG_BUILD/
+                         * SEC_PKG_OPTIONS below, which would otherwise index
+                         * cfg->packages[pkg_idx] out of bounds -- previously
+                         * this silently corrupted memory adjacent to the
+                         * packages[] array (package_count and beyond). */
+                        EOS_ERROR("Too many packages in config (max %d); ignoring '%s'",
+                                   EOS_MAX_PACKAGES, val);
+                        section = SEC_PACKAGES;
                     }
-                }
-            } else if (section == SEC_PKG_DEPS && pkg_idx >= 0) {
-                if (cfg->packages[pkg_idx].dep_count < EOS_MAX_DEPS) {
-                    strncpy(cfg->packages[pkg_idx].deps[cfg->packages[pkg_idx].dep_count],
-                            item, EOS_MAX_NAME - 1);
-                    cfg->packages[pkg_idx].dep_count++;
+                } else if (section == SEC_PKG_DEPS &&
+                           pkg_idx >= 0 && pkg_idx < EOS_MAX_PACKAGES) {
+                    if (cfg->packages[pkg_idx].dep_count < EOS_MAX_DEPS) {
+                        strncpy(cfg->packages[pkg_idx].deps[cfg->packages[pkg_idx].dep_count],
+                                item, EOS_MAX_NAME - 1);
+                        cfg->packages[pkg_idx].dep_count++;
+                    }
                 }
             } else if (section == SEC_SYSTEM_RTOS || section == SEC_SYSTEM_RTOS_ENTRY) {
                 /* "- provider: freertos" starts a new RTOS entry */
@@ -163,6 +183,43 @@ EosResult eos_config_load(EosConfig *cfg, const char *path) {
             if (strcmp(key, "docs") == 0)           { section = SEC_DOCS; continue; }
         }
 
+        /* A key at system's own child indent belongs to system, not to
+         * whichever sub-section was descended into last. Without this,
+         * `system.linux` swallowed the sibling `rtos:` in every hybrid
+         * config: SEC_SYSTEM_LINUX handles only `provider`, `kernel` and
+         * `rootfs`, so the RTOS list was never entered, rtos_count stayed 0,
+         * and a hybrid build produced no RTOS firmware without saying so.
+         * SEC_SYSTEM_KERNEL already popped back for one specific sibling;
+         * this does it for all of them, which is what the indentation means.
+         *
+         * The guard is structural rather than a list of the seven keys that
+         * `case SEC_SYSTEM:` happens to handle today. A key list here is a
+         * second authority on what a system child key is, kept in step with
+         * the switch below by hand and by nothing else -- add an eighth key
+         * there and the swallow returns for it, silently, with no test that
+         * fails. Every descendant of a system sub-section sits at indent >= 2
+         * (system.linux.provider at 2, rtos entry keys at 3) and list items
+         * `continue` before reaching here, so indent <= 1 is exactly the
+         * "back at system's own child level" condition. */
+        if (indent <= 1 &&
+            (section == SEC_SYSTEM_LINUX || section == SEC_SYSTEM_KERNEL ||
+             section == SEC_SYSTEM_ROOTFS || section == SEC_SYSTEM_RTOS ||
+             section == SEC_SYSTEM_RTOS_ENTRY)) {
+            section = SEC_SYSTEM;
+        }
+
+        /* Same shape, one section up. SEC_TOOLCHAIN_LINUX popped back for
+         * exactly one sibling and SEC_TOOLCHAIN_RTOS for none, so a `target:`
+         * written at toolchain's own indent after the linux:/rtos: blocks
+         * landed in toolchain.rtos_target instead of toolchain.target --
+         * silently, exactly as rtos_count stayed 0. No config under examples/
+         * is ordered that way today, which is the only reason it has not
+         * bitten. */
+        if (indent <= 1 &&
+            (section == SEC_TOOLCHAIN_LINUX || section == SEC_TOOLCHAIN_RTOS)) {
+            section = SEC_TOOLCHAIN;
+        }
+
         /* sub-sections */
         switch (section) {
         case SEC_PROJECT:
@@ -181,7 +238,6 @@ EosResult eos_config_load(EosConfig *cfg, const char *path) {
             break;
         case SEC_TOOLCHAIN_LINUX:
             if (strcmp(key, "target") == 0) strncpy(cfg->toolchain.target, val, EOS_MAX_NAME - 1);
-            if (indent <= 1 && strcmp(key, "rtos") == 0) { section = SEC_TOOLCHAIN_RTOS; continue; }
             break;
         case SEC_TOOLCHAIN_RTOS:
             if (strcmp(key, "target") == 0) strncpy(cfg->toolchain.rtos_target, val, EOS_MAX_NAME - 1);
@@ -244,6 +300,10 @@ EosResult eos_config_load(EosConfig *cfg, const char *path) {
             }
             break;
         case SEC_PKG_ENTRY:
+            /* Defense in depth: pkg_idx should always be in range here given
+             * the SEC_PACKAGES fallback above, but bound it explicitly since
+             * this indexes cfg->packages[] directly. */
+            if (pkg_idx < 0 || pkg_idx >= EOS_MAX_PACKAGES) break;
             if (strcmp(key, "version") == 0) strncpy(cfg->packages[pkg_idx].version, val, EOS_MAX_NAME - 1);
             if (strcmp(key, "source") == 0)  strncpy(cfg->packages[pkg_idx].source, val, EOS_MAX_URL - 1);
             if (strcmp(key, "hash") == 0)    strncpy(cfg->packages[pkg_idx].hash, val, EOS_HASH_LEN - 1);
@@ -251,17 +311,20 @@ EosResult eos_config_load(EosConfig *cfg, const char *path) {
             if (strcmp(key, "deps") == 0)    { section = SEC_PKG_DEPS; continue; }
             break;
         case SEC_PKG_BUILD:
+            if (pkg_idx < 0 || pkg_idx >= EOS_MAX_PACKAGES) break;
             if (strcmp(key, "type") == 0) {
                 cfg->packages[pkg_idx].build_type = eos_build_type_from_str(val);
             }
             if (indent <= 2 && strcmp(key, "options") == 0) { section = SEC_PKG_OPTIONS; continue; }
+            if (indent <= 2 && strcmp(key, "deps") == 0) { section = SEC_PKG_DEPS; continue; }
             if (indent <= 2 && strcmp(key, "version") == 0) {
                 section = SEC_PKG_ENTRY;
                 strncpy(cfg->packages[pkg_idx].version, val, EOS_MAX_NAME - 1);
             }
             break;
         case SEC_PKG_OPTIONS:
-            if (pkg_idx >= 0 && cfg->packages[pkg_idx].option_count < EOS_MAX_OPTIONS) {
+            if (pkg_idx >= 0 && pkg_idx < EOS_MAX_PACKAGES &&
+                cfg->packages[pkg_idx].option_count < EOS_MAX_OPTIONS) {
                 int oi = cfg->packages[pkg_idx].option_count;
                 strncpy(cfg->packages[pkg_idx].options[oi].key, key, EOS_MAX_NAME - 1);
                 strncpy(cfg->packages[pkg_idx].options[oi].value, val, EOS_MAX_PATH - 1);

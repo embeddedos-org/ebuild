@@ -40,7 +40,7 @@ def test_resolve_runner_args_unit(tmp_path, monkeypatch, config_val, env_val, cl
         monkeypatch.setenv(env_key, env_val)
     else:
         monkeypatch.delenv(env_key, raising=False)
-        
+
     config_file = tmp_path / "build.yaml"
     if config_val is not None:
         if isinstance(config_val, list):
@@ -48,13 +48,13 @@ def test_resolve_runner_args_unit(tmp_path, monkeypatch, config_val, env_val, cl
             config_file.write_text(f'project:\n  name: test\nsystem:\n  test_args: [{args_str}]\n', encoding="utf-8")
         else:
             config_file.write_text(f'project:\n  name: test\nsystem:\n  test_args: {config_val}\n', encoding="utf-8")
-            
+
     res = _resolve_runner_args(
-        cli_args=cli_val, 
-        env_key=env_key, 
-        cfg_loader=create_loader(str(config_file)), 
-        config_section="system_config", 
-        config_key="test_args", 
+        cli_args=cli_val,
+        env_key=env_key,
+        cfg_loader=create_loader(str(config_file)),
+        config_section="system_config",
+        config_key="test_args",
         log=DummyLogger(),
         clear_args=clear_args_val,
     )
@@ -64,13 +64,13 @@ def test_resolve_runner_args_null_safety():
     """Verify null safety with empty or non-dict sections."""
     class FakeConfig:
         system_config = None # Explicitly None to test null safety
-        
+
     res = _resolve_runner_args(
-        cli_args=(), 
-        env_key="TEST_ENV_KEY", 
-        cfg_loader=lambda: FakeConfig(), 
-        config_section="system_config", 
-        config_key="test_args", 
+        cli_args=(),
+        env_key="TEST_ENV_KEY",
+        cfg_loader=lambda: FakeConfig(),
+        config_section="system_config",
+        config_key="test_args",
         log=DummyLogger()
     )
     assert res == []

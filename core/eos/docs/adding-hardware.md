@@ -131,7 +131,7 @@ eboot_add_board(my_board)
 ### Step 4: Build and test
 
 ```bash
-cmake -B build -DEBLDR_BOARD=my_board
+cmake -B build -DEBLDR_BOARD=my_board -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
 

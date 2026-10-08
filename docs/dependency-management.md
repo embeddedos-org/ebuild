@@ -345,7 +345,7 @@ eBuild recipes currently carry a subset of the Master Design §10.1 component co
 
 ### Shipped Embedded Library Catalog
 
-ebuild includes a curated suite of pre-packaged recipes under `recipes/`:
+ebuild includes a curated suite of pre-packaged recipes under `ebuild/recipes/`:
 
 | Package | Version | Build System | License | Description |
 |:---|:---|:---|:---|:---|

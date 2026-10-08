@@ -43,8 +43,6 @@ NO_GATE = {
     "auto-assign.yml":
         "assigns a reviewer; it verifies nothing, so requiring it would block "
         "merges on a housekeeping step",
-    "claude-code-review.yml":
-        "posts advisory review comments and never fails on content",
     "codeql.yml":
         "already reports a single stable name, `CodeQL`, which should be "
         "required directly rather than wrapped in a gate",

@@ -207,7 +207,7 @@ Layers are optional components activated via `--with`:
 
 ### Templates
 
-6 project templates in `templates/` use `{{PLACEHOLDER}}` variable substitution:
+6 project templates in `ebuild/templates/` use `{{PLACEHOLDER}}` variable substitution:
 
 - `bare-metal` — minimal embedded application
 - `rtos-app` — FreeRTOS/EoS RTOS application

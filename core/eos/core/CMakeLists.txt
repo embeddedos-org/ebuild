@@ -6,6 +6,7 @@ add_library(eos_core STATIC
     src/lockfile.c
     src/layer.c
     src/scheduler.c
+    src/shell_cmd.c
 )
 target_include_directories(eos_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

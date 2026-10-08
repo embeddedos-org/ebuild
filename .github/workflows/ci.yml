@@ -21,7 +21,7 @@ jobs:
   test:
     # Both matrix dimensions belong in the name. With only the Python
     # version here, the ubuntu, macOS and Windows legs all reported under
-    # one check name -- three check runs called "Test (Python 3.10)" --
+    # one check name -- three check runs called "Test (Python 3.11)" --
     # so a Windows-only failure was indistinguishable from the other two
     # until you opened it, and no branch protection rule could name one
     # leg without naming all three.
@@ -29,7 +29,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
         # macos-latest, not macos-13: the macos-13 image is retired, so jobs
         # requesting it are never assigned a runner and sit queued until they
         # time out. Every other workflow in this repo already uses macos-latest.

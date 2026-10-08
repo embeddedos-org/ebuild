@@ -3,61 +3,64 @@
 // ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
 
 #include "eos/backend.h"
-#include "eos/log.h"
+#include "eos/shell_cmd.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 static EosResult autotools_configure(EosBackend *self, const char *src_dir,
                                      const char *build_dir, const char *toolchain_file,
                                      const EosKeyValue *options, int option_count) {
-    (void)self;
-    (void)build_dir;
-    char cmd[2048];
-    int offset = snprintf(cmd, sizeof(cmd), "cd \"%s\" && ./configure", src_dir);
-
+    (void)self; (void)build_dir;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "cd ");
+    eos_shell_cmd_arg(&cmd, src_dir);
+    eos_shell_cmd_text(&cmd, " && ./configure");
     if (toolchain_file && toolchain_file[0]) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " --host=%s", toolchain_file);
+        eos_shell_cmd_text(&cmd, " --host=");
+        eos_shell_cmd_arg(&cmd, toolchain_file);
     }
-
-    for (int i = 0; i < option_count && offset < (int)sizeof(cmd) - 64; i++) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " --%s=%s", options[i].key, options[i].value);
+    /* --<key>=<value>: the key is an option name, one word; the value quoted. */
+    for (int i = 0; i < option_count; i++) {
+        eos_shell_cmd_text(&cmd, " --");
+        eos_shell_cmd_word(&cmd, options[i].key);
+        eos_shell_cmd_text(&cmd, "=");
+        eos_shell_cmd_arg(&cmd, options[i].value);
     }
-
-    EOS_INFO("Autotools configure: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    return eos_shell_cmd_run(&cmd, "Autotools configure");
 }
 
 static EosResult autotools_build(EosBackend *self, const char *build_dir, int jobs) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "make -C \"%s\" -j%d", build_dir, jobs > 0 ? jobs : 4);
-    EOS_INFO("Autotools build: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "make -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -j");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    return eos_shell_cmd_run(&cmd, "Autotools build");
+}
+
+static EosResult autotools_clean(EosBackend *self, const char *build_dir) {
+    (void)self;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "make -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " distclean");
+    return eos_shell_cmd_run(&cmd, "Autotools clean");
 }
 
 static EosResult autotools_install(EosBackend *self, const char *build_dir,
                                    const char *install_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "make -C \"%s\" install DESTDIR=\"%s\"",
-             build_dir, install_dir);
-    EOS_INFO("Autotools install: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
-}
-
-static EosResult autotools_clean(EosBackend *self, const char *build_dir) {
-    (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "make -C \"%s\" distclean", build_dir);
-    EOS_INFO("Autotools clean: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "make -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " install DESTDIR=");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    return eos_shell_cmd_run(&cmd, "Autotools install");
 }
 
 void eos_backend_autotools_init(EosBackend *b) {

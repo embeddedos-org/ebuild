@@ -3,61 +3,73 @@
 // ISO/IEC 25000 | ISO/IEC/IEEE 15288:2023
 
 #include "eos/backend.h"
-#include "eos/log.h"
+#include "eos/shell_cmd.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+
+/* -D<key>=<value> for every option; the key unquoted as one word, the value
+ * quoted. A value with spaces used to split into two arguments. */
+static void append_defines(EosShellCmd *cmd, const EosKeyValue *options,
+                           int option_count, const char *skip_key) {
+    for (int i = 0; i < option_count; i++) {
+        if (skip_key && strcmp(options[i].key, skip_key) == 0) continue;
+        eos_shell_cmd_text(cmd, " -D");
+        eos_shell_cmd_word(cmd, options[i].key);
+        eos_shell_cmd_text(cmd, "=");
+        eos_shell_cmd_arg(cmd, options[i].value);
+    }
+}
 
 static EosResult meson_configure(EosBackend *self, const char *src_dir,
                                  const char *build_dir, const char *toolchain_file,
                                  const EosKeyValue *options, int option_count) {
     (void)self;
-    char cmd[2048];
-    int offset = snprintf(cmd, sizeof(cmd), "meson setup \"%s\" \"%s\"",
-                          build_dir, src_dir);
-
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "meson setup ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " ");
+    eos_shell_cmd_arg(&cmd, src_dir);
     if (toolchain_file && toolchain_file[0]) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " --cross-file \"%s\"", toolchain_file);
+        eos_shell_cmd_text(&cmd, " --cross-file ");
+        eos_shell_cmd_arg(&cmd, toolchain_file);
     }
-
-    for (int i = 0; i < option_count && offset < (int)sizeof(cmd) - 64; i++) {
-        offset += snprintf(cmd + offset, sizeof(cmd) - (size_t)offset,
-                          " -D%s=%s", options[i].key, options[i].value);
-    }
-
-    EOS_INFO("Meson configure: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    append_defines(&cmd, options, option_count, NULL);
+    return eos_shell_cmd_run(&cmd, "Meson configure");
 }
 
 static EosResult meson_build(EosBackend *self, const char *build_dir, int jobs) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "ninja -C \"%s\" -j %d", build_dir, jobs > 0 ? jobs : 4);
-    EOS_INFO("Meson build: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "ninja -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -j ");
+    eos_shell_cmd_int(&cmd, jobs > 0 ? jobs : 4);
+    return eos_shell_cmd_run(&cmd, "Meson build");
 }
 
 static EosResult meson_install(EosBackend *self, const char *build_dir,
                                const char *install_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "DESTDIR=\"%s\" ninja -C \"%s\" install",
-             install_dir, build_dir);
-    EOS_INFO("Meson install: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "DESTDIR=");
+    eos_shell_cmd_arg(&cmd, install_dir);
+    eos_shell_cmd_text(&cmd, " ninja -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " install");
+    return eos_shell_cmd_run(&cmd, "Meson install");
 }
 
 static EosResult meson_clean(EosBackend *self, const char *build_dir) {
     (void)self;
-    char cmd[1024];
-    snprintf(cmd, sizeof(cmd), "ninja -C \"%s\" -t clean", build_dir);
-    EOS_INFO("Meson clean: %s", cmd);
-    int rc = system(cmd);
-    return (rc == 0) ? EOS_OK : EOS_ERR_BUILD;
+    EosShellCmd cmd;
+    eos_shell_cmd_init(&cmd);
+    eos_shell_cmd_text(&cmd, "ninja -C ");
+    eos_shell_cmd_arg(&cmd, build_dir);
+    eos_shell_cmd_text(&cmd, " -t clean");
+    return eos_shell_cmd_run(&cmd, "Meson clean");
 }
 
 void eos_backend_meson_init(EosBackend *b) {
