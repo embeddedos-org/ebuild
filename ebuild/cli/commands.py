@@ -3178,6 +3178,94 @@ def quantize(
     raise SystemExit(2)
 
 
+#  test — run the project's test suite (golden-path step)
+# ═════════════════════════════════════════════════════════════
+# First half of #83 (the MVP golden path gains `ebuild test`; `ebuild
+# monitor` is still missing). Auto-detects the runner:
+#   ctest  — if <build-dir>/CTestTestfile.cmake exists (a configured
+#             CMake/CTest tree is the strongest signal)
+#   pytest — if a pytest config marker (pytest.ini, pyproject.toml,
+#             setup.cfg, tox.ini) or a tests/ or test/ dir exists
+# Otherwise the command exits 2 fail-closed rather than pretending to
+# test. Extra args after `--` are passed through to the runner.
+
+
+_PYTEST_MARKERS = ("pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
+
+
+def _detect_test_runner(runner: str, build_dir: Path, project_dir: Path) -> Optional[str]:
+    """Return 'pytest' or 'ctest', or None when nothing is detected."""
+    if runner != "auto":
+        return runner
+    if (build_dir / "CTestTestfile.cmake").is_file():
+        return "ctest"
+    for marker in _PYTEST_MARKERS:
+        if (project_dir / marker).is_file():
+            return "pytest"
+    for dirname in ("tests", "test"):
+        if (project_dir / dirname).is_dir():
+            return "pytest"
+    return None
+
+
+def _test_command(chosen: str, build_dir: str, runner_args: tuple) -> List[str]:
+    if chosen == "ctest":
+        return ["ctest", "--test-dir", build_dir, *runner_args]
+    return [sys.executable, "-m", "pytest", *runner_args]
+
+
+@cli.command(
+    name="test",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+@click.option(
+    "--runner",
+    type=click.Choice(["auto", "pytest", "ctest"]),
+    default="auto",
+    show_default=True,
+    help="Test runner to use (auto-detects when 'auto').",
+)
+@click.option(
+    "--build-dir",
+    default="build",
+    show_default=True,
+    type=click.Path(file_okay=False),
+    help="Build directory for ctest detection and invocation.",
+)
+@click.argument("runner_args", nargs=-1, type=click.UNPROCESSED)
+@pass_logger
+def test(
+    log: "Logger",
+    runner: str,
+    build_dir: str,
+    runner_args: tuple,
+) -> None:
+    """Run the project's test suite with the detected runner.
+
+    Example:\n
+
+        ebuild test\n
+        ebuild test --runner ctest -- --output-on-failure\n
+        ebuild test -- -k network -x
+    """
+    project_dir = Path.cwd()
+    chosen = _detect_test_runner(runner, Path(build_dir), project_dir)
+    if chosen is None:
+        log.error(
+            "No test runner detected: no <build-dir>/CTestTestfile.cmake, no pytest "
+            "config marker, and no tests/ or test/ directory. Pass "
+            "--runner pytest|ctest to choose explicitly."
+        )
+        raise SystemExit(2)
+    cmd = _test_command(chosen, build_dir, runner_args)
+    log.header("Test run")
+    log.info(f"  runner:  {shlex.join(cmd)}")
+    proc = subprocess.run(cmd)
+    if proc.returncode != 0:
+        log.error(f"Tests failed (exit {proc.returncode}).")
+    raise SystemExit(proc.returncode)
+
+
 # ═════════════════════════════════════════════════════════════
 #  Integration commands
 # ═════════════════════════════════════════════════════════════
