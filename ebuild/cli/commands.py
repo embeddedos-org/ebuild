@@ -2645,7 +2645,9 @@ def generate_board(
         raise SystemExit(1)
 
 
-@cli.command()
+@cli.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 @click.option(
     "--config",
     "config_path",
@@ -2665,51 +2667,78 @@ def generate_board(
     default=None,
     help="Only run tests whose name contains this substring.",
 )
+@click.option(
+    "--runner",
+    type=click.Choice(["auto", "pytest", "ctest", "cargo", "meson", "make"]),
+    default="auto",
+    show_default=True,
+    help="Test runner to use (auto-detects when 'auto').",
+)
+@click.argument("runner_args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
-def test(log: Logger, config_path: str, build_dir: str,
-         name_filter: Optional[str]) -> None:
+def test(
+    log: Logger,
+    config_path: str,
+    build_dir: str,
+    name_filter: Optional[str],
+    runner: str,
+    runner_args: tuple,
+) -> None:
     """Build and run the project's tests.
 
-    Step six of the golden path. Delegates to whichever runner the project
-    already uses -- ctest for a CMake tree, `cargo test`, `meson test`, or
-    `make test` -- rather than imposing a test framework on the project.
+    Step six of the golden path. Native ebuild ``test`` targets run first;
+    otherwise the command drives the project's own runner -- auto-detected
+    from the project layout (ctest, pytest, cargo test, meson test, or
+    make test) or chosen explicitly with --runner. Extra arguments after
+    ``--`` are passed through to the runner, e.g.
+    ``ebuild test -- -k network -x``.
     """
-    log.header("ebuild — Test")
+    log.header("ebuild \u2014 Test")
 
     build_path = Path(build_dir)
+    source_dir = Path.cwd()
 
     try:
         log.step("Loading configuration...")
         cfg = load_config(config_path)
         log.info(f"Project: {cfg.name} v{cfg.version}")
     except FileNotFoundError:
-        log.error(
-            f"No {config_path} here. Run this from a project directory, or "
-            f"pass --config."
+        # Not an ebuild project -- fall through to layout-based detection
+        # so `ebuild test` still works in any project directory.
+        cfg = None
+        log.info(
+            f"No {config_path} here; detecting the test runner from the project layout."
         )
-        raise SystemExit(1)
     except (ConfigError, RecipeError) as e:
         log.error(f"Configuration error: {e}")
         raise SystemExit(1)
 
-    native = [t for t in cfg.targets if t.target_type == "test"]
-    if native:
-        _run_native_tests(cfg, native, build_path, log, name_filter)
-        return
+    if cfg is not None:
+        source_dir = cfg.source_dir
+        native = [t for t in cfg.targets if t.target_type == "test"]
+        if native:
+            _run_native_tests(cfg, native, build_path, log, name_filter)
+            return
 
-    runner = _resolve_test_runner(cfg.source_dir, build_path, name_filter)
-    if runner is None:
-        log.error(
-            "No test runner found for this project.\n"
-            "  ebuild test drives the project's own runner. Add one of:\n"
-            "    - CMake with enable_testing() + add_test()   -> ctest\n"
-            "    - a 'test' target in the Makefile            -> make test\n"
-            "    - Cargo.toml                                 -> cargo test\n"
-            "    - meson.build                                -> meson test"
-        )
-        raise SystemExit(1)
+    if runner != "auto":
+        name, argv, cwd = _runner_argv(runner, source_dir, build_path, name_filter)
+    else:
+        resolved = _resolve_test_runner(source_dir, build_path, name_filter)
+        if resolved is None:
+            log.error(
+                "No test runner found for this project.\n"
+                "  ebuild test drives the project's own runner. Add one of:\n"
+                "    - a tests/ dir or pytest config "
+                "(pytest.ini, pyproject.toml, setup.cfg, tox.ini) -> pytest\n"
+                "    - CMake with enable_testing() + add_test()   -> ctest\n"
+                "    - a 'test' target in the Makefile            -> make test\n"
+                "    - Cargo.toml                                 -> cargo test\n"
+                "    - meson.build                                -> meson test"
+            )
+            raise SystemExit(1)
+        name, argv, cwd = resolved
 
-    name, argv, cwd = runner
+    argv = [*argv, *runner_args]
     log.step(f"Running tests with {name}...")
     log.info(" ".join(argv))
 
@@ -2969,6 +2998,42 @@ def _parse_test_counts(name: str, output: str):
     return int(groups["total"]) - failed, failed
 
 
+_PYTEST_MARKERS = ("pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
+
+
+def _runner_argv(
+    runner: str,
+    source_dir: Path,
+    build_dir: Path,
+    name_filter: Optional[str],
+) -> Tuple[str, List[str], Path]:
+    """argv + cwd for an explicitly chosen runner.
+
+    Returns ``(display_name, argv, cwd)``.
+    """
+    if runner == "pytest":
+        argv = [sys.executable, "-m", "pytest"]
+        if name_filter:
+            argv += ["-k", name_filter]
+        return "pytest", argv, source_dir
+    if runner == "ctest":
+        argv = ["ctest", "--output-on-failure"]
+        if name_filter:
+            argv += ["-R", name_filter]
+        return "ctest", argv, build_dir
+    if runner == "cargo":
+        argv = ["cargo", "test"]
+        if name_filter:
+            argv += [name_filter]
+        return "cargo test", argv, source_dir
+    if runner == "meson":
+        argv = ["meson", "test", "-C", str(build_dir)]
+        if name_filter:
+            argv += ["--suite", name_filter]
+        return "meson test", argv, source_dir
+    return "make test", ["make", "-C", str(source_dir), "test"], source_dir
+
+
 def _resolve_test_runner(
     source_dir: Path,
     build_dir: Path,
@@ -2977,26 +3042,23 @@ def _resolve_test_runner(
     """Pick the test runner this project already uses.
 
     Returns ``(display_name, argv, cwd)``, or None when the project declares
-    no tests. Ordered so that an explicit CMake test registry wins over a
-    generic `make test` target in the same tree.
+    no tests. Ordered so that an explicit CMake test registry wins, then a
+    Python test layout, then the compiled-language runners, with a generic
+    `make test` target last.
     """
     if (build_dir / "CTestTestfile.cmake").is_file():
-        argv = ["ctest", "--output-on-failure"]
-        if name_filter:
-            argv += ["-R", name_filter]
-        return "ctest", argv, build_dir
+        return _runner_argv("ctest", source_dir, build_dir, name_filter)
+
+    if (source_dir / "tests").is_dir() or (source_dir / "test").is_dir() or any(
+        (source_dir / marker).is_file() for marker in _PYTEST_MARKERS
+    ):
+        return _runner_argv("pytest", source_dir, build_dir, name_filter)
 
     if (source_dir / "Cargo.toml").is_file():
-        argv = ["cargo", "test"]
-        if name_filter:
-            argv += [name_filter]
-        return "cargo test", argv, source_dir
+        return _runner_argv("cargo", source_dir, build_dir, name_filter)
 
     if (build_dir / "meson-info").is_dir():
-        argv = ["meson", "test", "-C", str(build_dir)]
-        if name_filter:
-            argv += ["--suite", name_filter]
-        return "meson test", argv, source_dir
+        return _runner_argv("meson", source_dir, build_dir, name_filter)
 
     makefile = next(
         (source_dir / n for n in ("Makefile", "makefile", "GNUmakefile")
@@ -3006,10 +3068,9 @@ def _resolve_test_runner(
     if makefile is not None:
         text = makefile.read_text(encoding="utf-8", errors="replace")
         if re.search(r"^test\s*:", text, re.MULTILINE):
-            return "make test", ["make", "-C", str(source_dir), "test"], source_dir
+            return _runner_argv("make", source_dir, build_dir, name_filter)
 
     return None
-
 
 @cli.command()
 @click.option("--port", default=None,
@@ -3176,94 +3237,6 @@ def quantize(
     if validate:
         log.warning("--validate requested: the bit-exactness harness has no backend to check yet.")
     raise SystemExit(2)
-
-
-#  test — run the project's test suite (golden-path step)
-# ═════════════════════════════════════════════════════════════
-# First half of #83 (the MVP golden path gains `ebuild test`; `ebuild
-# monitor` is still missing). Auto-detects the runner:
-#   ctest  — if <build-dir>/CTestTestfile.cmake exists (a configured
-#             CMake/CTest tree is the strongest signal)
-#   pytest — if a pytest config marker (pytest.ini, pyproject.toml,
-#             setup.cfg, tox.ini) or a tests/ or test/ dir exists
-# Otherwise the command exits 2 fail-closed rather than pretending to
-# test. Extra args after `--` are passed through to the runner.
-
-
-_PYTEST_MARKERS = ("pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
-
-
-def _detect_test_runner(runner: str, build_dir: Path, project_dir: Path) -> Optional[str]:
-    """Return 'pytest' or 'ctest', or None when nothing is detected."""
-    if runner != "auto":
-        return runner
-    if (build_dir / "CTestTestfile.cmake").is_file():
-        return "ctest"
-    for marker in _PYTEST_MARKERS:
-        if (project_dir / marker).is_file():
-            return "pytest"
-    for dirname in ("tests", "test"):
-        if (project_dir / dirname).is_dir():
-            return "pytest"
-    return None
-
-
-def _test_command(chosen: str, build_dir: str, runner_args: tuple) -> List[str]:
-    if chosen == "ctest":
-        return ["ctest", "--test-dir", build_dir, *runner_args]
-    return [sys.executable, "-m", "pytest", *runner_args]
-
-
-@cli.command(
-    name="test",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-)
-@click.option(
-    "--runner",
-    type=click.Choice(["auto", "pytest", "ctest"]),
-    default="auto",
-    show_default=True,
-    help="Test runner to use (auto-detects when 'auto').",
-)
-@click.option(
-    "--build-dir",
-    default="build",
-    show_default=True,
-    type=click.Path(file_okay=False),
-    help="Build directory for ctest detection and invocation.",
-)
-@click.argument("runner_args", nargs=-1, type=click.UNPROCESSED)
-@pass_logger
-def test(
-    log: "Logger",
-    runner: str,
-    build_dir: str,
-    runner_args: tuple,
-) -> None:
-    """Run the project's test suite with the detected runner.
-
-    Example:\n
-
-        ebuild test\n
-        ebuild test --runner ctest -- --output-on-failure\n
-        ebuild test -- -k network -x
-    """
-    project_dir = Path.cwd()
-    chosen = _detect_test_runner(runner, Path(build_dir), project_dir)
-    if chosen is None:
-        log.error(
-            "No test runner detected: no <build-dir>/CTestTestfile.cmake, no pytest "
-            "config marker, and no tests/ or test/ directory. Pass "
-            "--runner pytest|ctest to choose explicitly."
-        )
-        raise SystemExit(2)
-    cmd = _test_command(chosen, build_dir, runner_args)
-    log.header("Test run")
-    log.info(f"  runner:  {shlex.join(cmd)}")
-    proc = subprocess.run(cmd)
-    if proc.returncode != 0:
-        log.error(f"Tests failed (exit {proc.returncode}).")
-    raise SystemExit(proc.returncode)
 
 
 # ═════════════════════════════════════════════════════════════
