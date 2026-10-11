@@ -3239,6 +3239,233 @@ def quantize(
     raise SystemExit(2)
 
 
+
+# ─────────────────────────────────────────────────────────────
+#  model — Track 1 quantized-model registry (phase 1)
+# ─────────────────────────────────────────────────────────────
+# Project-local registry for quantized artifacts (docs/quantize.md
+# "Registry"): `ebuild model register` hashes the artifact and records
+# {name, digest, target, format, calibration hash, source path} in
+# .ebuild/models.json next to the project, so builds can pin
+# `model@sha256:…` the way they pin packages.
+
+_MODEL_TARGETS = ("cmsis-nn", "esp-nn", "aie")
+_MODEL_FORMATS = ("int8", "int16")
+
+
+def _models_registry_path() -> Path:
+    """Project-local registry file: cwd/.ebuild/models.json."""
+    return Path.cwd() / ".ebuild" / "models.json"
+
+
+def _load_models() -> Dict[str, Dict[str, Any]]:
+    import json
+
+    path = _models_registry_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(f"Cannot read model registry {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise click.ClickException(f"Model registry {path} is corrupt: want a JSON object.")
+    return data
+
+
+def _save_models(models: Dict[str, Dict[str, Any]]) -> None:
+    import json
+
+    path = _models_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(models, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _sha256_of_file(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _hash_calibration(path: Path) -> str:
+    """Content hash of calibration data (a file or a directory of samples)."""
+    digest_hex = None
+    if path.is_dir():
+        entries = sorted(p for p in path.rglob("*") if p.is_file())
+        rel_paths = [str(p.relative_to(path)).replace(os.sep, "/") for p in entries]
+        import hashlib
+
+        digest = hashlib.sha256()
+        for rel, p in zip(rel_paths, entries):
+            digest.update(f"{rel}\0".encode("utf-8"))
+            digest.update(_sha256_of_file(p).encode("utf-8"))
+        digest_hex = digest.hexdigest()
+    else:
+        digest_hex = _sha256_of_file(path)
+    return digest_hex
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+@cli.group()
+def model() -> None:
+    """Manage the project-local quantized-model registry (Track 1).
+
+    Registered artifacts get a content hash so builds can pin
+    ``model@sha256:…`` the way they pin packages. See docs/quantize.md.
+    """
+
+
+@model.command()
+@click.option(
+    "--file",
+    "file_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Quantized model file to register.",
+)
+@click.option(
+    "--target",
+    required=True,
+    type=click.Choice(list(_MODEL_TARGETS)),
+    help="Accelerator backend target (tiny: cmsis-nn/esp-nn; large: aie).",
+)
+@click.option(
+    "--format",
+    "fmt",
+    type=click.Choice(list(_MODEL_FORMATS)),
+    default="int8",
+    show_default=True,
+    help="Quantization format.",
+)
+@click.option(
+    "--calibration",
+    required=True,
+    type=click.Path(exists=True),
+    help="Calibration data file or directory used.",
+)
+@click.option(
+    "--name",
+    default=None,
+    help="Registry name (default: the model file stem).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Overwrite an existing entry with the same name.",
+)
+@pass_logger
+def register(
+    log: Logger,
+    file_path: str,
+    target: str,
+    fmt: str,
+    calibration: str,
+    name: Optional[str],
+    force: bool,
+) -> None:
+    """Register a quantized model artifact in .ebuild/models.json.
+
+    Example:\n
+        ebuild model register --file mobilenet.quant.int8.tflite \\
+            --target cmsis-nn --format int8 --calibration data/calib/
+    """
+    model_file = Path(file_path)
+    if not model_file.is_file():
+        # Fail closed: never register something that cannot be hashed.
+        log.error(f"Model file not found: {file_path}")
+        raise SystemExit(2)
+    name = name or model_file.stem
+    models = _load_models()
+    if name in models and not force:
+        log.error(f"Model {name!r} is already registered. Use --force to overwrite it.")
+        raise SystemExit(1)
+
+    digest = _sha256_of_file(model_file)
+    calib_hash = _hash_calibration(Path(calibration))
+    models[name] = {
+        "name": name,
+        "digest": digest,
+        "target": target,
+        "format": fmt,
+        "calibration_hash": calib_hash,
+        "source_path": str(model_file),
+        "registered_at": _utc_now_iso(),
+    }
+    _save_models(models)
+
+    log.header("Model registered")
+    log.info(f"  name:             {name}")
+    log.info(f"  digest:           sha256:{digest}")
+    log.info(f"  target:           {target}")
+    log.info(f"  format:           {fmt}")
+    log.info(f"  calibration hash: sha256:{calib_hash}")
+    log.info(f"  registry:         {_models_registry_path()}")
+
+
+@model.command("list")
+@pass_logger
+def model_list(log: Logger) -> None:
+    """List the models registered in this project."""
+    models = _load_models()
+    if not models:
+        log.info("No models registered.")
+        return
+    log.header("Registered models")
+    log.info(f"  {'NAME':<24} {'TARGET':<10} {'FORMAT':<6} {'DIGEST':<20} REGISTERED_AT")
+    for name in sorted(models):
+        entry = models[name]
+        short = f"sha256:{entry['digest'][:12]}"
+        log.info(
+            f"  {name:<24} {entry['target']:<10} {entry['format']:<6} "
+            f"{short:<20} {entry.get('registered_at', '')}"
+        )
+
+
+@model.command()
+@click.option("--name", required=True, help="Registered model name.")
+@pass_logger
+def pin(log: Logger, name: str) -> None:
+    """Print the pin string builds consume: <name>@sha256:<digest>."""
+    entry = _load_models().get(name)
+    if entry is None:
+        log.error(f"Model {name!r} is not registered.")
+        raise SystemExit(1)
+    click.echo(f"{name}@sha256:{entry['digest']}")
+
+
+@model.command()
+@click.option("--name", required=True, help="Registered model name.")
+@pass_logger
+def show(log: Logger, name: str) -> None:
+    """Show the full registry entry for a model."""
+    entry = _load_models().get(name)
+    if entry is None:
+        log.error(f"Model {name!r} is not registered.")
+        raise SystemExit(1)
+    log.header(f"Model {name}")
+    for key in (
+        "name",
+        "digest",
+        "target",
+        "format",
+        "calibration_hash",
+        "source_path",
+        "registered_at",
+    ):
+        log.info(f"  {key}: {entry.get(key)}")
+
 # ═════════════════════════════════════════════════════════════
 #  Integration commands
 # ═════════════════════════════════════════════════════════════
