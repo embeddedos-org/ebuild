@@ -2693,7 +2693,7 @@ def test(
     ``--`` are passed through to the runner, e.g.
     ``ebuild test -- -k network -x``.
     """
-    log.header("ebuild \u2014 Test")
+    log.header("ebuild — Test")
 
     build_path = Path(build_dir)
     source_dir = Path.cwd()
@@ -3443,6 +3443,60 @@ def pin(log: Logger, name: str) -> None:
         log.error(f"Model {name!r} is not registered.")
         raise SystemExit(1)
     click.echo(f"{name}@sha256:{entry['digest']}")
+
+
+@model.command()
+@click.option("--name", required=True, help="Registered model name.")
+@click.option(
+    "--calibration",
+    default=None,
+    type=click.Path(exists=True),
+    help="Calibration data file or directory to re-hash and compare "
+    "against the recorded calibration hash.",
+)
+@pass_logger
+def verify(log: Logger, name: str, calibration: Optional[str]) -> None:
+    """Verify a registered model still matches its recorded digests.
+
+    Re-hashes the artifact at the entry's ``source_path`` and compares it
+    with the stored ``digest`` — this is what makes a ``model@sha256:…``
+    pin trustworthy after the fact. Fail-closed: an unknown name, a
+    missing artifact, or any digest mismatch exits non-zero. When
+    ``--calibration`` is given, the calibration data is re-hashed and
+    compared with the stored ``calibration_hash`` as well (the registry
+    records the hash, not the path, so the caller supplies the data).
+    """
+    entry = _load_models().get(name)
+    if entry is None:
+        log.error(f"Model {name!r} is not registered.")
+        raise SystemExit(1)
+    source = Path(entry["source_path"])
+    if not source.is_file():
+        log.error(f"Registered artifact for {name!r} is missing: {source}")
+        raise SystemExit(1)
+    actual = _sha256_of_file(source)
+    if actual != entry["digest"]:
+        log.error(
+            f"Digest mismatch for {name!r}: registry has sha256:{entry['digest']}, "
+            f"file at {source} hashes to sha256:{actual}. The artifact changed "
+            "after registration — re-register with --force only if that change "
+            "is intended."
+        )
+        raise SystemExit(1)
+    if calibration is not None:
+        calib_hash = _hash_calibration(Path(calibration))
+        if calib_hash != entry["calibration_hash"]:
+            log.error(
+                f"Calibration hash mismatch for {name!r}: registry has "
+                f"sha256:{entry['calibration_hash']}, the supplied calibration "
+                f"data hashes to sha256:{calib_hash}."
+            )
+            raise SystemExit(1)
+    log.header(f"Model {name} verified")
+    log.info(f"  digest: sha256:{actual} (matches registry)")
+    if calibration is not None:
+        log.info("  calibration hash: matches registry")
+    click.echo(f"OK {name}@sha256:{actual}")
 
 
 @model.command()

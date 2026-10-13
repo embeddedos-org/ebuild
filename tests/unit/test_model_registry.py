@@ -208,3 +208,42 @@ class TestDigestIntegrity:
         result = invoke(*register_args(model, calib, name="mbnet2"))
         assert result.exit_code == 0, result.output
         assert registry(proj)["mbnet2"]["calibration_hash"] != before
+
+
+class TestVerify:
+    def test_verify_ok_on_fresh_registration(self, project):
+        proj, model, calib = project
+        invoke(*register_args(model, calib, name="mbnet"))
+        result = invoke("verify", "--name", "mbnet")
+        assert result.exit_code == 0, result.output
+        digest = registry(proj)["mbnet"]["digest"]
+        assert f"OK mbnet@sha256:{digest}" in result.output
+
+    def test_verify_fails_after_bytes_change(self, project):
+        proj, model, calib = project
+        invoke(*register_args(model, calib, name="mbnet"))
+        model.write_bytes(b"\x1c\x00\x00\x00tampered-bytes")
+        result = invoke("verify", "--name", "mbnet")
+        assert result.exit_code != 0
+        assert "mismatch" in result.output.lower()
+
+    def test_verify_fails_when_file_deleted(self, project):
+        proj, model, calib = project
+        invoke(*register_args(model, calib, name="mbnet"))
+        model.unlink()
+        result = invoke("verify", "--name", "mbnet")
+        assert result.exit_code != 0
+        assert "missing" in result.output.lower()
+
+    def test_verify_unknown_name_fails(self, project):
+        result = invoke("verify", "--name", "nope")
+        assert result.exit_code != 0
+
+    def test_verify_calibration_match_and_mismatch(self, project):
+        proj, model, calib = project
+        invoke(*register_args(model, calib, name="mbnet"))
+        ok = invoke("verify", "--name", "mbnet", "--calibration", str(calib))
+        assert ok.exit_code == 0, ok.output
+        (calib / "sample.bin").write_bytes(b"\xff" * 16)
+        bad = invoke("verify", "--name", "mbnet", "--calibration", str(calib))
+        assert bad.exit_code != 0
