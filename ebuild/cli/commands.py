@@ -3520,6 +3520,72 @@ def show(log: Logger, name: str) -> None:
     ):
         log.info(f"  {key}: {entry.get(key)}")
 
+# ─────────────────────────────────────────────────────────────
+#  receipts — pinned eCAD validation-receipt verification (#156)
+# ─────────────────────────────────────────────────────────────
+# First slice: the verifier exists and is exercised, but generation
+# does NOT consult it yet — no eCAD product has a genuine all-PASS
+# V0..V4 receipt (the migrated corpus is UNVERIFIED) and the contract
+# is DRAFT pre-1.0, so wiring it in would deny every real product.
+
+
+@cli.group()
+def receipts() -> None:
+    """Verify pinned eCAD validation receipts (issue #156)."""
+
+
+@receipts.command("validate")
+@click.option(
+    "--receipt",
+    "receipt_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Receipt JSON emitted by the eCAD validation contract.",
+)
+@click.option(
+    "--bundle-dir",
+    required=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Directory the receipt's bundle files are verified against.",
+)
+@click.option("--pin-commit", required=True, help="Pinned eCAD commit (full 40-hex SHA).")
+@click.option("--pin-contract-version", required=True, help="Pinned eCAD contract version.")
+@click.option("--pin-schema-digest", required=True, help="Pinned contract schema SHA-256 (bare hex).")
+@click.option("--pin-bundle-digest", required=True, help="Pinned bundle SHA-256 (bare hex).")
+@pass_logger
+def receipts_validate(
+    log: Logger,
+    receipt_path: str,
+    bundle_dir: str,
+    pin_commit: str,
+    pin_contract_version: str,
+    pin_schema_digest: str,
+    pin_bundle_digest: str,
+) -> None:
+    """Validate a receipt against its bundle and the pin, fail-closed.
+
+    Exits 0 only when the recomputed evidence authorizes; every
+    mismatch is reported and the exit code is 1.
+    """
+    from pathlib import Path as _Path
+
+    from ebuild.validation.receipts import ReceiptPin, validate_receipts
+
+    pin = ReceiptPin(
+        ecad_commit=pin_commit,
+        contract_version=pin_contract_version,
+        schema_digest=pin_schema_digest,
+        bundle_digest=pin_bundle_digest,
+    )
+    verdict = validate_receipts(_Path(receipt_path), _Path(bundle_dir), pin)
+    if not verdict.authorized:
+        for reason in verdict.reasons:
+            log.error(f"Receipt denied: {reason}")
+        raise SystemExit(1)
+    log.header(f"Receipt authorized for {verdict.product_id}")
+    click.echo(f"AUTHORIZED {verdict.product_id} gates V0-V4 PASS (pinned {pin.ecad_commit})")
+
+
 # ═════════════════════════════════════════════════════════════
 #  Integration commands
 # ═════════════════════════════════════════════════════════════
