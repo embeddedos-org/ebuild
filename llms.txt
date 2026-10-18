@@ -1,0 +1,29 @@
+# ebuild
+
+> llms.txt for the ebuild repository (embeddedos-org/ebuild).
+> Status: the EmbeddedOS build tool — one build system
+> driving firmware builds across the org's boards and repos.
+
+ebuild is the build tool for the EmbeddedOS ecosystem: it builds
+eos, eBoot and application firmware from declarative project
+files, manages pinned dependencies, and carries the model
+quantize/convert step of the Track 1 tightly-coupled AI path.
+The `core/` tree holds vendored mirrors of eos/eBoot and is not
+part of this documentation set.
+
+
+## Docs
+
+- [Architecture Overview](docs/architecture.md)
+- [Dependency Management](docs/dependency-management.md)
+- [ebuild AI — Supported Input Formats & Capabilities](docs/ai-input-formats.md)
+- [`ebuild quantize` — model quantization for on-device targets](docs/quantize.md)
+- [Adding a New Board Target](docs/guides/adding_a_board.md)
+- [Customization & Plugin Development Guide](docs/guides/customization.md)
+- [Overlay System Guide](docs/guides/overlays.md)
+- [Compatibility Matrix](docs/compatibility.md)
+
+## Machine-readable
+
+- [llms.txt](llms.txt) — this file
+- [llms-full.txt](llms-full.txt) — the docs above concatenated as one document
