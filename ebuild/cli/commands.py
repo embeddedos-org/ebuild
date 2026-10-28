@@ -3013,7 +3013,8 @@ def _resolve_test_runner(
 
 @cli.command()
 @click.option("--port", default=None,
-              help="Serial device (e.g. /dev/ttyUSB0). Auto-detected if omitted.")
+              help="Serial device (e.g. /dev/ttyUSB0 or COM3). "
+                   "Auto-detected if omitted.")
 @click.option("--baud", default=115200, type=int, help="Baud rate.")
 @click.pass_obj
 def monitor(log: Logger, port: Optional[str], baud: int) -> None:
@@ -3025,12 +3026,25 @@ def monitor(log: Logger, port: Optional[str], baud: int) -> None:
     log.header("ebuild — Monitor")
     log.info(f"Board: {_selected_board()}")
 
+    # Checked before auto-detection: on Windows, COM ports can only be found
+    # through pyserial, so a missing pyserial would otherwise be reported as
+    # "No serial device found".
+    try:
+        import serial  # type: ignore[import-untyped]
+    except ImportError:
+        log.error(
+            "pyserial is not installed, so the monitor cannot open the port.\n"
+            "  Install it with:  pip install pyserial"
+        )
+        raise SystemExit(1)
+
     if port is None:
         candidates = _serial_ports()
         if not candidates:
             log.error(
                 "No serial device found.\n"
-                "  Looked for /dev/ttyUSB*, /dev/ttyACM*, /dev/tty.usb*.\n"
+                "  Looked for /dev/ttyUSB*, /dev/ttyACM*, /dev/tty.usb*, "
+                "and USB COM ports.\n"
                 "  Connect the board, or name the device with --port."
             )
             raise SystemExit(1)
@@ -3046,15 +3060,6 @@ def monitor(log: Logger, port: Optional[str], baud: int) -> None:
         log.info(f"Auto-detected {port}")
 
     log.step(f"Opening {port} at {baud} baud... (Ctrl-C to exit)")
-
-    try:
-        import serial  # type: ignore[import-untyped]
-    except ImportError:
-        log.error(
-            "pyserial is not installed, so the monitor cannot open the port.\n"
-            "  Install it with:  pip install pyserial"
-        )
-        raise SystemExit(1)
 
     try:
         with serial.Serial(port, baud, timeout=0.2) as conn:
@@ -3074,8 +3079,30 @@ def monitor(log: Logger, port: Optional[str], baud: int) -> None:
 def _serial_ports() -> List[str]:
     """Serial devices that look like an attached development board."""
     found: List[str] = []
-    for pattern in ("/dev/ttyUSB*", "/dev/ttyACM*", "/dev/tty.usb*"):
+
+    for pattern in (
+        "/dev/ttyUSB*",
+        "/dev/ttyACM*",
+        "/dev/tty.usb*",
+    ):
         found.extend(sorted(glob.glob(pattern)))
+
+    # Windows names boards COMn, and only pyserial can enumerate them. Keep
+    # USB devices only (those with a vendor ID): built-in COM1 and Bluetooth
+    # ports would otherwise make auto-detection ambiguous, which is the same
+    # reason /dev/ttyS* is not searched above.
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        return found
+
+    com_ports = [
+        port.device
+        for port in list_ports.comports()
+        if port.device.upper().startswith("COM") and port.vid is not None
+    ]
+    # Sort by length first so COM2 precedes COM10.
+    found.extend(sorted(com_ports, key=lambda d: (len(d), d)))
     return found
 
 
