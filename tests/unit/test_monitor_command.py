@@ -9,6 +9,7 @@ actionable error) rather than hanging. These tests pin that contract.
 """
 
 import glob
+import importlib.util
 import sys
 
 import pytest
@@ -39,12 +40,24 @@ class TestMonitorRegistered:
 
 
 class TestMonitorWithoutHardware:
+    @pytest.mark.skipif(
+        sys.platform.startswith("win") and importlib.util.find_spec("serial") is None,
+        reason="on Windows without pyserial, COM ports cannot be enumerated at all, "
+        "so 'no device present' cannot be established \u2014 the monitor correctly "
+        "reports the missing pyserial first (covered by test_serial_ports.py)",
+    )
     def test_no_device_fails_cleanly(self, no_serial_devices):
         result = invoke()
         assert result.exit_code == 1
         assert "No serial device found" in result.output
         assert "--port" in result.output
 
+    @pytest.mark.skipif(
+        sys.platform.startswith("win") and importlib.util.find_spec("serial") is None,
+        reason="on Windows without pyserial, COM ports cannot be enumerated at all, "
+        "so 'no device present' cannot be established \u2014 the monitor correctly "
+        "reports the missing pyserial first (covered by test_serial_ports.py)",
+    )
     def test_multiple_devices_refuses_to_guess(self, monkeypatch):
         monkeypatch.setattr(
             glob, "glob", lambda pattern: ["/dev/ttyUSB0", "/dev/ttyUSB1"]
