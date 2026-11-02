@@ -3087,17 +3087,21 @@ def monitor(log: Logger, port: Optional[str], baud: int) -> None:
     log.header("ebuild — Monitor")
     log.info(f"Board: {_selected_board()}")
 
-    # Checked before auto-detection: on Windows, COM ports can only be found
-    # through pyserial, so a missing pyserial would otherwise be reported as
-    # "No serial device found".
-    try:
-        import serial  # type: ignore[import-untyped]
-    except ImportError:
-        log.error(
-            "pyserial is not installed, so the monitor cannot open the port.\n"
-            "  Install it with:  pip install pyserial"
-        )
-        raise SystemExit(1)
+    # On Windows, COM ports can only be found through pyserial, so a missing
+    # pyserial is reported before auto-detection — otherwise it would be
+    # misreported as "No serial device found". On POSIX, detection is by glob
+    # and does not need pyserial, so there the pyserial check stays after
+    # selection (the #83 contract: no device and no pyserial still reports
+    # the missing device).
+    if sys.platform.startswith("win"):
+        try:
+            import serial  # type: ignore[import-untyped]
+        except ImportError:
+            log.error(
+                "pyserial is not installed, so the monitor cannot open the port.\n"
+                "  Install it with:  pip install pyserial"
+            )
+            raise SystemExit(1)
 
     if port is None:
         candidates = _serial_ports()

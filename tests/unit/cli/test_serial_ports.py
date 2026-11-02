@@ -107,6 +107,10 @@ def test_posix_ports_found_without_pyserial(monkeypatch):
 
 def test_monitor_reports_missing_pyserial_before_detection(
         monkeypatch, no_posix_ports):
+    # The before-detection check is Windows-only: on POSIX, glob detection
+    # does not need pyserial (see the #83 contract tests in
+    # tests/unit/test_monitor_command.py).
+    monkeypatch.setattr(sys, "platform", "win32")
     _remove_pyserial(monkeypatch)
     log = RecordingLogger()
     result = CliRunner().invoke(monitor, [], obj=log)
