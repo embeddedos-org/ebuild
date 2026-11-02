@@ -3088,20 +3088,21 @@ def monitor(log: Logger, port: Optional[str], baud: int) -> None:
     log.info(f"Board: {_selected_board()}")
 
     # On Windows, COM ports can only be found through pyserial, so a missing
-    # pyserial is reported before auto-detection — otherwise it would be
-    # misreported as "No serial device found". On POSIX, detection is by glob
-    # and does not need pyserial, so there the pyserial check stays after
-    # selection (the #83 contract: no device and no pyserial still reports
-    # the missing device).
-    if sys.platform.startswith("win"):
-        try:
-            import serial  # type: ignore[import-untyped]
-        except ImportError:
+    # pyserial is reported before auto-detection there — otherwise it would
+    # be misreported as "No serial device found". On POSIX, detection is by
+    # glob and does not need pyserial, so there the missing-pyserial report
+    # stays after selection (the #83 contract: no device and no pyserial
+    # still reports the missing device).
+    try:
+        import serial  # type: ignore[import-untyped]
+    except ImportError:
+        if sys.platform.startswith("win"):
             log.error(
                 "pyserial is not installed, so the monitor cannot open the port.\n"
                 "  Install it with:  pip install pyserial"
             )
             raise SystemExit(1)
+        serial = None  # type: ignore[assignment]
 
     if port is None:
         candidates = _serial_ports()
@@ -3123,6 +3124,13 @@ def monitor(log: Logger, port: Optional[str], baud: int) -> None:
             raise SystemExit(1)
         port = candidates[0]
         log.info(f"Auto-detected {port}")
+
+    if serial is None:
+        log.error(
+            "pyserial is not installed, so the monitor cannot open the port.\n"
+            "  Install it with:  pip install pyserial"
+        )
+        raise SystemExit(1)
 
     log.step(f"Opening {port} at {baud} baud... (Ctrl-C to exit)")
 
