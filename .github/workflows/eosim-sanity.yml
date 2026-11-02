@@ -12,12 +12,15 @@ on:
   workflow_dispatch:
 
 env:
-  # A pinned EoSim commit, not a tag. Every tag through v3.0.1 has the
-  # filter bug in which "eosim list" printed "Available platforms (0)" and
-  # still exited 0 (EoSim#34). This workflow checked only exit codes, so it
-  # stayed green while listing nothing. c5e2770 is the merge of EoSim#35,
-  # which fixes that. Move this to a release tag once one contains it.
-  EOSIM_REF: "c5e27702b9ab8e3e9dcf34b7686a1c1c1040515c"
+  # A pinned EoSim release tag. This was a pinned commit through
+  # 2026-10-14: every tag through v3.0.1 had the filter bug in which
+  # "eosim list" printed "Available platforms (0)" and still exited 0
+  # (EoSim#34), and c5e2770 (the merge of EoSim#35, which fixes that)
+  # was the pin. v3.0.2 is the first tag containing the fix —
+  # verified 2026-10-15 via the compare API: tag 21a39ca is 3 commits
+  # ahead of c5e2770 — so the pin moves to the tag, per #128 and the
+  # org install-eosim action's default.
+  EOSIM_REF: "v3.0.2"
 
 permissions:
   contents: read

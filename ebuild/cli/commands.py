@@ -2645,7 +2645,9 @@ def generate_board(
         raise SystemExit(1)
 
 
-@cli.command()
+@cli.command(
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
 @click.option(
     "--config",
     "config_path",
@@ -2665,51 +2667,78 @@ def generate_board(
     default=None,
     help="Only run tests whose name contains this substring.",
 )
+@click.option(
+    "--runner",
+    type=click.Choice(["auto", "pytest", "ctest", "cargo", "meson", "make"]),
+    default="auto",
+    show_default=True,
+    help="Test runner to use (auto-detects when 'auto').",
+)
+@click.argument("runner_args", nargs=-1, type=click.UNPROCESSED)
 @click.pass_obj
-def test(log: Logger, config_path: str, build_dir: str,
-         name_filter: Optional[str]) -> None:
+def test(
+    log: Logger,
+    config_path: str,
+    build_dir: str,
+    name_filter: Optional[str],
+    runner: str,
+    runner_args: tuple,
+) -> None:
     """Build and run the project's tests.
 
-    Step six of the golden path. Delegates to whichever runner the project
-    already uses -- ctest for a CMake tree, `cargo test`, `meson test`, or
-    `make test` -- rather than imposing a test framework on the project.
+    Step six of the golden path. Native ebuild ``test`` targets run first;
+    otherwise the command drives the project's own runner -- auto-detected
+    from the project layout (ctest, pytest, cargo test, meson test, or
+    make test) or chosen explicitly with --runner. Extra arguments after
+    ``--`` are passed through to the runner, e.g.
+    ``ebuild test -- -k network -x``.
     """
     log.header("ebuild — Test")
 
     build_path = Path(build_dir)
+    source_dir = Path.cwd()
 
     try:
         log.step("Loading configuration...")
         cfg = load_config(config_path)
         log.info(f"Project: {cfg.name} v{cfg.version}")
     except FileNotFoundError:
-        log.error(
-            f"No {config_path} here. Run this from a project directory, or "
-            f"pass --config."
+        # Not an ebuild project -- fall through to layout-based detection
+        # so `ebuild test` still works in any project directory.
+        cfg = None
+        log.info(
+            f"No {config_path} here; detecting the test runner from the project layout."
         )
-        raise SystemExit(1)
     except (ConfigError, RecipeError) as e:
         log.error(f"Configuration error: {e}")
         raise SystemExit(1)
 
-    native = [t for t in cfg.targets if t.target_type == "test"]
-    if native:
-        _run_native_tests(cfg, native, build_path, log, name_filter)
-        return
+    if cfg is not None:
+        source_dir = cfg.source_dir
+        native = [t for t in cfg.targets if t.target_type == "test"]
+        if native:
+            _run_native_tests(cfg, native, build_path, log, name_filter)
+            return
 
-    runner = _resolve_test_runner(cfg.source_dir, build_path, name_filter)
-    if runner is None:
-        log.error(
-            "No test runner found for this project.\n"
-            "  ebuild test drives the project's own runner. Add one of:\n"
-            "    - CMake with enable_testing() + add_test()   -> ctest\n"
-            "    - a 'test' target in the Makefile            -> make test\n"
-            "    - Cargo.toml                                 -> cargo test\n"
-            "    - meson.build                                -> meson test"
-        )
-        raise SystemExit(1)
+    if runner != "auto":
+        name, argv, cwd = _runner_argv(runner, source_dir, build_path, name_filter)
+    else:
+        resolved = _resolve_test_runner(source_dir, build_path, name_filter)
+        if resolved is None:
+            log.error(
+                "No test runner found for this project.\n"
+                "  ebuild test drives the project's own runner. Add one of:\n"
+                "    - a tests/ dir or pytest config "
+                "(pytest.ini, pyproject.toml, setup.cfg, tox.ini) -> pytest\n"
+                "    - CMake with enable_testing() + add_test()   -> ctest\n"
+                "    - a 'test' target in the Makefile            -> make test\n"
+                "    - Cargo.toml                                 -> cargo test\n"
+                "    - meson.build                                -> meson test"
+            )
+            raise SystemExit(1)
+        name, argv, cwd = resolved
 
-    name, argv, cwd = runner
+    argv = [*argv, *runner_args]
     log.step(f"Running tests with {name}...")
     log.info(" ".join(argv))
 
@@ -2969,6 +2998,42 @@ def _parse_test_counts(name: str, output: str):
     return int(groups["total"]) - failed, failed
 
 
+_PYTEST_MARKERS = ("pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
+
+
+def _runner_argv(
+    runner: str,
+    source_dir: Path,
+    build_dir: Path,
+    name_filter: Optional[str],
+) -> Tuple[str, List[str], Path]:
+    """argv + cwd for an explicitly chosen runner.
+
+    Returns ``(display_name, argv, cwd)``.
+    """
+    if runner == "pytest":
+        argv = [sys.executable, "-m", "pytest"]
+        if name_filter:
+            argv += ["-k", name_filter]
+        return "pytest", argv, source_dir
+    if runner == "ctest":
+        argv = ["ctest", "--output-on-failure"]
+        if name_filter:
+            argv += ["-R", name_filter]
+        return "ctest", argv, build_dir
+    if runner == "cargo":
+        argv = ["cargo", "test"]
+        if name_filter:
+            argv += [name_filter]
+        return "cargo test", argv, source_dir
+    if runner == "meson":
+        argv = ["meson", "test", "-C", str(build_dir)]
+        if name_filter:
+            argv += ["--suite", name_filter]
+        return "meson test", argv, source_dir
+    return "make test", ["make", "-C", str(source_dir), "test"], source_dir
+
+
 def _resolve_test_runner(
     source_dir: Path,
     build_dir: Path,
@@ -2977,26 +3042,23 @@ def _resolve_test_runner(
     """Pick the test runner this project already uses.
 
     Returns ``(display_name, argv, cwd)``, or None when the project declares
-    no tests. Ordered so that an explicit CMake test registry wins over a
-    generic `make test` target in the same tree.
+    no tests. Ordered so that an explicit CMake test registry wins, then a
+    Python test layout, then the compiled-language runners, with a generic
+    `make test` target last.
     """
     if (build_dir / "CTestTestfile.cmake").is_file():
-        argv = ["ctest", "--output-on-failure"]
-        if name_filter:
-            argv += ["-R", name_filter]
-        return "ctest", argv, build_dir
+        return _runner_argv("ctest", source_dir, build_dir, name_filter)
+
+    if (source_dir / "tests").is_dir() or (source_dir / "test").is_dir() or any(
+        (source_dir / marker).is_file() for marker in _PYTEST_MARKERS
+    ):
+        return _runner_argv("pytest", source_dir, build_dir, name_filter)
 
     if (source_dir / "Cargo.toml").is_file():
-        argv = ["cargo", "test"]
-        if name_filter:
-            argv += [name_filter]
-        return "cargo test", argv, source_dir
+        return _runner_argv("cargo", source_dir, build_dir, name_filter)
 
     if (build_dir / "meson-info").is_dir():
-        argv = ["meson", "test", "-C", str(build_dir)]
-        if name_filter:
-            argv += ["--suite", name_filter]
-        return "meson test", argv, source_dir
+        return _runner_argv("meson", source_dir, build_dir, name_filter)
 
     makefile = next(
         (source_dir / n for n in ("Makefile", "makefile", "GNUmakefile")
@@ -3006,10 +3068,9 @@ def _resolve_test_runner(
     if makefile is not None:
         text = makefile.read_text(encoding="utf-8", errors="replace")
         if re.search(r"^test\s*:", text, re.MULTILINE):
-            return "make test", ["make", "-C", str(source_dir), "test"], source_dir
+            return _runner_argv("make", source_dir, build_dir, name_filter)
 
     return None
-
 
 @cli.command()
 @click.option("--port", default=None,
@@ -3205,92 +3266,351 @@ def quantize(
     raise SystemExit(2)
 
 
-#  test — run the project's test suite (golden-path step)
-# ═════════════════════════════════════════════════════════════
-# First half of #83 (the MVP golden path gains `ebuild test`; `ebuild
-# monitor` is still missing). Auto-detects the runner:
-#   ctest  — if <build-dir>/CTestTestfile.cmake exists (a configured
-#             CMake/CTest tree is the strongest signal)
-#   pytest — if a pytest config marker (pytest.ini, pyproject.toml,
-#             setup.cfg, tox.ini) or a tests/ or test/ dir exists
-# Otherwise the command exits 2 fail-closed rather than pretending to
-# test. Extra args after `--` are passed through to the runner.
+
+# ─────────────────────────────────────────────────────────────
+#  model — Track 1 quantized-model registry (phase 1)
+# ─────────────────────────────────────────────────────────────
+# Project-local registry for quantized artifacts (docs/quantize.md
+# "Registry"): `ebuild model register` hashes the artifact and records
+# {name, digest, target, format, calibration hash, source path} in
+# .ebuild/models.json next to the project, so builds can pin
+# `model@sha256:…` the way they pin packages.
+
+_MODEL_TARGETS = ("cmsis-nn", "esp-nn", "aie")
+_MODEL_FORMATS = ("int8", "int16")
 
 
-_PYTEST_MARKERS = ("pytest.ini", "pyproject.toml", "setup.cfg", "tox.ini")
+def _models_registry_path() -> Path:
+    """Project-local registry file: cwd/.ebuild/models.json."""
+    return Path.cwd() / ".ebuild" / "models.json"
 
 
-def _detect_test_runner(runner: str, build_dir: Path, project_dir: Path) -> Optional[str]:
-    """Return 'pytest' or 'ctest', or None when nothing is detected."""
-    if runner != "auto":
-        return runner
-    if (build_dir / "CTestTestfile.cmake").is_file():
-        return "ctest"
-    for marker in _PYTEST_MARKERS:
-        if (project_dir / marker).is_file():
-            return "pytest"
-    for dirname in ("tests", "test"):
-        if (project_dir / dirname).is_dir():
-            return "pytest"
-    return None
+def _load_models() -> Dict[str, Dict[str, Any]]:
+    import json
+
+    path = _models_registry_path()
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(f"Cannot read model registry {path}: {exc}") from exc
+    if not isinstance(data, dict):
+        raise click.ClickException(f"Model registry {path} is corrupt: want a JSON object.")
+    return data
 
 
-def _test_command(chosen: str, build_dir: str, runner_args: tuple) -> List[str]:
-    if chosen == "ctest":
-        return ["ctest", "--test-dir", build_dir, *runner_args]
-    return [sys.executable, "-m", "pytest", *runner_args]
+def _save_models(models: Dict[str, Dict[str, Any]]) -> None:
+    import json
+
+    path = _models_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(models, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(path)
 
 
-@cli.command(
-    name="test",
-    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+def _sha256_of_file(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _hash_calibration(path: Path) -> str:
+    """Content hash of calibration data (a file or a directory of samples)."""
+    digest_hex = None
+    if path.is_dir():
+        entries = sorted(p for p in path.rglob("*") if p.is_file())
+        rel_paths = [str(p.relative_to(path)).replace(os.sep, "/") for p in entries]
+        import hashlib
+
+        digest = hashlib.sha256()
+        for rel, p in zip(rel_paths, entries):
+            digest.update(f"{rel}\0".encode("utf-8"))
+            digest.update(_sha256_of_file(p).encode("utf-8"))
+        digest_hex = digest.hexdigest()
+    else:
+        digest_hex = _sha256_of_file(path)
+    return digest_hex
+
+
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+@cli.group()
+def model() -> None:
+    """Manage the project-local quantized-model registry (Track 1).
+
+    Registered artifacts get a content hash so builds can pin
+    ``model@sha256:…`` the way they pin packages. See docs/quantize.md.
+    """
+
+
+@model.command()
+@click.option(
+    "--file",
+    "file_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Quantized model file to register.",
 )
 @click.option(
-    "--runner",
-    type=click.Choice(["auto", "pytest", "ctest"]),
-    default="auto",
-    show_default=True,
-    help="Test runner to use (auto-detects when 'auto').",
+    "--target",
+    required=True,
+    type=click.Choice(list(_MODEL_TARGETS)),
+    help="Accelerator backend target (tiny: cmsis-nn/esp-nn; large: aie).",
 )
 @click.option(
-    "--build-dir",
-    default="build",
+    "--format",
+    "fmt",
+    type=click.Choice(list(_MODEL_FORMATS)),
+    default="int8",
     show_default=True,
-    type=click.Path(file_okay=False),
-    help="Build directory for ctest detection and invocation.",
+    help="Quantization format.",
 )
-@click.argument("runner_args", nargs=-1, type=click.UNPROCESSED)
+@click.option(
+    "--calibration",
+    required=True,
+    type=click.Path(exists=True),
+    help="Calibration data file or directory used.",
+)
+@click.option(
+    "--name",
+    default=None,
+    help="Registry name (default: the model file stem).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="Overwrite an existing entry with the same name.",
+)
 @pass_logger
-def test(
-    log: "Logger",
-    runner: str,
-    build_dir: str,
-    runner_args: tuple,
+def register(
+    log: Logger,
+    file_path: str,
+    target: str,
+    fmt: str,
+    calibration: str,
+    name: Optional[str],
+    force: bool,
 ) -> None:
-    """Run the project's test suite with the detected runner.
+    """Register a quantized model artifact in .ebuild/models.json.
 
     Example:\n
-
-        ebuild test\n
-        ebuild test --runner ctest -- --output-on-failure\n
-        ebuild test -- -k network -x
+        ebuild model register --file mobilenet.quant.int8.tflite \\
+            --target cmsis-nn --format int8 --calibration data/calib/
     """
-    project_dir = Path.cwd()
-    chosen = _detect_test_runner(runner, Path(build_dir), project_dir)
-    if chosen is None:
-        log.error(
-            "No test runner detected: no <build-dir>/CTestTestfile.cmake, no pytest "
-            "config marker, and no tests/ or test/ directory. Pass "
-            "--runner pytest|ctest to choose explicitly."
-        )
+    model_file = Path(file_path)
+    if not model_file.is_file():
+        # Fail closed: never register something that cannot be hashed.
+        log.error(f"Model file not found: {file_path}")
         raise SystemExit(2)
-    cmd = _test_command(chosen, build_dir, runner_args)
-    log.header("Test run")
-    log.info(f"  runner:  {shlex.join(cmd)}")
-    proc = subprocess.run(cmd)
-    if proc.returncode != 0:
-        log.error(f"Tests failed (exit {proc.returncode}).")
-    raise SystemExit(proc.returncode)
+    name = name or model_file.stem
+    models = _load_models()
+    if name in models and not force:
+        log.error(f"Model {name!r} is already registered. Use --force to overwrite it.")
+        raise SystemExit(1)
+
+    digest = _sha256_of_file(model_file)
+    calib_hash = _hash_calibration(Path(calibration))
+    models[name] = {
+        "name": name,
+        "digest": digest,
+        "target": target,
+        "format": fmt,
+        "calibration_hash": calib_hash,
+        "source_path": str(model_file),
+        "registered_at": _utc_now_iso(),
+    }
+    _save_models(models)
+
+    log.header("Model registered")
+    log.info(f"  name:             {name}")
+    log.info(f"  digest:           sha256:{digest}")
+    log.info(f"  target:           {target}")
+    log.info(f"  format:           {fmt}")
+    log.info(f"  calibration hash: sha256:{calib_hash}")
+    log.info(f"  registry:         {_models_registry_path()}")
+
+
+@model.command("list")
+@pass_logger
+def model_list(log: Logger) -> None:
+    """List the models registered in this project."""
+    models = _load_models()
+    if not models:
+        log.info("No models registered.")
+        return
+    log.header("Registered models")
+    log.info(f"  {'NAME':<24} {'TARGET':<10} {'FORMAT':<6} {'DIGEST':<20} REGISTERED_AT")
+    for name in sorted(models):
+        entry = models[name]
+        short = f"sha256:{entry['digest'][:12]}"
+        log.info(
+            f"  {name:<24} {entry['target']:<10} {entry['format']:<6} "
+            f"{short:<20} {entry.get('registered_at', '')}"
+        )
+
+
+@model.command()
+@click.option("--name", required=True, help="Registered model name.")
+@pass_logger
+def pin(log: Logger, name: str) -> None:
+    """Print the pin string builds consume: <name>@sha256:<digest>."""
+    entry = _load_models().get(name)
+    if entry is None:
+        log.error(f"Model {name!r} is not registered.")
+        raise SystemExit(1)
+    click.echo(f"{name}@sha256:{entry['digest']}")
+
+
+@model.command()
+@click.option("--name", required=True, help="Registered model name.")
+@click.option(
+    "--calibration",
+    default=None,
+    type=click.Path(exists=True),
+    help="Calibration data file or directory to re-hash and compare "
+    "against the recorded calibration hash.",
+)
+@pass_logger
+def verify(log: Logger, name: str, calibration: Optional[str]) -> None:
+    """Verify a registered model still matches its recorded digests.
+
+    Re-hashes the artifact at the entry's ``source_path`` and compares it
+    with the stored ``digest`` — this is what makes a ``model@sha256:…``
+    pin trustworthy after the fact. Fail-closed: an unknown name, a
+    missing artifact, or any digest mismatch exits non-zero. When
+    ``--calibration`` is given, the calibration data is re-hashed and
+    compared with the stored ``calibration_hash`` as well (the registry
+    records the hash, not the path, so the caller supplies the data).
+    """
+    entry = _load_models().get(name)
+    if entry is None:
+        log.error(f"Model {name!r} is not registered.")
+        raise SystemExit(1)
+    source = Path(entry["source_path"])
+    if not source.is_file():
+        log.error(f"Registered artifact for {name!r} is missing: {source}")
+        raise SystemExit(1)
+    actual = _sha256_of_file(source)
+    if actual != entry["digest"]:
+        log.error(
+            f"Digest mismatch for {name!r}: registry has sha256:{entry['digest']}, "
+            f"file at {source} hashes to sha256:{actual}. The artifact changed "
+            "after registration — re-register with --force only if that change "
+            "is intended."
+        )
+        raise SystemExit(1)
+    if calibration is not None:
+        calib_hash = _hash_calibration(Path(calibration))
+        if calib_hash != entry["calibration_hash"]:
+            log.error(
+                f"Calibration hash mismatch for {name!r}: registry has "
+                f"sha256:{entry['calibration_hash']}, the supplied calibration "
+                f"data hashes to sha256:{calib_hash}."
+            )
+            raise SystemExit(1)
+    log.header(f"Model {name} verified")
+    log.info(f"  digest: sha256:{actual} (matches registry)")
+    if calibration is not None:
+        log.info("  calibration hash: matches registry")
+    click.echo(f"OK {name}@sha256:{actual}")
+
+
+@model.command()
+@click.option("--name", required=True, help="Registered model name.")
+@pass_logger
+def show(log: Logger, name: str) -> None:
+    """Show the full registry entry for a model."""
+    entry = _load_models().get(name)
+    if entry is None:
+        log.error(f"Model {name!r} is not registered.")
+        raise SystemExit(1)
+    log.header(f"Model {name}")
+    for key in (
+        "name",
+        "digest",
+        "target",
+        "format",
+        "calibration_hash",
+        "source_path",
+        "registered_at",
+    ):
+        log.info(f"  {key}: {entry.get(key)}")
+
+# ─────────────────────────────────────────────────────────────
+#  receipts — pinned eCAD validation-receipt verification (#156)
+# ─────────────────────────────────────────────────────────────
+# First slice: the verifier exists and is exercised, but generation
+# does NOT consult it yet — no eCAD product has a genuine all-PASS
+# V0..V4 receipt (the migrated corpus is UNVERIFIED) and the contract
+# is DRAFT pre-1.0, so wiring it in would deny every real product.
+
+
+@cli.group()
+def receipts() -> None:
+    """Verify pinned eCAD validation receipts (issue #156)."""
+
+
+@receipts.command("validate")
+@click.option(
+    "--receipt",
+    "receipt_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Receipt JSON emitted by the eCAD validation contract.",
+)
+@click.option(
+    "--bundle-dir",
+    required=True,
+    type=click.Path(exists=True, file_okay=False),
+    help="Directory the receipt's bundle files are verified against.",
+)
+@click.option("--pin-commit", required=True, help="Pinned eCAD commit (full 40-hex SHA).")
+@click.option("--pin-contract-version", required=True, help="Pinned eCAD contract version.")
+@click.option("--pin-schema-digest", required=True, help="Pinned contract schema SHA-256 (bare hex).")
+@click.option("--pin-bundle-digest", required=True, help="Pinned bundle SHA-256 (bare hex).")
+@pass_logger
+def receipts_validate(
+    log: Logger,
+    receipt_path: str,
+    bundle_dir: str,
+    pin_commit: str,
+    pin_contract_version: str,
+    pin_schema_digest: str,
+    pin_bundle_digest: str,
+) -> None:
+    """Validate a receipt against its bundle and the pin, fail-closed.
+
+    Exits 0 only when the recomputed evidence authorizes; every
+    mismatch is reported and the exit code is 1.
+    """
+    from pathlib import Path as _Path
+
+    from ebuild.validation.receipts import ReceiptPin, validate_receipts
+
+    pin = ReceiptPin(
+        ecad_commit=pin_commit,
+        contract_version=pin_contract_version,
+        schema_digest=pin_schema_digest,
+        bundle_digest=pin_bundle_digest,
+    )
+    verdict = validate_receipts(_Path(receipt_path), _Path(bundle_dir), pin)
+    if not verdict.authorized:
+        for reason in verdict.reasons:
+            log.error(f"Receipt denied: {reason}")
+        raise SystemExit(1)
+    log.header(f"Receipt authorized for {verdict.product_id}")
+    click.echo(f"AUTHORIZED {verdict.product_id} gates V0-V4 PASS (pinned {pin.ecad_commit})")
 
 
 # ═════════════════════════════════════════════════════════════

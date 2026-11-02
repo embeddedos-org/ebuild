@@ -43,11 +43,33 @@ validates arguments, prints the quantization plan, and exits 2 — it never
 writes a fake artifact and never silently no-ops. `--validate` without a
 backend exits 2 with the harness hook noted.
 
-## Registry (planned)
+## Registry
 
-Quantized artifacts will be registered next to the package registry with
-their content hash, target, format, and calibration-data hash, so a build
-can pin `model@sha256:…` the way it pins packages. Not implemented yet.
+Quantized artifacts are registered next to the package registry in the
+project-local `.ebuild/models.json`, with their content hash, target,
+format, and calibration-data hash, so a build can pin `model@sha256:…`
+the way it pins packages:
+
+```
+ebuild model register --file mobilenet.quant.int8.tflite --target cmsis-nn \
+    --format int8 --calibration data/calib/ [--name mobilenet --force]
+ebuild model list                 # table of registered models
+ebuild model pin --name mobilenet  # prints mobilenet@sha256:<digest>
+ebuild model show --name mobilenet # full registry entry
+ebuild model verify --name mobilenet [--calibration data/calib/]
+```
+
+Registration is fail-closed: a missing model file refuses the write, and an
+existing name is only overwritten with `--force`. The digest is the sha256
+of the artifact bytes, so re-registering after tampering yields a new
+digest and the old pin no longer matches.
+
+`verify` closes the loop: it re-hashes the artifact at the entry's recorded
+source path and compares it with the stored digest, exiting non-zero on any
+mismatch, on a missing artifact, or on an unknown name — so a pin is only
+trusted after the bytes on disk have been shown to be the bytes that were
+registered. With `--calibration`, the calibration data is re-hashed and
+compared with the stored calibration hash as well.
 
 ## See also
 
