@@ -78,6 +78,9 @@ def run_graph(
             dependents[dep].append(node)
 
     # Seeding and refilling from `order` keeps dispatch deterministic.
+    # `order.index` would be a linear scan per freed node; a position map makes
+    # the same ordering O(1) per lookup.
+    position: Dict[str, int] = {node: i for i, node in enumerate(order)}
     ready: List[str] = [n for n in order if not pending[n]]
     results: Dict[str, T] = {}
     failure: BaseException | None = None
@@ -114,7 +117,7 @@ def run_graph(
                     pending[dependent].discard(node)
                     if not pending[dependent]:
                         freed.append(dependent)
-                ready.extend(sorted(freed, key=order.index))
+                ready.extend(sorted(freed, key=position.__getitem__))
 
         # A failure stops new work; already-running nodes finish rather than
         # being abandoned mid-build.
