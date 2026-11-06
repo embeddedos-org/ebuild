@@ -378,7 +378,8 @@ class TestInternalLibraryLinking:
         cc_edges = [i for i, l in enumerate(lines) if l.startswith("build ") and ": cc " in l]
         assert len(cc_edges) == 5
         for i in cc_edges:
-            if "/app/" in lines[i]:
+            # Ninja paths use backslashes on Windows; normalise before matching.
+            if "/app/" in lines[i].replace("\\", "/"):
                 assert lines[i + 1] == "  cflags = -DMODE=2"
             else:
                 # A target with no flags gets no cflags line at all.
