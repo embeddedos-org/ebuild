@@ -248,6 +248,25 @@ class TestDeterminism:
             runs.append(seen)
         assert all(r == runs[0] for r in runs)
 
+    def test_parallel_dispatch_follows_topological_order(self, monkeypatch):
+        """Nodes freed by one completion are submitted in topological order."""
+        import ebuild.core.scheduler as scheduler
+
+        submitted = []
+
+        class RecordingPool(scheduler.ThreadPoolExecutor):
+            def submit(self, fn, node):
+                submitted.append(node)
+                return super().submit(fn, node)
+
+        monkeypatch.setattr(scheduler, "ThreadPoolExecutor", RecordingPool)
+        mids = [f"m{i}" for i in range(6)]
+        g = _graph([(m, "root") for m in mids] + [("sink", m) for m in mids])
+
+        run_graph(g, lambda n: n, jobs=2)
+
+        assert submitted == g.topological_sort()
+
     def test_results_complete_regardless_of_job_count(self):
         g = _graph([("d", "b"), ("d", "c"), ("b", "a"), ("c", "a")])
         expected = {"a": "a", "b": "b", "c": "c", "d": "d"}

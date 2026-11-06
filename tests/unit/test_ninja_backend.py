@@ -289,6 +289,102 @@ class TestObjectPathNamespacing:
         assert len(set(objects)) == 2, f"entries name the same object: {objects}"
 
 
+class TestInternalLibraryLinking:
+    """An executable links the archive of each static library it depends on.
+
+    The lookup from a `depends` name to a static_library target is built once
+    per manifest rather than rescanning every target per dependency; these
+    pin the output that lookup must keep producing.
+    """
+
+    @staticmethod
+    def _link_inputs(build_dir, app_name):
+        lines = (build_dir / "build.ninja").read_text(encoding="utf-8").splitlines()
+        out = escape_ninja_path(layout.executable_output_path(build_dir, app_name))
+        [line] = [l for l in lines if l.startswith(f"build {out}: link ")]
+        return line.split(": link ", 1)[1].split(" ")
+
+    def test_static_dependencies_are_linked_in_depends_order(self, tmp_path):
+        config = ProjectConfig(
+            name="linking",
+            version="1.0.0",
+            targets=[
+                TargetConfig(name="app", target_type="executable",
+                             sources=["main.c"],
+                             depends=["beta", "shared", "alpha", "absent"]),
+                TargetConfig(name="alpha", target_type="static_library",
+                             sources=["a.c"]),
+                TargetConfig(name="beta", target_type="static_library",
+                             sources=["b.c"]),
+                TargetConfig(name="shared", target_type="shared_library",
+                             sources=["s.c"]),
+            ],
+            source_dir=tmp_path,
+        )
+        build_dir = tmp_path / "_build"
+        NinjaBackend(config, build_dir, _toolchain()).generate()
+
+        inputs = self._link_inputs(build_dir, "app")
+        archives = [i for i in inputs if not i.endswith(".o")]
+        # Only static libraries become link inputs; a shared library or an
+        # unknown name contributes no archive.
+        assert archives == [
+            escape_ninja_path(build_dir / "libbeta.a"),
+            escape_ninja_path(build_dir / "libalpha.a"),
+        ]
+
+    def test_each_same_named_static_library_contributes_an_archive(self, tmp_path):
+        """Pins existing output: one archive input per matching static_library.
+
+        Duplicate target names are not a working configuration, but the
+        manifest for one must not change because the lookup became a map.
+        """
+        config = ProjectConfig(
+            name="dupes",
+            version="1.0.0",
+            targets=[
+                TargetConfig(name="app", target_type="executable",
+                             sources=["main.c"], depends=["a"]),
+                TargetConfig(name="a", target_type="static_library",
+                             sources=["a1.c"]),
+                TargetConfig(name="a", target_type="static_library",
+                             sources=["a2.c"]),
+            ],
+            source_dir=tmp_path,
+        )
+        build_dir = tmp_path / "_build"
+        NinjaBackend(config, build_dir, _toolchain()).generate()
+
+        archives = [i for i in self._link_inputs(build_dir, "app") if not i.endswith(".o")]
+        assert archives == [escape_ninja_path(build_dir / "liba.a")] * 2
+
+    def test_every_object_edge_carries_the_target_cflags(self, tmp_path):
+        config = ProjectConfig(
+            name="cflags",
+            version="1.0.0",
+            targets=[
+                TargetConfig(name="app", target_type="executable",
+                             sources=["one.c", "two.c", "three.c"],
+                             defines=["MODE=2"]),
+                TargetConfig(name="bare", target_type="static_library",
+                             sources=["x.c", "y.c"]),
+            ],
+            source_dir=tmp_path,
+        )
+        build_dir = tmp_path / "_build"
+        NinjaBackend(config, build_dir, _toolchain()).generate()
+
+        lines = (build_dir / "build.ninja").read_text(encoding="utf-8").splitlines()
+        cc_edges = [i for i, l in enumerate(lines) if l.startswith("build ") and ": cc " in l]
+        assert len(cc_edges) == 5
+        for i in cc_edges:
+            if "/app/" in lines[i]:
+                assert lines[i + 1] == "  cflags = -DMODE=2"
+            else:
+                # A target with no flags gets no cflags line at all.
+                assert lines[i + 1] == ""
+
+
 @pytest.mark.ebuild
 class TestNinjaPathEscaping:
     """Paths in build statements must be escaped for Ninja's lexer.
