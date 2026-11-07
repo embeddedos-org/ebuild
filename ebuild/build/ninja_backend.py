@@ -12,6 +12,7 @@ import json
 import shlex
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -217,8 +218,16 @@ class NinjaBackend:
 
         toolchain_ldflags = self._get_toolchain_ldflags()
 
+        # Built once so linking an executable does not rescan every target for
+        # each name in its `depends`. A count, not a set, keeps the output
+        # identical even when two static libraries share a name.
+        static_lib_counts = Counter(
+            t.name for t in self.config.targets if t.target_type == "static_library"
+        )
+
         for target in self.config.targets:
             cflags = self._resolve_target_cflags(target)
+            cflags_line = f"  cflags = {' '.join(cflags)}" if cflags else None
 
             obj_files = []
             for src in target.sources:
@@ -227,8 +236,8 @@ class NinjaBackend:
                 lines.append(
                     f"build {obj}: cc {escape_ninja_path(src)}"
                 )
-                if cflags:
-                    lines.append(f"  cflags = {' '.join(cflags)}")
+                if cflags_line:
+                    lines.append(cflags_line)
                 lines.append("")
 
             if target.target_type in ("executable", "test"):
@@ -245,11 +254,11 @@ class NinjaBackend:
 
                 # Add internal library dependencies (static_library targets)
                 for dep_name in target.depends:
-                    for dep_target in self.config.targets:
-                        if dep_target.name == dep_name and dep_target.target_type == "static_library":
-                            dep_archives.append(
-                                escape_ninja_path(self.build_dir / f"lib{dep_name}.a")
-                            )
+                    count = static_lib_counts.get(dep_name, 0)
+                    if count:
+                        dep_archives.extend(
+                            [escape_ninja_path(self.build_dir / f"lib{dep_name}.a")] * count
+                        )
 
                 link_inputs = obj_files + dep_archives
                 out = escape_ninja_path(
