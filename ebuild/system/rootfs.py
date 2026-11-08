@@ -145,6 +145,21 @@ class RootfsBuilder:
         if os.name != "nt":
             rcs.chmod(0o755)
 
+    def _write_account_file(self, name: str, content: str) -> None:
+        """Write one /etc account file (passwd, group, or shadow).
+
+        The only credential material ever written here is a validated
+        crypt(3) hash or a "!" lock marker (see _validate_password_hash);
+        /etc/shadow is the designated store for password hashes, so this
+        is not clear-text storage of a password.
+        """
+        path = self.rootfs_dir / "etc" / name
+        # Writes only validated crypt(3) hashes or "!" lock markers to
+        # /etc/shadow (the designated hash store), never a clear-text
+        # password - the CodeQL clear-text-storage alert is a false
+        # positive here, suppressed with the justification below.
+        path.write_text(content)  # codeql[py/clear-text-storage-sensitive-data]
+
     def configure_users(
         self,
         users: Optional[List[Dict[str, Any]]] = None,
@@ -222,9 +237,9 @@ class RootfsBuilder:
 
         # All validation passed; only now touch the filesystem, so a bad
         # account can never leave a half-written passwd/shadow behind.
-        (self.rootfs_dir / "etc" / "passwd").write_text("".join(passwd_lines))
-        (self.rootfs_dir / "etc" / "group").write_text("".join(group_lines))
-        (self.rootfs_dir / "etc" / "shadow").write_text("".join(shadow_lines))
+        self._write_account_file("passwd", "".join(passwd_lines))
+        self._write_account_file("group", "".join(group_lines))
+        self._write_account_file("shadow", "".join(shadow_lines))
         for home_dir in home_dirs:
             home_dir.mkdir(parents=True, exist_ok=True)
 
