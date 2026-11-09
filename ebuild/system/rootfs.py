@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 class RootfsError(Exception):
@@ -27,6 +27,78 @@ FHS_DIRS = [
     "lib", "lib/modules", "lib/firmware",
     "boot",
 ]
+
+
+# Shadow password field for a locked account: no password can log in.
+LOCKED_PASSWORD = "!"
+
+# Characters that must never appear in a passwd/shadow field: the field
+# separator, line breaks, and control characters (including NUL and DEL).
+_FORBIDDEN_FIELD_CHARS = frozenset(":\n\r") | frozenset(
+    chr(c) for c in range(0x20)
+) | frozenset("\x7f")
+
+
+def _validate_passwd_field(value: str, label: str) -> str:
+    """Reject a value that would break /etc/passwd or /etc/shadow lines.
+
+    A ``:`` or newline smuggled into a name, shell, or home would inject
+    extra fields or whole lines into the account files, so anything
+    containing one (or any control character) is refused outright.
+    """
+    if not isinstance(value, str):
+        raise RootfsError(
+            f"{label} must be a string, got {type(value).__name__}"
+        )
+    if value == "":
+        raise RootfsError(f"{label} must not be empty")
+    bad = sorted(set(value) & _FORBIDDEN_FIELD_CHARS)
+    if bad:
+        raise RootfsError(
+            f"{label} contains forbidden character(s): {bad!r}"
+        )
+    return value
+
+
+def _validate_username(name: str) -> str:
+    """Validate a login name for use in passwd/shadow/group lines."""
+    name = _validate_passwd_field(name, "user name")
+    if name == "root":
+        raise RootfsError("user name 'root' is reserved for UID 0")
+    if name in (".", "..") or name.startswith("-"):
+        raise RootfsError(f"invalid user name: {name!r}")
+    if any(c in name for c in "/ \t"):
+        raise RootfsError(
+            f"user name {name!r} must not contain '/' or whitespace"
+        )
+    return name
+
+
+def _validate_absolute_path(value: str, label: str) -> str:
+    """Validate a shell or home path for use in a passwd line."""
+    value = _validate_passwd_field(value, label)
+    if not value.startswith("/"):
+        raise RootfsError(f"{label} must be an absolute path: {value!r}")
+    parts = [part for part in value.split("/") if part not in ("", ".")]
+    if ".." in parts:
+        raise RootfsError(f"{label} must not contain '..': {value!r}")
+    return value
+
+
+def _validate_password_hash(password_hash: str) -> str:
+    """Validate a crypt(3) password hash for /etc/shadow.
+
+    Accepts only the ``$id$salt$hash`` form. The lock markers ``!`` and
+    ``*`` are not hashes and are refused here, so a caller cannot
+    accidentally pass a lock value where a usable password was meant.
+    """
+    value = _validate_passwd_field(password_hash, "password hash")
+    if not value.startswith("$") or value.count("$") < 2:
+        raise RootfsError(
+            "password hash must be a crypt(3) hash such as "
+            "'$6$salt$hash'"
+        )
+    return value
 
 
 class RootfsBuilder:
@@ -73,33 +145,103 @@ class RootfsBuilder:
         if os.name != "nt":
             rcs.chmod(0o755)
 
+    def _write_account_file(self, name: str, content: str) -> None:
+        """Write one /etc account file (passwd, group, or shadow).
+
+        The only credential material ever written here is a validated
+        crypt(3) hash or a "!" lock marker (see _validate_password_hash);
+        /etc/shadow is the designated store for password hashes, so this
+        is not clear-text storage of a password.
+        """
+        path = self.rootfs_dir / "etc" / name
+        # Writes only validated crypt(3) hashes or "!" lock markers to
+        # /etc/shadow (the designated hash store), never a clear-text
+        # password - the CodeQL clear-text-storage alert is a false
+        # positive here, suppressed with the justification below.
+        path.write_text(content)  # codeql[py/clear-text-storage-sensitive-data]
+
     def configure_users(
         self,
-        users: Optional[List[Dict[str, str]]] = None,
+        users: Optional[List[Dict[str, Any]]] = None,
+        root_password_hash: Optional[str] = None,
+        allow_passwordless_root: bool = False,
     ) -> None:
-        """Create /etc/passwd, /etc/group, /etc/shadow."""
+        """Create /etc/passwd, /etc/group, /etc/shadow.
+
+        Accounts are locked by default: root and every user get ``!`` in
+        the shadow password field, so no password can log in. A usable
+        password comes only from an explicit ``password_hash`` (a crypt(3)
+        hash) on that account, or from the explicit opt-in
+        ``allow_passwordless=True`` on a user dict /
+        ``allow_passwordless_root=True`` for root. Passwordless accounts
+        are never the default.
+
+        Every name, shell, home, and hash is validated before anything is
+        written, so a ``:``, newline, or control character can never
+        inject extra fields or lines into the account files.
+        """
+        if root_password_hash is not None and allow_passwordless_root:
+            raise RootfsError(
+                "root_password_hash and allow_passwordless_root are "
+                "mutually exclusive"
+            )
+        if root_password_hash is not None:
+            root_shadow_pw = _validate_password_hash(root_password_hash)
+        elif allow_passwordless_root:
+            root_shadow_pw = ""
+        else:
+            root_shadow_pw = LOCKED_PASSWORD
+
         passwd_lines = ["root:x:0:0:root:/root:/bin/sh\n"]
         group_lines = ["root:x:0:\n"]
-        shadow_lines = ["root::0:0:99999:7:::\n"]
+        shadow_lines = [f"root:{root_shadow_pw}:0:0:99999:7:::\n"]
 
+        home_dirs: List[Path] = []
+        seen_names = {"root"}
         if users:
             uid = 1000
             for user in users:
-                name = user.get("name", "user")
-                shell = user.get("shell", "/bin/sh")
-                home = user.get("home", f"/home/{name}")
-                passwd_lines.append(f"{name}:x:{uid}:{uid}:{name}:{home}:{shell}\n")
+                name = _validate_username(user.get("name", "user"))
+                if name in seen_names:
+                    raise RootfsError(f"duplicate user name: {name!r}")
+                seen_names.add(name)
+                shell = _validate_absolute_path(
+                    user.get("shell", "/bin/sh"), "shell"
+                )
+                home = _validate_absolute_path(
+                    user.get("home", f"/home/{name}"), "home"
+                )
+                password_hash = user.get("password_hash")
+                allow_passwordless = user.get("allow_passwordless", False)
+                if password_hash is not None and allow_passwordless:
+                    raise RootfsError(
+                        f"user {name!r}: password_hash and "
+                        "allow_passwordless are mutually exclusive"
+                    )
+                if password_hash is not None:
+                    shadow_pw = _validate_password_hash(password_hash)
+                elif allow_passwordless:
+                    shadow_pw = ""
+                else:
+                    shadow_pw = LOCKED_PASSWORD
+                passwd_lines.append(
+                    f"{name}:x:{uid}:{uid}:{name}:{home}:{shell}\n"
+                )
                 group_lines.append(f"{name}:x:{uid}:\n")
-                shadow_lines.append(f"{name}::0:0:99999:7:::\n")
+                shadow_lines.append(
+                    f"{name}:{shadow_pw}:0:0:99999:7:::\n"
+                )
                 safe_home = os.path.normpath(home.lstrip("/"))
-                if ".." in safe_home.split(os.sep):
-                    raise RootfsError(f"Invalid home path for user {name!r}: {home!r}")
-                (self.rootfs_dir / safe_home).mkdir(parents=True, exist_ok=True)
+                home_dirs.append(self.rootfs_dir / safe_home)
                 uid += 1
 
-        (self.rootfs_dir / "etc" / "passwd").write_text("".join(passwd_lines))
-        (self.rootfs_dir / "etc" / "group").write_text("".join(group_lines))
-        (self.rootfs_dir / "etc" / "shadow").write_text("".join(shadow_lines))
+        # All validation passed; only now touch the filesystem, so a bad
+        # account can never leave a half-written passwd/shadow behind.
+        self._write_account_file("passwd", "".join(passwd_lines))
+        self._write_account_file("group", "".join(group_lines))
+        self._write_account_file("shadow", "".join(shadow_lines))
+        for home_dir in home_dirs:
+            home_dir.mkdir(parents=True, exist_ok=True)
 
     def configure_network(self, hostname: str = "eos") -> None:
         """Create basic network configuration."""
@@ -127,11 +269,17 @@ class RootfsBuilder:
         self,
         init_system: str = "busybox",
         hostname: str = "eos",
-        users: Optional[List[Dict[str, str]]] = None,
+        users: Optional[List[Dict[str, Any]]] = None,
+        root_password_hash: Optional[str] = None,
+        allow_passwordless_root: bool = False,
     ) -> Path:
         """Full rootfs assembly pipeline."""
         self.create_skeleton()
         self.install_init(init_system)
-        self.configure_users(users)
+        self.configure_users(
+            users,
+            root_password_hash=root_password_hash,
+            allow_passwordless_root=allow_passwordless_root,
+        )
         self.configure_network(hostname)
         return self.rootfs_dir
