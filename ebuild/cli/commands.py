@@ -32,7 +32,7 @@ from ebuild.build.ninja_backend import (
     PackagePaths,
     executable_output_path,
 )
-from ebuild.build.toolchain import resolve_toolchain
+from ebuild.build.toolchain import ToolchainError, resolve_toolchain
 from ebuild.cli.integration import register_commands as _register_integration_commands
 from ebuild.cli.logger import Logger
 from ebuild.core.config import ConfigError, load_config, ProjectConfig
@@ -1148,6 +1148,9 @@ def build(log: Logger, config_path: str, build_dir: str, backend: Optional[str],
     except (ConfigError, RecipeError) as e:
         log.error(f"Configuration error: {e}")
         raise SystemExit(1)
+    except ToolchainError as e:
+        log.error(f"Toolchain error: {e}")
+        raise SystemExit(1)
     except CycleError as e:
         log.error(f"Dependency error: {e}")
         raise SystemExit(1)
@@ -1343,6 +1346,9 @@ def configure(log: Logger, config_path: str, build_dir: str, backend: Optional[s
         raise SystemExit(1)
     except (ConfigError, RecipeError) as e:
         log.error(f"Configuration error: {e}")
+        raise SystemExit(1)
+    except ToolchainError as e:
+        log.error(f"Toolchain error: {e}")
         raise SystemExit(1)
     except (CycleError, ResolveError, FetchError, BuildError) as e:
         log.error(f"Error: {e}")
@@ -2717,7 +2723,11 @@ def test(
         source_dir = cfg.source_dir
         native = [t for t in cfg.targets if t.target_type == "test"]
         if native:
-            _run_native_tests(cfg, native, build_path, log, name_filter)
+            try:
+                _run_native_tests(cfg, native, build_path, log, name_filter)
+            except ToolchainError as e:
+                log.error(f"Toolchain error: {e}")
+                raise SystemExit(1)
             return
 
     if runner != "auto":
