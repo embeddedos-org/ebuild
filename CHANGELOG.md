@@ -22,6 +22,11 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A missing or unknown cross toolchain no longer crashes `ebuild build`.**
+  `build`, `configure` and `test` let `ToolchainError` escape, so a project
+  whose `toolchain.target` compiler was not installed (or was misspelt) ended
+  in a Python traceback. They now print `Toolchain error: <reason>` and exit 1,
+  like other configuration errors.
 - **Package archive downloads can no longer hang or poison the cache.**
   `PackageFetcher` downloaded with `urlretrieve()`, which has no timeout: one
   unresponsive mirror left `ebuild build` hanging until the user killed it.
