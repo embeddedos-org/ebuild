@@ -1,0 +1,37 @@
+$ ebuild build   # origin/master 2b0c165; arm-none-eabi-gcc not on PATH; stdout and stderr in one stream (2>&1)
+
+=== ebuild — Build ===
+   Loading configuration...
+[info] Project: demo v0.1.0
+[info] Auto-detected backend: ninja
+   Resolving dependency graph...
+   Resolving toolchain...
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "<repo>/ebuild/__main__.py", line 11, in <module>
+    cli()
+    ~~~^^
+  File "<venv>/lib/python3.14/site-packages/click/core.py", line 1569, in __call__
+    return self.main(*args, **kwargs)
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "<venv>/lib/python3.14/site-packages/click/core.py", line 1490, in main
+    rv = self.invoke(ctx)
+  File "<venv>/lib/python3.14/site-packages/click/core.py", line 1970, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^
+  File "<venv>/lib/python3.14/site-packages/click/core.py", line 1353, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "<venv>/lib/python3.14/site-packages/click/core.py", line 907, in invoke
+    return callback(*args, **kwargs)
+  File "<venv>/lib/python3.14/site-packages/click/decorators.py", line 46, in new_func
+    return f(get_current_context().obj, *args, **kwargs)
+  File "<repo>/ebuild/cli/commands.py", line 1103, in build
+    compiler = resolve_toolchain(cfg.toolchain)
+  File "<repo>/ebuild/build/toolchain.py", line 148, in resolve_toolchain
+    raise ToolchainError(
+    ...<2 lines>...
+    )
+ebuild.build.toolchain.ToolchainError: toolchain target 'arm-none-eabi' resolves to 'arm-none-eabi-gcc', which was not found on PATH. Install the toolchain or fix 'toolchain.target'.
+[exit code 1]

@@ -1,0 +1,10 @@
+$ ebuild build   # fix/toolchain-error-message 47881a3; arm-none-eabi-gcc not on PATH; stdout and stderr in one stream (2>&1)
+
+=== ebuild — Build ===
+   Loading configuration...
+[info] Project: demo v0.1.0
+[info] Auto-detected backend: ninja
+   Resolving dependency graph...
+   Resolving toolchain...
+[error] Toolchain error: toolchain target 'arm-none-eabi' resolves to 'arm-none-eabi-gcc', which was not found on PATH. Install the toolchain or fix 'toolchain.target'.
+[exit code 1]
