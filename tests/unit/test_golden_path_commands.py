@@ -76,6 +76,19 @@ class TestBoardSelection:
         monkeypatch.chdir(tmp_path)
         assert _selected_board() == "generic"
 
+    @pytest.mark.parametrize("text", [
+        "- stm32f4\n",            # top level is a list
+        "system: stm32f4\n",      # system is a string, not a mapping
+        "system: {board: [unclosed\n",  # not valid YAML
+    ])
+    def test_a_malformed_eos_yaml_falls_back_instead_of_raising(
+            self, tmp_path, monkeypatch, text):
+        """`ebuild build` reads the board back after the image has linked, to
+        print its summary. A traceback there would fail a successful build."""
+        monkeypatch.chdir(tmp_path)
+        Path("eos.yaml").write_text(text, encoding="utf-8")
+        assert _selected_board() == "generic"
+
     def test_board_without_a_project_is_an_error(self, tmp_path, monkeypatch):
         """Refuse rather than write an eos.yaml into whatever directory the
         developer happened to be standing in."""
