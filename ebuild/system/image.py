@@ -181,10 +181,17 @@ class ImageBuilder:
         self._create_empty_image(output, size_mb)
 
         if _has_command("mkfs.ext4"):
-            subprocess.run(
+            result = subprocess.run(
                 ["mkfs.ext4", "-L", label, "-d", str(rootfs_dir), str(output)],
                 capture_output=True,
             )
+            if result.returncode != 0:
+                # What is on disk is still the zero-filled file, not an
+                # ext4 image; do not leave it where it looks like one.
+                output.unlink(missing_ok=True)
+                raise ImageError(
+                    f"mkfs.ext4 failed: {result.stderr.decode(errors='replace').strip()}"
+                )
         else:
             raise ImageError(
                 "mkfs.ext4 not found. Install e2fsprogs:\n"
