@@ -22,6 +22,12 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
+  fails.** The exit status of `mkfs.ext4` was never checked, so a failed
+  format still printed "Image created" and left the zero-filled file in
+  `images/` as the image. The failure is now reported with `mkfs.ext4`'s own
+  message, the command exits 1, and the unformatted file is removed
+  (`ebuild/system/image.py`).
 - **A missing or unknown cross toolchain no longer crashes `ebuild build`.**
   `build`, `configure` and `test` let `ToolchainError` escape, so a project
   whose `toolchain.target` compiler was not installed (or was misspelt) ended
