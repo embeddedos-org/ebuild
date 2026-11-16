@@ -22,6 +22,12 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **Package URLs with a query string or fragment now fetch.** The cached
+  archive was named after the URL's last segment verbatim, so
+  `…/v1.0.tar.gz?raw=true` became `v1.0.tar.gz?raw=true`: extraction refused
+  it as an unsupported format, and on Windows the file could not be created
+  at all. The name now comes from the URL path only
+  (`ebuild/packages/fetcher.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in

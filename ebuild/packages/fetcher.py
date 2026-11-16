@@ -20,6 +20,7 @@ import http.client
 import os
 import tarfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -271,8 +272,13 @@ class PackageFetcher:
         zf.extractall(extract_to)
 
     def _archive_filename(self, recipe: PackageRecipe) -> str:
-        """Derive archive filename from recipe URL."""
-        url_path = recipe.url.rstrip("/")
+        """Derive archive filename from recipe URL.
+
+        Only the URL path names the file: a ``?query`` or ``#fragment`` left
+        on hid the archive extension from _extract() and put '?' in a file
+        name, which Windows rejects. The download still uses the full URL.
+        """
+        url_path = urllib.parse.urlsplit(recipe.url).path.rstrip("/")
         return url_path.split("/")[-1]
 
     def _archive_path(self, recipe: PackageRecipe) -> Optional[Path]:
