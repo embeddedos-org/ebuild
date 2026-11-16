@@ -22,6 +22,13 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A source outside the project directory no longer breaks the Ninja
+  build when two targets share it.** Object paths were `obj/<target>/` plus
+  the source path verbatim, so `../common/hal.c` resolved to
+  `obj/common/hal.c.o` for every target and ninja refused the manifest with
+  "multiple rules generate". `..` components now map to `__` (as CMake
+  does) and a leading root or drive is dropped, keeping each object in its
+  own target directory (`ebuild/build/ninja_backend.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in
