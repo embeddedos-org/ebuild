@@ -877,3 +877,33 @@ class TestStaticArchiveRecreation:
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@pytest.mark.parametrize("shared_src", ["../common/hal.c", "../../vendor/hal.c"])
+def test_parent_relative_source_stays_in_its_target_object_dir(tmp_path, shared_src):
+    """Regression: ``obj/<target>/`` + ``../common/hal.c`` resolves to
+    ``obj/common/hal.c.o`` -- the same file for every target that lists the
+    source, and with enough ``..`` a path outside the build directory. Each
+    target's object must stay inside its own ``obj/<target>/`` directory."""
+    config = ProjectConfig(
+        name="proj", version="1.0", source_dir=tmp_path,
+        targets=[
+            TargetConfig(name="lib", target_type="static_library",
+                         sources=[shared_src], defines=["BUILD_LIB=1"]),
+            TargetConfig(name="app", target_type="executable",
+                         sources=["src/main.c", shared_src]),
+        ],
+    )
+    build_dir = tmp_path / "_build"
+    backend = NinjaBackend(config, build_dir, ResolvedToolchain())
+
+    objects = {
+        target.name: backend._object_path(target, shared_src).resolve()
+        for target in config.targets
+    }
+
+    for name, obj in objects.items():
+        target_dir = (build_dir / "obj" / name).resolve()
+        assert target_dir in obj.parents, f"{name}: {obj} escapes {target_dir}"
+        assert obj.name == "hal.c.o"
+    assert objects["lib"] != objects["app"]

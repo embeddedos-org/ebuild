@@ -166,8 +166,17 @@ class NinjaBackend:
         Example:
             >>> backend._object_path(target, "src/main.c")   # target.name == "app"
             PosixPath('_build/obj/app/src/main.c.o')
+
+        The object must stay inside ``obj/<target>/``. A ``..`` component
+        becomes ``__`` (as CMake names them) and a root or drive is dropped:
+        joined verbatim, ``../common/hal.c`` resolved to
+        ``obj/common/hal.c.o`` for every target listing it, and an absolute
+        source discarded the build directory altogether.
         """
-        return self.build_dir / "obj" / target.name / (src + ".o")
+        source = Path(src)
+        parts = source.parts[1:] if source.anchor else source.parts
+        parts = tuple("__" if part == ".." else part for part in parts)
+        return self.build_dir.joinpath("obj", target.name, *parts[:-1], parts[-1] + ".o")
 
     def _write_ninja(self) -> None:
         """Write the build.ninja file."""
