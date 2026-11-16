@@ -181,6 +181,20 @@ def test_cached_archive_is_reused_not_redownloaded(tmp_path, fake_download):
     assert marker_in(tmp_path / "src-b") == LITTLEFS_URL
 
 
+def test_query_string_is_not_part_of_the_archive_filename(tmp_path, fake_download):
+    """Regression: the cache filename was the URL's last '/' segment
+    verbatim, so ``...tar.gz?raw=true`` became ``v2.9.3.tar.gz?raw=true``.
+    Extraction then refused it as an unsupported format, and on Windows
+    '?' cannot appear in a file name at all."""
+    url = LITTLEFS_URL + "?raw=true#readme"
+    fetcher = PackageFetcher(tmp_path / "dl")
+
+    fetcher.fetch(make_recipe("littlefs", url=url), tmp_path / "src")
+
+    assert (tmp_path / "dl" / "littlefs-2.9.3" / "v2.9.3.tar.gz").is_file()
+    assert marker_in(tmp_path / "src") == url
+
+
 # ── Checksum handling ────────────────────────────────────────
 
 def test_checksum_mismatch_removes_the_cached_archive(tmp_path, fake_download):
