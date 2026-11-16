@@ -22,6 +22,11 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **`ebuild build -j N` no longer reports a package that failed as
+  "skipped (a dependency failed)".** The parallel scheduler remembered only
+  the first failed node, so any other package that also ran and failed was
+  passed to the skip callback as if it had never run. Every failed node is
+  now excluded from the skip report (`ebuild/core/scheduler.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in

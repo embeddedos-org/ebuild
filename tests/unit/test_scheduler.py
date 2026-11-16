@@ -207,6 +207,30 @@ class TestFailures:
 
         assert set(skipped) == {"app", "shipped"}
 
+    def test_on_skip_does_not_report_a_node_that_ran_and_failed(self):
+        # Two independent nodes run together and both fail. Only the first
+        # failure is raised, but the second node still ran: reporting it as
+        # "skipped because a dependency failed" is false, it has none.
+        g = _graph([("app_x", "x"), ("app_y", "y")])
+        both_started = threading.Barrier(2, timeout=5)
+        skipped = []
+
+        def task(node):
+            if node in ("x", "y"):
+                both_started.wait()
+                raise RuntimeError(f"{node} failed")
+            return node
+
+        with pytest.raises(RuntimeError, match=r"(x|y) failed"):
+            run_graph(
+                g,
+                task,
+                jobs=2,
+                on_skip=lambda name, cause: skipped.append(name),
+            )
+
+        assert set(skipped) == {"app_x", "app_y"}
+
     def test_first_failure_is_the_one_raised(self):
         g = DependencyGraph()
         g.add_node("x")
