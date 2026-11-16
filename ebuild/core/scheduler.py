@@ -84,7 +84,9 @@ def run_graph(
     ready: List[str] = [n for n in order if not pending[n]]
     results: Dict[str, T] = {}
     failure: BaseException | None = None
-    failed_node: str | None = None
+    # Every node that ran and raised, not just the one whose error is
+    # re-raised: none of them were skipped.
+    failed: Set[str] = set()
     lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -106,8 +108,9 @@ def run_graph(
                     value = fut.result()
                 except BaseException as exc:      # noqa: BLE001 - re-raised below
                     with lock:
+                        failed.add(node)
                         if failure is None:
-                            failure, failed_node = exc, node
+                            failure = exc
                     continue
 
                 results[node] = value
@@ -126,15 +129,16 @@ def run_graph(
                 value = fut.result()
             except BaseException as exc:          # noqa: BLE001
                 with lock:
+                    failed.add(node)
                     if failure is None:
-                        failure, failed_node = exc, node
+                        failure = exc
             else:
                 results[node] = value
 
     if failure is not None:
         if on_skip is not None:
             for node in order:
-                if node not in results and node != failed_node:
+                if node not in results and node not in failed:
                     on_skip(node, failure)
         raise failure
 
