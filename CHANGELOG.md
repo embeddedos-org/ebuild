@@ -22,6 +22,11 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **Upper-case SHA-256 checksums in recipes now verify.** Recipe validation
+  accepts upper-case hex (the form PowerShell's `Get-FileHash` prints), but
+  the fetcher compared it against the lower-case digest, so a correct
+  archive failed with "Checksum mismatch" and was deleted on every build.
+  The comparison is now case-insensitive (`ebuild/packages/fetcher.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in
