@@ -22,6 +22,11 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A rootfs boots with the hostname it was assembled with.** `rcS` ran a
+  literal `hostname eos`, so an image assembled as `eos-<board>` (as the
+  board build does) booted as `eos`, a name its own `/etc/hosts` does not
+  resolve. `rcS` now reads `/etc/hostname`, falling back to `eos` only when
+  that file is absent (`ebuild/system/rootfs.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in

@@ -139,7 +139,9 @@ class RootfsBuilder:
             "mount -t proc proc /proc\n"
             "mount -t sysfs sysfs /sys\n"
             "mount -t devtmpfs devtmpfs /dev\n"
-            "hostname eos\n"
+            # configure_network() writes the assembled hostname here; "eos"
+            # only if it is absent (install_init() used on its own).
+            "[ -s /etc/hostname ] && hostname -F /etc/hostname || hostname eos\n"
             "echo 'EoS booted successfully'\n"
         )
         if os.name != "nt":
