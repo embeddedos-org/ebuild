@@ -167,6 +167,36 @@ class TestCleanBackends:
         assert "clean" in cmd
 
 
+# ── BackendDispatcher — make backend on each host ───────────
+
+
+class TestMakeBuildCommand:
+    """NMAKE has no -C: options take '-' or '/' and are case-insensitive, so
+    `nmake -C <dir>` meant /C (suppress output) plus a target named <dir>,
+    run against the Makefile in the *current* directory. NMAKE reads the
+    Makefile in its working directory, so the source dir must be its cwd."""
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_windows_runs_nmake_in_the_source_dir(self, mock_sub, tmp_path, monkeypatch):
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "win32")
+        src = tmp_path / "src"
+        BackendDispatcher(src, tmp_path / "build").build("make")
+
+        mock_sub.run.assert_called_once()
+        cmd = mock_sub.run.call_args[0][0]
+        assert cmd == ["nmake"]
+        assert mock_sub.run.call_args.kwargs["cwd"] == str(src)
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_other_hosts_keep_make_dash_c(self, mock_sub, tmp_path, monkeypatch):
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "linux")
+        src = tmp_path / "src"
+        BackendDispatcher(src, tmp_path / "build").build("make")
+
+        cmd = mock_sub.run.call_args[0][0]
+        assert cmd == ["make", "-C", str(src)]
+
+
 # ── BackendDispatcher — unknown-backend error contract ──────
 
 
