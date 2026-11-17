@@ -164,9 +164,9 @@ class SExprParser:
             if ch == '"':
                 result = self._text[start:self._pos]
                 self._pos += 1
-                return result
+                return _unescape(result)
             self._pos += 1
-        return self._text[start:]
+        return _unescape(self._text[start:])
 
     def _parse_atom(self) -> str:
         start = self._pos
@@ -180,6 +180,16 @@ class SExprParser:
     def _skip_whitespace(self) -> None:
         while self._pos < self._len and self._text[self._pos] in ' \t\n\r':
             self._pos += 1
+
+
+_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
+_ESCAPED_CONTROL = {"n": "\n", "r": "\r"}
+
+
+def _unescape(raw: str) -> str:
+    """Undo KiCad's string escaping: ``\\"`` -> ``"``, ``\\\\`` -> ``\\``,
+    ``\\n``/``\\r`` -> newline/CR."""
+    return _ESCAPE.sub(lambda m: _ESCAPED_CONTROL.get(m.group(1), m.group(1)), raw)
 
 
 def _find_nodes(tree: List, tag: str) -> List[List]:
