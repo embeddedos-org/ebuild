@@ -10,6 +10,8 @@ downstream modules use to generate build configs.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -443,8 +445,10 @@ class EosHardwareAnalyzer:
         profile = self.interpret_text(bom_text)
         profile.source_files.append("bom")
 
-        for line in bom_text.strip().split('\n'):
-            parts = [p.strip() for p in line.split(',')]
+        # csv, not str.split(','): KiCad's grouped BOM quotes a field of
+        # references ("U3,U4,U5"), which split() spread over the value column.
+        for row in csv.reader(io.StringIO(bom_text.strip())):
+            parts = [p.strip() for p in row]
             if len(parts) < 2:
                 continue
 
