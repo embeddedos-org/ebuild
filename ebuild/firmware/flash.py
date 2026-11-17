@@ -82,7 +82,9 @@ def flash(
 
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        raise FlashError(f"Flash failed: {result.stderr.decode()}")
+        raise FlashError(
+            f"Flash failed: {result.stderr.decode(errors='replace').strip()}"
+        )
 
 
 def reset(tool: str = "openocd", target: str = "stm32f4") -> None:
@@ -102,4 +104,6 @@ def reset(tool: str = "openocd", target: str = "stm32f4") -> None:
 
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        raise FlashError(f"Reset failed: {result.stderr.decode()}")
+        raise FlashError(
+            f"Reset failed: {result.stderr.decode(errors='replace').strip()}"
+        )
