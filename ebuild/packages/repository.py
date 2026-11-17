@@ -122,9 +122,11 @@ class PackageRepository:
             info = PackageInfo(
                 name=name,
                 version=str(entry.get("version", "0.0.0")),
-                description=entry.get("description", ""),
-                license=entry.get("license", ""),
-                build_system=entry.get("build_system", entry.get("build", "cmake")),
+                # `or`, not a .get() default: a JSON null is present, so the
+                # default would not apply and search() calls .lower() on these.
+                description=entry.get("description") or "",
+                license=entry.get("license") or "",
+                build_system=entry.get("build_system") or entry.get("build") or "cmake",
                 dependencies=entry.get("dependencies", []),
                 url=entry.get("url", ""),
                 checksum=entry.get("checksum", ""),
