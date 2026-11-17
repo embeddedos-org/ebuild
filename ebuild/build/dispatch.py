@@ -222,9 +222,13 @@ class BackendDispatcher:
             _run_or_log(cmd, dry_run)
 
         elif backend == "make":
-            make_cmd = "nmake" if sys.platform == "win32" else "make"
-            cmd = [make_cmd, "-C", str(self.source_dir)]
-            _run_or_log(cmd, dry_run)
+            if sys.platform == "win32":
+                # NMAKE has no -C (it would read it as /C, "suppress
+                # output", and the directory as a target); it uses the
+                # Makefile in its working directory.
+                _run_or_log(["nmake"], dry_run, cwd=str(self.source_dir))
+            else:
+                _run_or_log(["make", "-C", str(self.source_dir)], dry_run)
 
         elif backend == "meson":
             cmd = ["meson", "compile", "-C", str(self.build_dir)]
