@@ -49,6 +49,21 @@ SOURCE_REPOS = {
 }
 
 
+_ignore_build_outputs = shutil.ignore_patterns(
+    "*.o","*.obj","*.a","*.lib","*.exe",
+    "*.pyc","__pycache__",".git","build",
+    "*.cpio.gz","*.tar.gz","*.zip")
+
+
+def _ignore_source(dirpath, names):
+    """Skip build outputs, but keep a Python package named ``build``
+    (``ebuild/ebuild/build`` is source, not CMake output)."""
+    ignored = _ignore_build_outputs(dirpath, names)
+    if os.path.isfile(os.path.join(dirpath, "build", "__init__.py")):
+        ignored.discard("build")
+    return ignored
+
+
 def collect_source(workspace, out_src, target, info):
     collected = 0
     for repo, spec in SOURCE_REPOS.items():
@@ -67,10 +82,7 @@ def collect_source(workspace, out_src, target, info):
             if os.path.isdir(src_dir):
                 dst_dir = os.path.join(repo_out, dname)
                 shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True,
-                                ignore=shutil.ignore_patterns(
-                                    "*.o","*.obj","*.a","*.lib","*.exe",
-                                    "*.pyc","__pycache__",".git","build",
-                                    "*.cpio.gz","*.tar.gz","*.zip"))
+                                ignore=_ignore_source)
                 collected += 1
     product_cfg = os.path.join(out_src, "eos_product_config.h")
     with open(product_cfg, "w") as f:
