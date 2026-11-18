@@ -155,7 +155,9 @@ def package_deliverable(target, version="0.1.0", build_dir="build",
                     shutil.copy2(fp, os.path.join(out,"eosuite","lib"))
                 elif fn.endswith(".h"):
                     shutil.copy2(fp, os.path.join(out,"eosuite","include"))
-                elif os.access(fp, os.X_OK) or fn in ("ebot","ebot.exe",
+                # st_mode, not os.access: X_OK is True for every file on
+                # Windows, whose stat derives the x bits from the extension.
+                elif os.stat(fp).st_mode & 0o111 or fn in ("ebot","ebot.exe",
                         "eos_integration_test","eos_integration_test.exe",
                         "eosuite","eosuite.exe"):
                     shutil.copy2(fp, os.path.join(out,"eosuite","bin"))
