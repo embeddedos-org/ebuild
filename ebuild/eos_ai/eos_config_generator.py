@@ -135,15 +135,17 @@ class EosConfigGenerator:
 
     def generate_build_yaml(self, profile: HardwareProfile) -> Path:
         """Generate ebuild build.yaml for the project."""
+        # toolchain.prefix is concatenated with the driver ("{prefix}gcc"),
+        # so it carries its trailing '-'; "" is the host compiler.
         _TOOLCHAIN_PREFIX = {
-            "arm": "arm-none-eabi",
-            "arm64": "aarch64-linux-gnu",
-            "aarch64": "aarch64-linux-gnu",
-            "riscv64": "riscv64-linux-gnu",
-            "x86_64": "x86_64-linux-gnu",
-            "mips": "mipsel-linux-gnu",
+            "arm": "arm-none-eabi-",
+            "arm64": "aarch64-linux-gnu-",
+            "aarch64": "aarch64-linux-gnu-",
+            "riscv64": "riscv64-linux-gnu-",
+            "x86_64": "x86_64-linux-gnu-",
+            "mips": "mipsel-linux-gnu-",
         }
-        toolchain = _TOOLCHAIN_PREFIX.get(profile.arch, "gcc")
+        toolchain = _TOOLCHAIN_PREFIX.get(profile.arch, "")
 
         build = {
             "project": {
