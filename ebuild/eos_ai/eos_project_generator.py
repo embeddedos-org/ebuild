@@ -669,9 +669,11 @@ class EosProjectGenerator:
         return board_dir_for_mcu(profile.mcu) or ""
 
     def _resolve_eos_board(self, profile: HardwareProfile) -> str:
-        """Map MCU family → eos board YAML filename."""
+        """Map MCU family → eos board YAML filename (longest prefix wins)."""
         mcu = (profile.mcu or "").lower()
-        for prefix, filename in self.EOS_BOARD_MAP.items():
+        for prefix, filename in sorted(
+            self.EOS_BOARD_MAP.items(), key=lambda kv: len(kv[0]), reverse=True
+        ):
             if mcu.startswith(prefix):
                 return filename
         return ""
