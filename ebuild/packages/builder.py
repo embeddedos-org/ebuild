@@ -137,6 +137,9 @@ class PackageBuilder:
         with open(log_path, "a", encoding="utf-8") as log:
             log.write(f"\n{'='*60}\n{step_name}\n{'='*60}\n")
             log.write(f"$ {' '.join(cmd)}\n\n")
+            # The child writes to the descriptor directly; flush so the
+            # banner is not left in Python's buffer and appended after it.
+            log.flush()
 
             result = subprocess.run(
                 cmd,
