@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ebuild.firmware.flash import FlashError, flash
+from ebuild.firmware.flash import FlashError, flash, reset
 
 
 @pytest.fixture
@@ -89,6 +89,34 @@ def test_flash_failure_raises_flash_error_with_tool_stderr(tmp_path, monkeypatch
 
     with pytest.raises(FlashError, match="Flash failed: no device found"):
         flash(image_path, tool="openocd")
+
+
+# esptool on a French-locale Windows host: Python writes its piped stderr in
+# the ANSI code page (cp1252), so "Accès refusé" is not valid UTF-8.
+_CP1252_STDERR = "could not open port 'COM3': Accès refusé.".encode("cp1252")
+
+
+def test_flash_failure_with_non_utf8_stderr_still_raises_flash_error(
+    tmp_path, monkeypatch
+):
+    image_path = _image(tmp_path, "firmware.bin")
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, *a, **k: SimpleNamespace(returncode=2, stderr=_CP1252_STDERR),
+    )
+
+    with pytest.raises(FlashError, match="Flash failed: could not open port 'COM3'"):
+        flash(image_path, tool="esptool")
+
+
+def test_reset_failure_with_non_utf8_stderr_still_raises_flash_error(monkeypatch):
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, *a, **k: SimpleNamespace(returncode=2, stderr=_CP1252_STDERR),
+    )
+
+    with pytest.raises(FlashError, match="Reset failed: could not open port 'COM3'"):
+        reset(tool="pyocd")
 
 
 def test_missing_image_is_rejected_before_invoking_the_tool(tmp_path, record_run):
