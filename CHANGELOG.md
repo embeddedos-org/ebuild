@@ -22,6 +22,12 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **`ebuild system --format qcow2|squashfs` reports the tool's error even
+  when it is not UTF-8.** A failed `qemu-img` or `mksquashfs` was reported
+  with a strict UTF-8 decode of its stderr, so non-UTF-8 output (such as a
+  rootfs file name) raised `UnicodeDecodeError` in place of `ImageError` and
+  hid the tool's message. Undecodable bytes are now replaced, as the ext4
+  path already does (`ebuild/system/image.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in
