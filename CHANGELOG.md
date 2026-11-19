@@ -22,6 +22,14 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **The hardware analyzer reads "256KB SRAM" and "2MB SPI flash".** In
+  `EosHardwareAnalyzer.interpret_text()` the RAM pattern `(?:sr)?ram`
+  matched "ram" or "srram" but never "sram", so every SRAM size was read as
+  0, and the flash pattern needed "flash" right after the size, so "2MB SPI
+  flash" gave 0 and `generate_boot_yaml` fell back to 1 MB (TASKS.md T-007).
+  SRAM now matches, and words such as SPI, QSPI, NOR, internal or external
+  may stand between the size and "flash" or "RAM"
+  (`ebuild/eos_ai/eos_hw_analyzer.py`).
 - **`ebuild system --format qcow2|squashfs` reports the tool's error even
   when it is not UTF-8.** A failed `qemu-img` or `mksquashfs` was reported
   with a strict UTF-8 decode of its stderr, so non-UTF-8 output (such as a
