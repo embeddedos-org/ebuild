@@ -422,16 +422,23 @@ class EosHardwareAnalyzer:
                 ))
                 seen.add(ptype)
 
-        # Detect memory sizes
-        flash_match = re.search(r'(\d+)\s*[mk]b?\s*flash', text)
+        # Detect memory sizes. A size is often followed by the kind of memory
+        # before the word "flash" or "RAM" ("2MB SPI flash", "64KB internal
+        # SRAM"), so allow those qualifiers in between.
+        qualifiers = (
+            r'(?:(?:of|spi|qspi|nor|nand|serial|internal|external|embedded|'
+            r'on-chip|onboard|on-board)\s+)*'
+        )
+        flash_match = re.search(r'(\d+)\s*([mk])b?\s*' + qualifiers + r'flash', text)
         if flash_match:
             val = int(flash_match.group(1))
-            profile.flash_size = val * 1024 if 'k' in text[flash_match.start():flash_match.end()] else val * 1024 * 1024
+            profile.flash_size = val * 1024 if flash_match.group(2) == 'k' else val * 1024 * 1024
 
-        ram_match = re.search(r'(\d+)\s*[mk]b?\s*(?:sr)?ram', text)
+        # s?ram: "(?:sr)?ram" matched "ram" and "srram", never "sram".
+        ram_match = re.search(r'(\d+)\s*([mk])b?\s*' + qualifiers + r's?ram', text)
         if ram_match:
             val = int(ram_match.group(1))
-            profile.ram_size = val * 1024 if 'k' in text[ram_match.start():ram_match.end()] else val * 1024 * 1024
+            profile.ram_size = val * 1024 if ram_match.group(2) == 'k' else val * 1024 * 1024
 
         # Detect clock
         clock_match = re.search(r'(\d+)\s*mhz', text)
