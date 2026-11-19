@@ -131,6 +131,29 @@ def test_missing_gate_is_denied(bundle):
     assert any("V4" in r and "missing" in r for r in verdict.reasons)
 
 
+@pytest.mark.parametrize("rel", [
+    "C:/outside.bin",
+    "C:outside.bin",
+    "\\outside.bin",
+    "//server/share/outside.bin",
+    "cad\\..\\..\\outside.bin",
+])
+def test_bundle_path_with_windows_anchor_or_parent_is_denied(bundle, rel):
+    # Joined onto bundle_dir on Windows, each of these names a file outside
+    # the bundle. The digests are made to agree so the path check is the
+    # only thing standing between the receipt and authorization.
+    tmp_path, bundle_dir, receipt_path, receipt, pin = bundle
+    digest = _sha(b"outside")
+    receipt["files"] = [{"path": rel, "sha256": digest}]
+    receipt["bundle_digest"] = _bundle_digest([(rel, digest)])
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    pin = ReceiptPin(pin.ecad_commit, pin.contract_version, pin.schema_digest,
+                     receipt["bundle_digest"])
+    verdict = validate_receipts(receipt_path, bundle_dir, pin)
+    assert not verdict.authorized
+    assert any("escapes the bundle directory" in r for r in verdict.reasons), verdict.reasons
+
+
 def test_missing_receipt_file_is_denied(bundle, tmp_path):
     _, bundle_dir, _, _, pin = bundle
     verdict = validate_receipts(tmp_path / "nope.json", bundle_dir, pin)
