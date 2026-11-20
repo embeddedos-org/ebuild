@@ -508,15 +508,28 @@ def _selected_board(default: str = "generic") -> str:
     the documented walk, so the value has to survive from `ebuild new` or
     `ebuild configure`.
     """
-    path = Path("eos.yaml")
+    data = _read_yaml_mapping(Path(_EOS_PROJECT_CONFIG)) or {}
+    system = data.get("system")
+    board = system.get("board") if isinstance(system, dict) else None
+    return board or default
+
+
+def _read_yaml_mapping(path: Path) -> Optional[Dict[str, Any]]:
+    """The top-level mapping in ``path``, or None if there is not one.
+
+    For optional project files read after a build has already succeeded:
+    a missing, unreadable, malformed or non-mapping file is treated as
+    absent rather than raised, because callers index into the result and
+    a traceback there would fail a build that linked.
+    """
     if not path.is_file():
-        return default
+        return None
     try:
         import yaml
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:
-        return default
-    return (data.get("system") or {}).get("board") or default
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _build_summary(cfg: "ProjectConfig", compiler, package_paths, log: Logger) -> None:
@@ -622,15 +635,7 @@ def _board_config() -> Optional[Dict[str, Any]]:
     A project that states its part's real capacity should not be measured
     against the reference part for its family.
     """
-    path = Path("board.yaml")
-    if not path.is_file():
-        return None
-    try:
-        import yaml
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    return data if isinstance(data, dict) else None
+    return _read_yaml_mapping(Path("board.yaml"))
 
 
 def _configure_ninja_backend(
