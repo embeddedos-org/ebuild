@@ -22,6 +22,13 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **Generated boot configs put SAM D flash at 0, not at STM32's 0x08000000.**
+  `EosConfigGenerator.generate_boot_yaml()` wrote `flash_base: 0x08000000`
+  for a SAMD51 profile, because `_flash_base_for()` had no SAM D entry and
+  fell back to the STM32 address. `EosBootIntegrator` carries that base into
+  `EBOOT_FLASH_BASE`, every `EBOOT_*_ADDR` and the `eboot_memory.ld` origins.
+  SAM D parts now get 0x00000000, as core/eboot's `board_samd51.h` has
+  (`ebuild/eos_ai/eos_config_generator.py`).
 - **The hardware analyzer reads "256KB SRAM" and "2MB SPI flash".** In
   `EosHardwareAnalyzer.interpret_text()` the RAM pattern `(?:sr)?ram`
   matched "ram" or "srram" but never "sram", so every SRAM size was read as

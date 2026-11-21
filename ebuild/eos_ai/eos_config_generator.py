@@ -19,10 +19,13 @@ import yaml
 from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
 
 
+# Families whose internal flash is not at STM32's 0x08000000. SAM D parts
+# map it at 0, which is what core/eboot's board_samd51.h uses.
 _FLASH_BASE_MAP = {
     "nrf": "0x00000000",
     "rp2040": "0x10000000",
     "esp32": "0x00000000",
+    "samd": "0x00000000",
 }
 
 

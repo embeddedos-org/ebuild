@@ -143,6 +143,23 @@ class TestHardwareAnalyzer:
         boot = yaml.safe_load(path.read_text())["boot"]
         assert boot["flash_size"] == 2 * 1024 * 1024
 
+    @pytest.mark.parametrize("text, base", [
+        ("ATSAMD51J19A", "0x00000000"),
+        ("STM32F407VG", "0x08000000"),
+        ("nRF52840", "0x00000000"),
+        ("RP2040", "0x10000000"),
+    ])
+    def test_boot_yaml_flash_base(self, tmp_path, text, base):
+        # SAM D parts map internal flash at 0, as core/eboot's
+        # board_samd51.h (SAMD51_FLASH_BASE) does; 0x08000000 is STM32's.
+        import yaml
+        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+
+        profile = self.analyzer.interpret_text(text)
+        path = EosConfigGenerator(str(tmp_path)).generate_boot_yaml(profile)
+        boot = yaml.safe_load(path.read_text())["boot"]
+        assert boot["flash_base"] == base
+
     def test_board_yaml_uses_sram_size(self, tmp_path):
         import yaml
         from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
