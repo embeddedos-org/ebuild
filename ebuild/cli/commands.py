@@ -38,6 +38,7 @@ from ebuild.cli.logger import Logger
 from ebuild.core.config import ConfigError, load_config, ProjectConfig
 from ebuild.core.graph import CycleError, DependencyGraph, build_dependency_graph
 from ebuild.core.scheduler import run_graph
+from ebuild.hashing import sha256_file
 from ebuild.packages.builder import BuildError, PackageBuilder
 from ebuild.packages.cache import PackageCache
 from ebuild.packages.fetcher import FetchError, PackageFetcher
@@ -3332,16 +3333,6 @@ def _save_models(models: Dict[str, Dict[str, Any]]) -> None:
     tmp.replace(path)
 
 
-def _sha256_of_file(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _hash_calibration(path: Path) -> str:
     """Content hash of calibration data (a file or a directory of samples)."""
     digest_hex = None
@@ -3353,10 +3344,10 @@ def _hash_calibration(path: Path) -> str:
         digest = hashlib.sha256()
         for rel, p in zip(rel_paths, entries):
             digest.update(f"{rel}\0".encode("utf-8"))
-            digest.update(_sha256_of_file(p).encode("utf-8"))
+            digest.update(sha256_file(p).encode("utf-8"))
         digest_hex = digest.hexdigest()
     else:
-        digest_hex = _sha256_of_file(path)
+        digest_hex = sha256_file(path)
     return digest_hex
 
 
@@ -3441,7 +3432,7 @@ def register(
         log.error(f"Model {name!r} is already registered. Use --force to overwrite it.")
         raise SystemExit(1)
 
-    digest = _sha256_of_file(model_file)
+    digest = sha256_file(model_file)
     calib_hash = _hash_calibration(Path(calibration))
     models[name] = {
         "name": name,
@@ -3523,7 +3514,7 @@ def verify(log: Logger, name: str, calibration: Optional[str]) -> None:
     if not source.is_file():
         log.error(f"Registered artifact for {name!r} is missing: {source}")
         raise SystemExit(1)
-    actual = _sha256_of_file(source)
+    actual = sha256_file(source)
     if actual != entry["digest"]:
         log.error(
             f"Digest mismatch for {name!r}: registry has sha256:{entry['digest']}, "
