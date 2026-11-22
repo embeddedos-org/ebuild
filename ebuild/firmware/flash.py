@@ -22,9 +22,34 @@ FLASH_TOOLS = {
     "openocd": ["openocd", "-f", "interface/stlink.cfg"],
     "pyocd": ["pyocd", "flash"],
     "nrfjprog": ["nrfjprog", "--program"],
-    "esptool": ["esptool.py", "--chip", "esp32"],
+    "esptool": ["esptool.py"],
     "stflash": ["st-flash"],
 }
+
+
+#: Chip names esptool accepts for --chip.
+_ESPTOOL_CHIPS = (
+    "esp8266", "esp32", "esp32s2", "esp32s3", "esp32c2", "esp32c3",
+    "esp32c5", "esp32c6", "esp32c61", "esp32h2", "esp32p4",
+)
+
+
+def _esptool_chip(target: str) -> str:
+    """esptool's --chip value for *target*.
+
+    The target is lower-cased with '-' and '_' dropped, then matched against
+    the chip names esptool knows: an exact match wins, otherwise the longest
+    chip name the target starts with, so a board id names its chip
+    (``ESP32-S3`` and ``esp32s3-devkitc`` give ``esp32s3``, ``esp32dev``
+    gives ``esp32``). esptool refuses to flash a chip other than the one
+    --chip names. A target that matches no chip, such as the CLI's default
+    ``stm32f4``, keeps the previous ``esp32``.
+    """
+    name = target.lower().replace("-", "").replace("_", "")
+    if name in _ESPTOOL_CHIPS:
+        return name
+    prefixes = [chip for chip in _ESPTOOL_CHIPS if name.startswith(chip)]
+    return max(prefixes, key=len) if prefixes else "esp32"
 
 
 def flash(
@@ -74,6 +99,7 @@ def flash(
         cmd.extend([str(image_path), "--sectorerase", "--verify"])
         cmd.extend(extra_args or [])
     elif tool == "esptool":
+        cmd.extend(["--chip", _esptool_chip(target)])
         cmd.extend(extra_args or [])
         cmd.extend(["write_flash", hex(address), str(image_path)])
     elif tool == "stflash":
