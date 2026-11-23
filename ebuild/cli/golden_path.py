@@ -16,6 +16,7 @@ produced output: an image that prints nothing has not been shown to run.
 from __future__ import annotations
 
 import re
+import shlex
 import shutil
 import subprocess
 import time
@@ -38,8 +39,10 @@ INIT_TEMPLATES: Dict[str, str] = {
 }
 
 # Boards whose application code ``ebuild sim`` can run, and the eos sim target
-# each runs on. All of them are Arm Cortex-M parts: the code is rebuilt for
-# QEMU's Cortex-M3 machine, which is a stand-in for the board, not a model of it.
+# each runs on. The Arm Cortex-M parts are rebuilt for QEMU's Cortex-M3
+# machine, which is a stand-in for the board, not a model of it. The ESP32
+# runs on Espressif's QEMU ``esp32`` machine, which models the chip itself:
+# the same image boots there and on an ESP-WROOM-32 board.
 SIM_TARGETS: Dict[str, str] = {
     "stm32f4": "qemu_cortex_m3",
     "stm32h7": "qemu_cortex_m3",
@@ -53,7 +56,12 @@ SIM_TARGETS: Dict[str, str] = {
     # FPU half of the context switch, but it is not a stand-in for any one
     # board, so no board maps to it.
     "qemu_cortex_m33": "qemu_cortex_m33",
+    "esp32": "qemu_esp32",
 }
+
+# Cross compiler per sim target CPU, for an eos sim.yaml that does not name
+# one in ``cc``.
+DEFAULT_CC: Dict[str, str] = {"esp32": "xtensa-esp32-elf-gcc"}
 
 
 class SimError(click.ClickException):
@@ -149,6 +157,30 @@ def build_sim_image(eos_root: Path, spec: Dict, app: Dict[str, List[Path]],
     return elf
 
 
+def build_flash_image(spec: Dict, elf: Path, esptool: str, log: Logger) -> Path:
+    """Turn *elf* into a whole-flash image for a target that boots from flash.
+
+    For a sim.yaml with an ``image`` section (the ESP32): esptool's elf2image
+    makes the image the boot ROM loads, and merge-bin places it at
+    ``image.offset`` in a flash file of ``image.flash_size``, which QEMU then
+    gets through ``qemu.flash_arg``.
+    """
+    img = spec["image"]
+    app_bin = elf.with_suffix(".bin")
+    flash = elf.with_suffix(".flash.bin")
+    tool = shlex.split(esptool)
+    common = ["--flash-mode", img["flash_mode"], "--flash-freq", img["flash_freq"],
+              "--flash-size", img["flash_size"]]
+    for cmd in ([*tool, "--chip", img["chip"], "elf2image", *common, "-o", str(app_bin), str(elf)],
+                [*tool, "--chip", img["chip"], "merge-bin", "-o", str(flash), *common,
+                 "--pad-to-size", img["flash_size"], str(img["offset"]), str(app_bin)]):
+        log.debug(" ".join(cmd))
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise SimError(f"{' '.join(cmd[:4])} failed:\n{(result.stderr or result.stdout).strip()}")
+    return flash
+
+
 def run_qemu(qemu: str, spec: Dict, elf: Path, timeout: float,
              expect: Optional[str], log_path: Path) -> Dict:
     """Run *elf* under QEMU, echoing guest output. Returns a result summary.
@@ -160,8 +192,11 @@ def run_qemu(qemu: str, spec: Dict, elf: Path, timeout: float,
     import queue
     import threading
 
-    cmd = [qemu, "-M", spec["qemu"]["machine"], *spec["qemu"].get("args", []),
-           "-kernel", str(elf)]
+    # A target that boots from flash (qemu.flash_arg) gets the flash image;
+    # the others get the ELF as the kernel.
+    flash_arg = spec["qemu"].get("flash_arg")
+    load = shlex.split(flash_arg.format(flash=elf)) if flash_arg else ["-kernel", str(elf)]
+    cmd = [qemu, "-M", spec["qemu"]["machine"], *spec["qemu"].get("args", []), *load]
     pattern = re.compile(expect) if expect else None
     lines: List[str] = []
     matched = False
@@ -271,6 +306,10 @@ def register_commands(cli_group: click.Group) -> None:
         Needs arm-none-eabi-gcc, qemu-system-arm, and an eos checkout
         (`ebuild setup`).
 
+        esp32 builds with xtensa-esp32-elf-gcc, makes a flash image with
+        esptool, and boots it on Espressif's QEMU (qemu-system-xtensa, machine
+        esp32) with the console on UART0; that image also runs on a board.
+
         Passes when --expect matches, or, with no --expect, when the guest
         printed anything and did not exit with a nonzero status.
         """
@@ -287,14 +326,27 @@ def register_commands(cli_group: click.Group) -> None:
         app = _application(project_dir, config_name)
         eos_root = _eos_root(project_dir)
         spec = _load_sim_target(eos_root, target)
-        cc = _require_tool("arm-none-eabi-gcc",
-                           "Install the Arm GNU toolchain (Ubuntu: sudo apt install gcc-arm-none-eabi).")
-        qemu = _require_tool(spec["qemu"]["binary"],
-                             "Install QEMU (Ubuntu: sudo apt install qemu-system-arm).")
+        cc_name = spec.get("cc") or DEFAULT_CC.get(spec.get("cpu", ""), "arm-none-eabi-gcc")
+        if cc_name == "arm-none-eabi-gcc":
+            cc_hint = "Install the Arm GNU toolchain (Ubuntu: sudo apt install gcc-arm-none-eabi)."
+            qemu_hint = "Install QEMU (Ubuntu: sudo apt install qemu-system-arm)."
+        else:
+            cc_hint = ("Install Espressif's toolchain (ESP-IDF's install.sh, or the "
+                       "crosstool-NG release) and put it on PATH.")
+            qemu_hint = ("Install Espressif's QEMU fork (ESP-IDF: "
+                         "python tools/idf_tools.py install qemu-xtensa).")
+        cc = _require_tool(cc_name, cc_hint)
+        qemu = _require_tool(spec["qemu"]["binary"], qemu_hint)
+        esptool = None
+        if spec.get("image"):
+            esptool = _require_tool("esptool", "Install esptool (pip install esptool).")
         out_dir = (project_dir / build_dir).resolve()
         log.step(f"Building {board} application for {target} ({spec['qemu']['machine']})...")
         elf = build_sim_image(eos_root, spec, app, out_dir, cc, log)
         log.success(f"Image: {elf}")
+        if esptool:
+            elf = build_flash_image(spec, elf, esptool, log)
+            log.success(f"Flash image: {elf}")
         log.step(f"Running on {spec['qemu']['machine']} (timeout {timeout:g}s)...")
         result = run_qemu(qemu, spec, elf, timeout, expect, out_dir / "sim.log")
         guest_lines = [line for line in result["lines"] if line.strip()

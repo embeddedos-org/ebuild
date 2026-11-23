@@ -95,10 +95,10 @@ class TestInit:
 
 class TestSimFailsClosed:
     def test_board_without_a_sim_target_is_an_error(self, tmp_path):
-        project = _project(tmp_path, board="esp32")
+        project = _project(tmp_path, board="imx8mp")
         r = _invoke_in(project, ["sim"])
         assert r.exit_code == 1
-        assert "no simulation target for board 'esp32'" in r.output
+        assert "no simulation target for board 'imx8mp'" in r.output
 
     def test_missing_sim_spec_in_eos_checkout_is_an_error(self, tmp_path, monkeypatch):
         project = _project(tmp_path)
@@ -164,6 +164,81 @@ def _invoke_in(project: Path, args):
         return CliRunner().invoke(cli, args)
     finally:
         os.chdir(old)
+
+
+def test_esp32_maps_to_espressifs_qemu_and_keeps_the_arm_targets():
+    assert golden_path.SIM_TARGETS["esp32"] == "qemu_esp32"
+    # Adding the ESP32 removed no Cortex-M board.
+    for board in ("stm32f4", "stm32h7", "stm32l4", "nrf52", "nrf52840", "rp2040",
+                  "raspi-pico", "qemu_cortex_m3"):
+        assert golden_path.SIM_TARGETS[board] == "qemu_cortex_m3"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_flash_targets_boot_from_the_flash_image(tmp_path):
+    """qemu.flash_arg replaces -kernel: the guest gets the flash file."""
+    qemu = _fake_qemu(tmp_path, '''
+        import sys
+        print(" ".join(sys.argv[1:]))
+    ''')
+    spec = {"qemu": {"machine": "esp32", "args": ["-nographic"],
+                     "flash_arg": "-drive file={flash},if=mtd,format=raw"}}
+    flash = tmp_path / "firmware.flash.bin"
+    result = golden_path.run_qemu(qemu, spec, flash, 5, None, tmp_path / "log")
+    assert f"-M esp32 -nographic -drive file={flash},if=mtd,format=raw" in result["lines"][0]
+    assert "-kernel" not in result["lines"][0]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_flash_image_is_made_with_esptool(tmp_path):
+    """elf2image, then merge-bin at the image offset, padded to the flash size."""
+    calls = tmp_path / "calls"
+    esptool = _fake_qemu(tmp_path, f'''
+        import sys
+        open({str(calls)!r}, "a").write(" ".join(sys.argv[1:]) + "\\n")
+    ''')
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "4MB", "offset": "0x1000"}}
+    elf = tmp_path / "firmware.elf"
+    out = golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
+    assert out == tmp_path / "firmware.flash.bin"
+    elf2image, merge = calls.read_text().splitlines()
+    assert elf2image.startswith("--chip esp32 elf2image --flash-mode dio")
+    assert elf2image.endswith(f"-o {tmp_path / 'firmware.bin'} {elf}")
+    assert "merge-bin" in merge and "--pad-to-size 4MB 0x1000" in merge
+
+
+def test_sim_on_esp32_runs_the_rtos_template(tmp_path):
+    """End to end: the unmodified rtos template, built for the ESP32 and run
+    on Espressif's QEMU.
+
+    Needs xtensa-esp32-elf-gcc, qemu-system-xtensa (Espressif's fork),
+    esptool and an eos checkout with sim/qemu_esp32 (EBUILD_EOS_PATH, or
+    ~/.ebuild/repos/eos). Skipped, with the reason, when any is missing.
+    """
+    import os
+    import shutil
+
+    for tool in ("xtensa-esp32-elf-gcc", "qemu-system-xtensa", "esptool"):
+        if not shutil.which(tool):
+            pytest.skip(f"{tool} not on PATH")
+    eos = Path(os.environ.get("EBUILD_EOS_PATH", Path.home() / ".ebuild" / "repos" / "eos"))
+    if not (eos / "sim" / "qemu_esp32" / "sim.yaml").is_file():
+        pytest.skip(f"{eos} has no sim/qemu_esp32 (eos predates the ESP32 port)")
+    r = _invoke_in(tmp_path, ["init", "demo", "--template", "rtos", "--target", "esp32"])
+    assert r.exit_code == 0, r.output
+    old = os.environ.get("EBUILD_EOS_PATH")
+    os.environ["EBUILD_EOS_PATH"] = str(eos)
+    try:
+        r = _invoke_in(tmp_path / "demo", ["sim", "--expect", r"\[consumer\] id=2",
+                                           "--timeout", "60"])
+    finally:
+        if old is None:
+            os.environ.pop("EBUILD_EOS_PATH", None)
+        else:
+            os.environ["EBUILD_EOS_PATH"] = old
+    assert r.exit_code == 0, r.output
+    assert "Starting kernel" in r.output
 
 
 def test_platforms_list_reads_eosim_registry():
