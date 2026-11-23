@@ -191,21 +191,43 @@ def test_flash_targets_boot_from_the_flash_image(tmp_path):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
 def test_flash_image_is_made_with_esptool(tmp_path):
-    """elf2image, then merge-bin at the image offset, padded to the flash size."""
+    """elf2image with options esptool 4.x and 5.x both accept, then the image
+    at its offset in erased flash of the flash size."""
     calls = tmp_path / "calls"
     esptool = _fake_qemu(tmp_path, f'''
         import sys
         open({str(calls)!r}, "a").write(" ".join(sys.argv[1:]) + "\\n")
+        open(sys.argv[sys.argv.index("-o") + 1], "wb").write(b"\\xe9IMAGE")
     ''')
     spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
                       "flash_size": "4MB", "offset": "0x1000"}}
     elf = tmp_path / "firmware.elf"
     out = golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
     assert out == tmp_path / "firmware.flash.bin"
-    elf2image, merge = calls.read_text().splitlines()
-    assert elf2image.startswith("--chip esp32 elf2image --flash-mode dio")
+    (elf2image,) = calls.read_text().splitlines()
+    assert elf2image.startswith("--chip esp32 elf2image --flash_mode dio --flash_freq 40m "
+                                "--flash_size 4MB")
     assert elf2image.endswith(f"-o {tmp_path / 'firmware.bin'} {elf}")
-    assert "merge-bin" in merge and "--pad-to-size 4MB 0x1000" in merge
+    flash = out.read_bytes()
+    assert len(flash) == 4 << 20
+    assert flash[0x1000:0x1006] == b"\xe9IMAGE"
+    assert set(flash[:0x1000]) == {0xFF} and set(flash[0x1006:]) == {0xFF}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_flash_image_too_big_or_unknown_size_is_refused(tmp_path):
+    esptool = _fake_qemu(tmp_path, '''
+        import sys
+        open(sys.argv[sys.argv.index("-o") + 1], "wb").write(b"\\x00" * 4096)
+    ''')
+    elf = tmp_path / "firmware.elf"
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "1MB", "offset": hex((1 << 20) - 100)}}
+    with pytest.raises(golden_path.SimError, match="does not fit"):
+        golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
+    spec["image"].update(flash_size="3MB", offset="0x1000")
+    with pytest.raises(golden_path.SimError, match="is not one of"):
+        golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
 
 
 def test_sim_on_esp32_runs_the_rtos_template(tmp_path):

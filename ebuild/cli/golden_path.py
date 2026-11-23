@@ -161,23 +161,37 @@ def build_flash_image(spec: Dict, elf: Path, esptool: str, log: Logger) -> Path:
     """Turn *elf* into a whole-flash image for a target that boots from flash.
 
     For a sim.yaml with an ``image`` section (the ESP32): esptool's elf2image
-    makes the image the boot ROM loads, and merge-bin places it at
-    ``image.offset`` in a flash file of ``image.flash_size``, which QEMU then
-    gets through ``qemu.flash_arg``.
+    makes the image the boot ROM loads, and it is placed at ``image.offset``
+    in an erased flash file of ``image.flash_size``, which QEMU then gets
+    through ``qemu.flash_arg``.
+
+    The esptool options use underscores: esptool 4.x (Ubuntu's package)
+    accepts only those, and 5.x still does. The flash file is written here
+    rather than by merge_bin, whose padding option differs between 4.x and
+    5.x; the bytes are the same.
     """
     img = spec["image"]
     app_bin = elf.with_suffix(".bin")
     flash = elf.with_suffix(".flash.bin")
     tool = shlex.split(esptool)
-    common = ["--flash-mode", img["flash_mode"], "--flash-freq", img["flash_freq"],
-              "--flash-size", img["flash_size"]]
-    for cmd in ([*tool, "--chip", img["chip"], "elf2image", *common, "-o", str(app_bin), str(elf)],
-                [*tool, "--chip", img["chip"], "merge-bin", "-o", str(flash), *common,
-                 "--pad-to-size", img["flash_size"], str(img["offset"]), str(app_bin)]):
-        log.debug(" ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            raise SimError(f"{' '.join(cmd[:4])} failed:\n{(result.stderr or result.stdout).strip()}")
+    cmd = [*tool, "--chip", img["chip"], "elf2image",
+           "--flash_mode", img["flash_mode"], "--flash_freq", img["flash_freq"],
+           "--flash_size", img["flash_size"], "-o", str(app_bin), str(elf)]
+    log.debug(" ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise SimError(f"{' '.join(cmd[:4])} failed:\n{(result.stderr or result.stdout).strip()}")
+    sizes = {"1MB": 1, "2MB": 2, "4MB": 4, "8MB": 8, "16MB": 16}
+    if img["flash_size"] not in sizes:
+        raise SimError(f"image.flash_size {img['flash_size']!r} is not one of {', '.join(sizes)}")
+    image = bytearray(b"\xff" * (sizes[img["flash_size"]] << 20))
+    data = app_bin.read_bytes()
+    offset = int(str(img["offset"]), 0)
+    if offset + len(data) > len(image):
+        raise SimError(f"{app_bin} ({len(data)} bytes) does not fit in "
+                       f"{img['flash_size']} of flash at {offset:#x}")
+    image[offset:offset + len(data)] = data
+    flash.write_bytes(bytes(image))
     return flash
 
 
