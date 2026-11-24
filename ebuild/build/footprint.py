@@ -212,7 +212,10 @@ def board_capacity(board: Optional[str],
    """
    reference = _REFERENCE_CAPACITY.get(board.lower()) if board else None
    if board_config:
-       memory = board_config.get("memory") or {}
+       memory = board_config.get("memory")
+       if not isinstance(memory, dict):
+           # `memory: 512K` or a list: no sizes to read, so use the reference.
+           memory = {}
        flash = _as_bytes(memory.get("flash_size"))
        ram = _as_bytes(memory.get("ram_size"))
        if flash or ram:

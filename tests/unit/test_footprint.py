@@ -161,6 +161,13 @@ class TestBoardCapacity:
     def test_a_board_config_without_memory_falls_back(self):
         assert board_capacity("stm32f4", {"board_name": "x"})[0] == 1024 * 1024
 
+    @pytest.mark.parametrize("memory", ["512K", ["0x80000"], 4096])
+    def test_a_memory_section_that_is_not_a_mapping_falls_back(self, memory):
+        """`memory: 512K` in a hand-written board.yaml must not raise out of
+        a build that already linked; the footprint report is never fatal."""
+        assert board_capacity("stm32f4", {"memory": memory}) == (
+            1024 * 1024, 192 * 1024)
+
     def test_a_partial_override_fills_the_rest_from_the_reference_part(self):
        """A board YAML that only overrides RAM (say, because it was fitted
        with extra SRAM) should not lose the reference flash figure for the
