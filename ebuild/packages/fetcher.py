@@ -15,7 +15,6 @@ never leaves a truncated archive behind to satisfy the cache.
 
 from __future__ import annotations
 
-import hashlib
 import http.client
 import os
 import tarfile
@@ -26,6 +25,7 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 
+from ebuild.hashing import sha256_file
 from ebuild.packages.index_sync import is_offline
 from ebuild.packages.recipe import PackageRecipe
 
@@ -177,12 +177,7 @@ class PackageFetcher:
         if expected.startswith("sha256:"):
             expected = expected[7:]
 
-        sha256 = hashlib.sha256()
-        with open(archive_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                sha256.update(chunk)
-
-        actual = sha256.hexdigest()
+        actual = sha256_file(archive_path)
         if actual != expected:
             raise FetchError(
                 f"Checksum mismatch for {archive_path.name}:\n"
