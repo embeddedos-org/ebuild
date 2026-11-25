@@ -323,8 +323,8 @@ class EosProjectGenerator:
     }
 
     # Map architecture → eos toolchain YAML filename
-    # NOTE: Longer prefixes must come before shorter ones because
-    # resolve_manifest uses str.startswith() to match.
+    # resolve_manifest matches with str.startswith() and picks the longest
+    # matching prefix, so "mips64" wins over "mips" regardless of order.
     ARCH_TO_TOOLCHAIN: Dict[str, str] = {
         "arm-cortex-r": "arm-none-eabi-r5.yaml",
         "arm64": "aarch64-linux-gnu.yaml",
@@ -562,7 +562,9 @@ class EosProjectGenerator:
         tc_arch = arch
         if arch == "arm" and "cortex-r" in core:
             tc_arch = "arm-cortex-r"
-        for arch_prefix, tc_file in self.ARCH_TO_TOOLCHAIN.items():
+        for arch_prefix, tc_file in sorted(
+            self.ARCH_TO_TOOLCHAIN.items(), key=lambda kv: len(kv[0]), reverse=True
+        ):
             if tc_arch.startswith(arch_prefix):
                 manifest.eos_toolchain = tc_file
                 break
@@ -667,9 +669,11 @@ class EosProjectGenerator:
         return board_dir_for_mcu(profile.mcu) or ""
 
     def _resolve_eos_board(self, profile: HardwareProfile) -> str:
-        """Map MCU family → eos board YAML filename."""
+        """Map MCU family → eos board YAML filename (longest prefix wins)."""
         mcu = (profile.mcu or "").lower()
-        for prefix, filename in self.EOS_BOARD_MAP.items():
+        for prefix, filename in sorted(
+            self.EOS_BOARD_MAP.items(), key=lambda kv: len(kv[0]), reverse=True
+        ):
             if mcu.startswith(prefix):
                 return filename
         return ""

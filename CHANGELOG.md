@@ -29,6 +29,27 @@
   "multiple rules generate". `..` components now map to `__` (as CMake
   does) and a leading root or drive is dropped, keeping each object in its
   own target directory (`ebuild/build/ninja_backend.py`).
+- **Generated boot configs put SAM D flash at 0, not at STM32's 0x08000000.**
+  `EosConfigGenerator.generate_boot_yaml()` wrote `flash_base: 0x08000000`
+  for a SAMD51 profile, because `_flash_base_for()` had no SAM D entry and
+  fell back to the STM32 address. `EosBootIntegrator` carries that base into
+  `EBOOT_FLASH_BASE`, every `EBOOT_*_ADDR` and the `eboot_memory.ld` origins.
+  SAM D parts now get 0x00000000, as core/eboot's `board_samd51.h` has
+  (`ebuild/eos_ai/eos_config_generator.py`).
+- **The hardware analyzer reads "256KB SRAM" and "2MB SPI flash".** In
+  `EosHardwareAnalyzer.interpret_text()` the RAM pattern `(?:sr)?ram`
+  matched "ram" or "srram" but never "sram", so every SRAM size was read as
+  0, and the flash pattern needed "flash" right after the size, so "2MB SPI
+  flash" gave 0 and `generate_boot_yaml` fell back to 1 MB (TASKS.md T-007).
+  SRAM now matches, and words such as SPI, QSPI, NOR, internal or external
+  may stand between the size and "flash" or "RAM"
+  (`ebuild/eos_ai/eos_hw_analyzer.py`).
+- **`ebuild system --format qcow2|squashfs` reports the tool's error even
+  when it is not UTF-8.** A failed `qemu-img` or `mksquashfs` was reported
+  with a strict UTF-8 decode of its stderr, so non-UTF-8 output (such as a
+  rootfs file name) raised `UnicodeDecodeError` in place of `ImageError` and
+  hid the tool's message. Undecodable bytes are now replaced, as the ext4
+  path already does (`ebuild/system/image.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in

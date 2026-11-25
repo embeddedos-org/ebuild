@@ -61,7 +61,10 @@ class ComponentDB:
         """Search for components mentioned in a text string."""
         found: List[ComponentInfo] = []
         seen: set = set()
-        text_lower = text.lower()
+        # Keys are normalised without punctuation (_normalize), so drop a '-'
+        # or '_' joining two alphanumerics: "MPU-6050" must match "mpu6050".
+        # Only intra-word separators go, so separate words are never joined.
+        text_lower = re.sub(r"(?<=[a-z0-9])[-_](?=[a-z0-9])", "", text.lower())
         for key, info in self._db.items():
             if key in text_lower and key not in seen:
                 found.append(info)

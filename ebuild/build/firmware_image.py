@@ -75,9 +75,11 @@ def find_efwtool(repos_dir: Path) -> Optional[Path]:
 def _first_efwtool(build_dir: Path) -> Optional[Path]:
     if not build_dir.is_dir():
         return None
-    for candidate in sorted(build_dir.rglob("efwtool")):
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return candidate
+    # Windows toolchains link the tool as efwtool.exe.
+    for name in ("efwtool", "efwtool.exe"):
+        for candidate in sorted(build_dir.rglob(name)):
+            if candidate.is_file() and os.access(candidate, os.X_OK):
+                return candidate
     return None
 
 
