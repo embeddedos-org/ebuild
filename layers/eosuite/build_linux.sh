@@ -233,7 +233,13 @@ echo "  BUILD COMPLETE!"
 echo "================================================"
 echo "  Binary:    dist/$APP_NAME"
 [ -f "dist/${DEB_NAME}.deb" ] && echo "  .deb:      dist/${DEB_NAME}.deb"
-[ -f "dist/EoSuite-${APP_VERSION}-"*".AppImage" ] && echo "  .AppImage: dist/EoSuite-${APP_VERSION}-*.AppImage"
+# One line per AppImage actually present. `[ -f prefix*.AppImage ]` cannot do
+# this: test takes one operand, so as soon as the glob expands to more than one
+# file it fails with "binary operator expected" and lists nothing (SC2144).
+for appimage in "dist/EoSuite-${APP_VERSION}-"*".AppImage"; do
+    [ -f "$appimage" ] || continue
+    echo "  .AppImage: $appimage"
+done
 echo ""
 echo "  Install .deb:      sudo dpkg -i dist/${DEB_NAME}.deb"
 echo "  Run .AppImage:     chmod +x dist/*.AppImage && ./dist/*.AppImage"
