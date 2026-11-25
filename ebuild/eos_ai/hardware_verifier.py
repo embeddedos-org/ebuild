@@ -29,6 +29,7 @@ from ebuild.eos_ai.hardware_contract import (
     Verdict,
     VerificationRequest,
     VerificationResult,
+    canonical_json_sha256,
 )
 
 _DENYING_VERDICTS = {
@@ -222,14 +223,7 @@ class HardwareReceiptVerifier:
                         raise ValueError(
                             f"{schema_name} contains non-local $ref {reference!r}"
                         )
-            set_payload = json.dumps(
-                entries,
-                ensure_ascii=False,
-                allow_nan=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode("utf-8")
-            set_actual: Optional[str] = hashlib.sha256(set_payload).hexdigest()
+            set_actual: Optional[str] = canonical_json_sha256(entries)
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
             set_actual = None
             schemas = {}
@@ -1357,14 +1351,7 @@ def _manifest_input_digest(manifest: Mapping[str, Any]) -> Optional[str]:
     if len({entry["path"] for entry in entries}) != len(entries):
         return None
     entries.sort(key=lambda item: item["path"])
-    payload = json.dumps(
-        entries,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return canonical_json_sha256(entries)
 
 
 def _schema_references(value: Any) -> Sequence[str]:

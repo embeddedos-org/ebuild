@@ -27,6 +27,12 @@
   the first failed node, so any other package that also ran and failed was
   passed to the skip callback as if it had never run. Every failed node is
   now excluded from the skip report (`ebuild/core/scheduler.py`).
+- **Eagle nets that span sheets are parsed as one net.**
+  `EagleParser` read each sheet's `<net>` on its own, so a schematic with
+  `SDA` on two sheets came back as two `SDA` nets with half the pins each,
+  and `get_nets_for_part()` could not show the MCU and a sensor on another
+  sheet as connected. Nets with the same name are now merged across sheets,
+  as Eagle connects them.
 - **Generated boot configs put SAM D flash at 0, not at STM32's 0x08000000.**
   `EosConfigGenerator.generate_boot_yaml()` wrote `flash_base: 0x08000000`
   for a SAMD51 profile, because `_flash_base_for()` had no SAM D entry and

@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 CONTRACT_VERSION = "1.0.0"
 ECAD_REPOSITORY = "https://github.com/embeddedos-org/eCAD-Hardware-Products"
@@ -45,6 +45,22 @@ _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _COMMIT_RE = re.compile(r"^[a-f0-9]{40}$")
 
 
+def canonical_json_sha256(value: Any) -> str:
+    """Return the SHA-256 of ``value`` serialized as canonical JSON.
+
+    Canonical means sorted keys, no insignificant whitespace, UTF-8 and no
+    NaN/Infinity, so producers and verifiers derive identical bytes.
+    """
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def calculate_schema_set_sha256(directory: Path) -> str:
     """Return the canonical digest used to pin the complete eCAD v1 schema set."""
     entries = []
@@ -55,14 +71,7 @@ def calculate_schema_set_sha256(directory: Path) -> str:
         entries.append(
             {"path": name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         )
-    payload = json.dumps(
-        entries,
-        ensure_ascii=False,
-        allow_nan=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return canonical_json_sha256(entries)
 
 
 class Verdict(str, Enum):
