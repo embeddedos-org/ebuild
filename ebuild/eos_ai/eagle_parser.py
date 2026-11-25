@@ -230,10 +230,17 @@ class EagleParser:
                 comp.package = package_map[key]
 
     def _extract_nets(self, schematic: ET.Element, result: EagleParseResult) -> None:
-        """Extract nets/signals from all sheets."""
+        """Extract nets/signals from all sheets.
+
+        Eagle connects nets that share a name across the sheets of a
+        schematic, so a net that appears on several sheets is one EagleNet
+        holding the pins from every sheet, in sheet order.
+        """
         sheets = schematic.find("sheets")
         if sheets is None:
             return
+
+        by_name: Dict[str, EagleNet] = {}
 
         for sheet in sheets.findall("sheet"):
             nets_elem = sheet.find("nets")
@@ -245,8 +252,7 @@ class EagleParser:
                 if not net_name:
                     continue
 
-                net = EagleNet(name=net_name)
-
+                pins = []
                 for segment in net_elem.findall("segment"):
                     for pinref in segment.findall("pinref"):
                         pin = EagleNetPin(
@@ -255,7 +261,14 @@ class EagleParser:
                             pin=pinref.get("pin", ""),
                         )
                         if pin.part:
-                            net.pins.append(pin)
+                            pins.append(pin)
 
-                if net.pins:
+                if not pins:
+                    continue
+
+                net = by_name.get(net_name)
+                if net is None:
+                    net = EagleNet(name=net_name)
+                    by_name[net_name] = net
                     result.nets.append(net)
+                net.pins.extend(pins)
