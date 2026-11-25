@@ -163,7 +163,9 @@ class ImageBuilder:
         cmd = ["qemu-img", "create", "-f", "qcow2", str(output), f"{size_mb}M"]
         result = subprocess.run(cmd, capture_output=True)
         if result.returncode != 0:
-            raise ImageError(f"qemu-img failed: {result.stderr.decode()}")
+            raise ImageError(
+                f"qemu-img failed: {result.stderr.decode(errors='replace').strip()}"
+            )
 
         return output
 
@@ -223,6 +225,8 @@ class ImageBuilder:
                "-noappend", "-comp", "zstd"]
         result = subprocess.run(cmd, capture_output=True)
         if result.returncode != 0:
-            raise ImageError(f"mksquashfs failed: {result.stderr.decode()}")
+            raise ImageError(
+                f"mksquashfs failed: {result.stderr.decode(errors='replace').strip()}"
+            )
 
         return output

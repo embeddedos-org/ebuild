@@ -161,9 +161,12 @@ def parse_recipe(
     source_path: Optional[Path] = None,
 ) -> PackageRecipe:
     """Parse a raw YAML dict into a PackageRecipe."""
+    # A blank "version:" is YAML null; str(None) would be the truthy "None"
+    # and slip past validate()'s missing-version check.
+    raw_version = raw.get("version")
     recipe = PackageRecipe(
         name=raw.get("package", raw.get("name", "")),
-        version=str(raw.get("version", "")),
+        version="" if raw_version is None else str(raw_version),
         url=raw.get("url", ""),
         checksum=raw.get("checksum", ""),
         build_system=raw.get("build", raw.get("build_system", "cmake")),

@@ -115,9 +115,9 @@ class EosConfigValidator:
             result.add_warning("board.yaml", "arch",
                                f"Unknown arch '{board['arch']}' — valid: {self.VALID_ARCHS}")
 
-        mem = board.get("memory", {})
-        flash = mem.get("flash", 0)
-        ram = mem.get("ram", 0)
+        mem = board.get("memory") or {}
+        flash = mem.get("flash") or 0
+        ram = mem.get("ram") or 0
         if flash <= 0:
             result.add_warning("board.yaml", "memory.flash", "Flash size not specified or zero")
         if ram <= 0:
@@ -142,23 +142,23 @@ class EosConfigValidator:
         if not boot.get("board"):
             result.add_error("boot.yaml", "board", "Board name is required")
 
-        flash_size = boot.get("flash_size", 0)
+        flash_size = boot.get("flash_size") or 0
         if flash_size <= 0:
             result.add_error("boot.yaml", "flash_size", "Flash size must be > 0")
 
-        layout = boot.get("layout", {})
+        layout = boot.get("layout") or {}
         if not layout.get("slot_a"):
             result.add_error("boot.yaml", "layout.slot_a", "Slot A definition required")
         if not layout.get("slot_b"):
             result.add_warning("boot.yaml", "layout.slot_b", "Slot B not defined — no A/B update support")
 
-        policy = boot.get("policy", {})
-        max_att = policy.get("max_boot_attempts", 0)
+        policy = boot.get("policy") or {}
+        max_att = policy.get("max_boot_attempts") or 0
         if max_att <= 0:
             result.add_warning("boot.yaml", "policy.max_boot_attempts",
                                "max_boot_attempts should be > 0")
 
-        image = boot.get("image", {})
+        image = boot.get("image") or {}
         hash_algo = image.get("hash_algo", "")
         if hash_algo and hash_algo not in self.VALID_HASH_ALGOS:
             result.add_warning("boot.yaml", "image.hash_algo",

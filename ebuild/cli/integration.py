@@ -139,12 +139,13 @@ def _cmake_build(repo_dir: Path, build_dir: Path, extra_flags: str,
 def _collect_libraries(build_dir: Path, repos: Dict[str, Path]) -> List[Path]:
     """Find all .a static libraries produced by the builds."""
     libs: List[Path] = []
-    for name in repos:
-        repo_build = build_dir / name
+    for repo_dir in repos.values():
+        # _cmake_build names build dirs after repo_dir.name, not the key.
+        repo_build = build_dir / repo_dir.name
         if repo_build.exists():
             libs.extend(repo_build.rglob("*.a"))
         # Also check eipc SDK subdir
-        sdk_build = build_dir / f"{name}-sdk-c"
+        sdk_build = build_dir / f"{repo_dir.name}-sdk-c"
         if sdk_build.exists():
             libs.extend(sdk_build.rglob("*.a"))
     return libs
