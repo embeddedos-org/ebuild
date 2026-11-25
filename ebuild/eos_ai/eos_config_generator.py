@@ -19,10 +19,13 @@ import yaml
 from ebuild.eos_ai.eos_hw_analyzer import HardwareProfile
 
 
+# Families whose internal flash is not at STM32's 0x08000000. SAM D parts
+# map it at 0, which is what core/eboot's board_samd51.h uses.
 _FLASH_BASE_MAP = {
     "nrf": "0x00000000",
     "rp2040": "0x10000000",
     "esp32": "0x00000000",
+    "samd": "0x00000000",
 }
 
 
@@ -135,15 +138,17 @@ class EosConfigGenerator:
 
     def generate_build_yaml(self, profile: HardwareProfile) -> Path:
         """Generate ebuild build.yaml for the project."""
+        # toolchain.prefix is concatenated with the driver ("{prefix}gcc"),
+        # so it carries its trailing '-'; "" is the host compiler.
         _TOOLCHAIN_PREFIX = {
-            "arm": "arm-none-eabi",
-            "arm64": "aarch64-linux-gnu",
-            "aarch64": "aarch64-linux-gnu",
-            "riscv64": "riscv64-linux-gnu",
-            "x86_64": "x86_64-linux-gnu",
-            "mips": "mipsel-linux-gnu",
+            "arm": "arm-none-eabi-",
+            "arm64": "aarch64-linux-gnu-",
+            "aarch64": "aarch64-linux-gnu-",
+            "riscv64": "riscv64-linux-gnu-",
+            "x86_64": "x86_64-linux-gnu-",
+            "mips": "mipsel-linux-gnu-",
         }
-        toolchain = _TOOLCHAIN_PREFIX.get(profile.arch, "gcc")
+        toolchain = _TOOLCHAIN_PREFIX.get(profile.arch, "")
 
         build = {
             "project": {

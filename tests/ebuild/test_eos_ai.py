@@ -109,6 +109,66 @@ class TestHardwareAnalyzer:
         profile = self.analyzer.interpret_text("MCU with 256kb ram")
         assert profile.ram_size == 256 * 1024
 
+    @pytest.mark.parametrize("text, size", [
+        ("STM32F407 with 2MB SPI flash", 2 * 1024 * 1024),
+        ("board with 16MB QSPI NOR flash", 16 * 1024 * 1024),
+        ("MCU with 512KB internal flash", 512 * 1024),
+        ("MCU with 1MB of flash", 1024 * 1024),
+    ])
+    def test_detect_flash_with_memory_kind(self, text, size):
+        profile = self.analyzer.interpret_text(text)
+        assert profile.flash_size == size
+
+    @pytest.mark.parametrize("text, size", [
+        ("MCU with 256KB SRAM", 256 * 1024),
+        ("STM32H7 with 2MB flash, 1MB SRAM", 1024 * 1024),
+        ("MCU with 64KB internal SRAM", 64 * 1024),
+        ("module with 8MB external RAM", 8 * 1024 * 1024),
+    ])
+    def test_detect_ram_with_memory_kind(self, text, size):
+        profile = self.analyzer.interpret_text(text)
+        assert profile.ram_size == size
+
+    def test_psram_is_not_ram(self):
+        profile = self.analyzer.interpret_text("ESP32 with 4MB flash and 8MB PSRAM")
+        assert profile.flash_size == 4 * 1024 * 1024
+        assert profile.ram_size == 0
+
+    def test_boot_yaml_uses_spi_flash_size(self, tmp_path):
+        import yaml
+        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+
+        profile = self.analyzer.interpret_text("STM32F407 with 2MB SPI flash")
+        path = EosConfigGenerator(str(tmp_path)).generate_boot_yaml(profile)
+        boot = yaml.safe_load(path.read_text())["boot"]
+        assert boot["flash_size"] == 2 * 1024 * 1024
+
+    @pytest.mark.parametrize("text, base", [
+        ("ATSAMD51J19A", "0x00000000"),
+        ("STM32F407VG", "0x08000000"),
+        ("nRF52840", "0x00000000"),
+        ("RP2040", "0x10000000"),
+    ])
+    def test_boot_yaml_flash_base(self, tmp_path, text, base):
+        # SAM D parts map internal flash at 0, as core/eboot's
+        # board_samd51.h (SAMD51_FLASH_BASE) does; 0x08000000 is STM32's.
+        import yaml
+        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+
+        profile = self.analyzer.interpret_text(text)
+        path = EosConfigGenerator(str(tmp_path)).generate_boot_yaml(profile)
+        boot = yaml.safe_load(path.read_text())["boot"]
+        assert boot["flash_base"] == base
+
+    def test_board_yaml_uses_sram_size(self, tmp_path):
+        import yaml
+        from ebuild.eos_ai.eos_config_generator import EosConfigGenerator
+
+        profile = self.analyzer.interpret_text("STM32F407 with 1MB flash, 192KB SRAM")
+        path = EosConfigGenerator(str(tmp_path)).generate_board_yaml(profile)
+        memory = yaml.safe_load(path.read_text())["board"]["memory"]
+        assert memory == {"flash": 1024 * 1024, "ram": 192 * 1024}
+
     def test_detect_clock(self):
         profile = self.analyzer.interpret_text("System clock 480 MHz")
         assert profile.clock_hz == 480_000_000

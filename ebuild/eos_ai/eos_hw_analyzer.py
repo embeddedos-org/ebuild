@@ -10,6 +10,8 @@ downstream modules use to generate build configs.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -420,16 +422,23 @@ class EosHardwareAnalyzer:
                 ))
                 seen.add(ptype)
 
-        # Detect memory sizes
-        flash_match = re.search(r'(\d+)\s*[mk]b?\s*flash', text)
+        # Detect memory sizes. A size is often followed by the kind of memory
+        # before the word "flash" or "RAM" ("2MB SPI flash", "64KB internal
+        # SRAM"), so allow those qualifiers in between.
+        qualifiers = (
+            r'(?:(?:of|spi|qspi|nor|nand|serial|internal|external|embedded|'
+            r'on-chip|onboard|on-board)\s+)*'
+        )
+        flash_match = re.search(r'(\d+)\s*([mk])b?\s*' + qualifiers + r'flash', text)
         if flash_match:
             val = int(flash_match.group(1))
-            profile.flash_size = val * 1024 if 'k' in text[flash_match.start():flash_match.end()] else val * 1024 * 1024
+            profile.flash_size = val * 1024 if flash_match.group(2) == 'k' else val * 1024 * 1024
 
-        ram_match = re.search(r'(\d+)\s*[mk]b?\s*(?:sr)?ram', text)
+        # s?ram: "(?:sr)?ram" matched "ram" and "srram", never "sram".
+        ram_match = re.search(r'(\d+)\s*([mk])b?\s*' + qualifiers + r's?ram', text)
         if ram_match:
             val = int(ram_match.group(1))
-            profile.ram_size = val * 1024 if 'k' in text[ram_match.start():ram_match.end()] else val * 1024 * 1024
+            profile.ram_size = val * 1024 if ram_match.group(2) == 'k' else val * 1024 * 1024
 
         # Detect clock
         clock_match = re.search(r'(\d+)\s*mhz', text)
@@ -443,8 +452,10 @@ class EosHardwareAnalyzer:
         profile = self.interpret_text(bom_text)
         profile.source_files.append("bom")
 
-        for line in bom_text.strip().split('\n'):
-            parts = [p.strip() for p in line.split(',')]
+        # csv, not str.split(','): KiCad's grouped BOM quotes a field of
+        # references ("U3,U4,U5"), which split() spread over the value column.
+        for row in csv.reader(io.StringIO(bom_text.strip())):
+            parts = [p.strip() for p in row]
             if len(parts) < 2:
                 continue
 
