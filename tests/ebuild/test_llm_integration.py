@@ -38,9 +38,17 @@ pytestmark = pytest.mark.ebuild
 
 
 def _cli_text(result) -> str:
-    """Stdout plus stderr — Click 8.2 split them; 8.1 mixed them."""
+    """Stdout plus stderr — Click 8.2 split them; 8.1 mixed them.
+
+    On Click 8.1 ``Result.stderr`` is a property that raises ValueError, so
+    ``getattr(result, "stderr", None)`` does not fall back to the default:
+    the exception propagates. Catch it, as test_lockfile_cli.py does.
+    """
     parts = [result.output or ""]
-    stderr = getattr(result, "stderr", None)
+    try:
+        stderr = result.stderr
+    except ValueError:
+        stderr = None  # Click 8.1 already put it in .output
     if stderr:
         parts.append(stderr)
     return "\n".join(parts)
