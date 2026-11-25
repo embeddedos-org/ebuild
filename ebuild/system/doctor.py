@@ -82,7 +82,8 @@ def host_checks() -> List[Check]:
         _tool_check("cmake", "cmake",
                     "install cmake (only needed for CMake-backed projects)",
                     required=False),
-        _tool_check("host compiler", "cc",
+        # The driver a host build invokes (ResolvedToolchain.cc), not "cc".
+        _tool_check("host compiler", "gcc",
                     "install a C compiler (build-essential, base-devel, Xcode CLT)"),
         _tool_check("size", "size",
                     "install binutils — without it builds work but report no "

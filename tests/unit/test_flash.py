@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ebuild.firmware.flash import FlashError, flash
+from ebuild.firmware.flash import FlashError, flash, reset
 
 
 @pytest.fixture
@@ -91,6 +91,34 @@ def test_flash_failure_raises_flash_error_with_tool_stderr(tmp_path, monkeypatch
         flash(image_path, tool="openocd")
 
 
+# esptool on a French-locale Windows host: Python writes its piped stderr in
+# the ANSI code page (cp1252), so "Accès refusé" is not valid UTF-8.
+_CP1252_STDERR = "could not open port 'COM3': Accès refusé.".encode("cp1252")
+
+
+def test_flash_failure_with_non_utf8_stderr_still_raises_flash_error(
+    tmp_path, monkeypatch
+):
+    image_path = _image(tmp_path, "firmware.bin")
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, *a, **k: SimpleNamespace(returncode=2, stderr=_CP1252_STDERR),
+    )
+
+    with pytest.raises(FlashError, match="Flash failed: could not open port 'COM3'"):
+        flash(image_path, tool="esptool")
+
+
+def test_reset_failure_with_non_utf8_stderr_still_raises_flash_error(monkeypatch):
+    monkeypatch.setattr(
+        subprocess, "run",
+        lambda cmd, *a, **k: SimpleNamespace(returncode=2, stderr=_CP1252_STDERR),
+    )
+
+    with pytest.raises(FlashError, match="Reset failed: could not open port 'COM3'"):
+        reset(tool="pyocd")
+
+
 def test_missing_image_is_rejected_before_invoking_the_tool(tmp_path, record_run):
     with pytest.raises(FlashError, match="Image not found"):
         flash(tmp_path / "missing.bin", tool="openocd")
@@ -105,3 +133,46 @@ def test_unknown_tool_is_rejected(tmp_path, record_run):
         flash(image_path, tool="jtagulator")
 
     assert record_run == []
+
+
+# esptool stops with "... Wrong --chip argument?" when the chip it finds is
+# not the one --chip names, so the target has to reach --chip.
+@pytest.mark.parametrize(
+    "target, chip",
+    [
+        ("esp32", "esp32"),
+        ("esp32s3", "esp32s3"),
+        ("esp32c3", "esp32c3"),
+        ("ESP32-S3", "esp32s3"),
+        ("esp32_c6", "esp32c6"),
+        ("esp32c61", "esp32c61"),
+        ("esp8266", "esp8266"),
+        # Board ids name their chip by prefix; the longest known chip wins.
+        ("esp32dev", "esp32"),
+        ("esp32-devkitc", "esp32"),
+        ("ESP32-S3-DevKitC-1", "esp32s3"),
+        ("esp32c6-devkitm", "esp32c6"),
+    ],
+)
+def test_esptool_chip_follows_an_espressif_target(tmp_path, record_run, target, chip):
+    image_path = _image(tmp_path, "app.bin")
+
+    flash(image_path, tool="esptool", target=target, address=0x10000)
+
+    assert record_run == [
+        ["esptool.py", "--chip", chip, "write_flash", "0x10000", str(image_path)]
+    ]
+
+
+def test_esptool_keeps_esp32_for_a_target_that_is_not_an_espressif_chip(
+    tmp_path, record_run
+):
+    image_path = _image(tmp_path, "app.bin")
+
+    flash(image_path, tool="esptool", target="stm32f4", address=0x10000,
+          extra_args=["--port", "/dev/ttyUSB0"])
+
+    assert record_run == [
+        ["esptool.py", "--chip", "esp32", "--port", "/dev/ttyUSB0",
+         "write_flash", "0x10000", str(image_path)]
+    ]
