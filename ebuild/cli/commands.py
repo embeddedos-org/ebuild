@@ -38,6 +38,7 @@ from ebuild.cli.logger import Logger
 from ebuild.core.config import ConfigError, load_config, ProjectConfig
 from ebuild.core.graph import CycleError, DependencyGraph, build_dependency_graph
 from ebuild.core.scheduler import run_graph
+from ebuild.hashing import sha256_file
 from ebuild.packages.builder import BuildError, PackageBuilder
 from ebuild.packages.cache import PackageCache
 from ebuild.packages.fetcher import FetchError, PackageFetcher
@@ -508,15 +509,28 @@ def _selected_board(default: str = "generic") -> str:
     the documented walk, so the value has to survive from `ebuild new` or
     `ebuild configure`.
     """
-    path = Path("eos.yaml")
+    data = _read_yaml_mapping(Path(_EOS_PROJECT_CONFIG)) or {}
+    system = data.get("system")
+    board = system.get("board") if isinstance(system, dict) else None
+    return board or default
+
+
+def _read_yaml_mapping(path: Path) -> Optional[Dict[str, Any]]:
+    """The top-level mapping in ``path``, or None if there is not one.
+
+    For optional project files read after a build has already succeeded:
+    a missing, unreadable, malformed or non-mapping file is treated as
+    absent rather than raised, because callers index into the result and
+    a traceback there would fail a build that linked.
+    """
     if not path.is_file():
-        return default
+        return None
     try:
         import yaml
-        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception:
-        return default
-    return (data.get("system") or {}).get("board") or default
+        return None
+    return data if isinstance(data, dict) else None
 
 
 def _build_summary(cfg: "ProjectConfig", compiler, package_paths, log: Logger) -> None:
@@ -622,15 +636,7 @@ def _board_config() -> Optional[Dict[str, Any]]:
     A project that states its part's real capacity should not be measured
     against the reference part for its family.
     """
-    path = Path("board.yaml")
-    if not path.is_file():
-        return None
-    try:
-        import yaml
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    return data if isinstance(data, dict) else None
+    return _read_yaml_mapping(Path("board.yaml"))
 
 
 def _configure_ninja_backend(
@@ -3332,16 +3338,6 @@ def _save_models(models: Dict[str, Dict[str, Any]]) -> None:
     tmp.replace(path)
 
 
-def _sha256_of_file(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def _hash_calibration(path: Path) -> str:
     """Content hash of calibration data (a file or a directory of samples)."""
     digest_hex = None
@@ -3353,10 +3349,10 @@ def _hash_calibration(path: Path) -> str:
         digest = hashlib.sha256()
         for rel, p in zip(rel_paths, entries):
             digest.update(f"{rel}\0".encode("utf-8"))
-            digest.update(_sha256_of_file(p).encode("utf-8"))
+            digest.update(sha256_file(p).encode("utf-8"))
         digest_hex = digest.hexdigest()
     else:
-        digest_hex = _sha256_of_file(path)
+        digest_hex = sha256_file(path)
     return digest_hex
 
 
@@ -3441,7 +3437,7 @@ def register(
         log.error(f"Model {name!r} is already registered. Use --force to overwrite it.")
         raise SystemExit(1)
 
-    digest = _sha256_of_file(model_file)
+    digest = sha256_file(model_file)
     calib_hash = _hash_calibration(Path(calibration))
     models[name] = {
         "name": name,
@@ -3523,7 +3519,7 @@ def verify(log: Logger, name: str, calibration: Optional[str]) -> None:
     if not source.is_file():
         log.error(f"Registered artifact for {name!r} is missing: {source}")
         raise SystemExit(1)
-    actual = _sha256_of_file(source)
+    actual = sha256_file(source)
     if actual != entry["digest"]:
         log.error(
             f"Digest mismatch for {name!r}: registry has sha256:{entry['digest']}, "
