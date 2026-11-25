@@ -205,3 +205,26 @@ def test_cli_update_index_offline():
     assert result.exit_code == 0
     assert "Offline mode" in result.output
 
+
+
+def test_search_tolerates_null_fields_in_remote_index(tmp_path):
+    """Regression: ``entry.get("description", "")`` returns None when the
+    index carries ``"description": null`` (the default applies only to a
+    missing key), and search() then called ``.lower()`` on it -- one such
+    entry made every ``ebuild search`` crash with AttributeError."""
+    index = tmp_path / "packages.json"
+    index.write_text(json.dumps([
+        {"name": "nulls", "version": "1.0.0", "description": None,
+         "license": None, "build_system": None},
+        {"name": "zlib", "version": "1.3.1", "description": "compression",
+         "license": "Zlib", "build_system": "cmake"},
+    ]), encoding="utf-8")
+    repo = PackageRepository()
+    assert repo.load_index(index) == 2
+
+    assert [p.name for p in repo.search("compression")] == ["zlib"]
+    assert [p.name for p in repo.search(license_filter="zlib")] == ["zlib"]
+    assert [p.name for p in repo.search(build_system="cmake")] == ["nulls", "zlib"]
+
+    nulls = repo.info("nulls")
+    assert (nulls.description, nulls.license, nulls.build_system) == ("", "", "cmake")

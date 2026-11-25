@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 from ebuild.packages.recipe import PackageRecipe, RecipeError, load_recipe
 
@@ -25,7 +25,13 @@ _SUFFIX_SPLIT = re.compile(r"[-+]")
 # digits then letters: the 1.2.11b patch-respin form.
 _RESPIN = re.compile(r"(\d+)([A-Za-z]+)")
 
-_ComponentKey = Tuple[int, int, str]
+# letters then digits: a numbered pre-release tag such as rc10 or beta2.
+_TAGGED = re.compile(r"([A-Za-z]+)(\d+)")
+
+# (1, number, letters) for numeric components; (0, text, number) for the
+# rest. The leading rank differs between the two forms, so they never compare
+# position-by-position against each other.
+_ComponentKey = Tuple[int, Union[int, str], Union[str, int]]
 
 
 def _component_key(component: str) -> _ComponentKey:
@@ -42,13 +48,20 @@ def _component_key(component: str) -> _ComponentKey:
     1.2.11b < 1.2.11c. Treating it as text instead put it below every
     numeric component, which sorted the respin *below* the release it
     supersedes.
+
+    A component that is letters followed by digits -- a numbered pre-release
+    tag -- orders on the letters, then numerically on the digits, so rc2 <
+    rc10. Compared as text, rc10 sorted below rc2.
     """
     if component.isdigit():
         return (1, int(component), "")
     respin = _RESPIN.fullmatch(component)
     if respin:
         return (1, int(respin.group(1)), respin.group(2))
-    return (0, 0, component)
+    tagged = _TAGGED.fullmatch(component)
+    if tagged:
+        return (0, tagged.group(1), int(tagged.group(2)))
+    return (0, component, -1)
 
 
 def version_sort_key(version: str) -> tuple:
