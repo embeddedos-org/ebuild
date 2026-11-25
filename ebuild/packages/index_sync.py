@@ -182,6 +182,9 @@ class IndexSyncManager:
                     cached_meta = json.load(mf)
             except Exception:
                 cached_meta = {}
+            # Valid JSON of the wrong shape is as unusable as invalid JSON.
+            if not isinstance(cached_meta, dict):
+                cached_meta = {}
 
         cached_url = cached_meta.get("url")
         same_origin = (cached_url == target_url) if cached_url else (url is None)
@@ -202,7 +205,8 @@ class IndexSyncManager:
                         is_fallback=False,
                         sha256=cached_meta_sha,
                     )
-            except OSError:
+            except (OSError, TypeError, ValueError):
+                # A non-numeric synced_at means the age is unknown: re-fetch.
                 pass
 
         logger.info("Fetching remote package index from %s", target_url)

@@ -29,7 +29,7 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional, Tuple
 
 __all__ = [
@@ -164,7 +164,12 @@ def validate_receipts(
             reasons.append(f"bundle file entry is malformed: {entry!r}")
             continue
         rel = entry["path"]
-        if not isinstance(rel, str) or rel.startswith("/") or ".." in Path(rel).parts:
+        # Parsed as a Windows path on every host, which splits on both
+        # slash kinds and sees drive and UNC anchors: an absolute or drive
+        # path joined onto bundle_dir on Windows replaces it, and the
+        # verdict must not depend on which OS runs the verifier.
+        if (not isinstance(rel, str) or PureWindowsPath(rel).anchor
+                or ".." in PureWindowsPath(rel).parts):
             reasons.append(f"bundle file path {rel!r} escapes the bundle directory")
             continue
         if rel in seen_paths:
