@@ -34,7 +34,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 #: Capacity of the reference part for each board family, in bytes.
 #:
@@ -201,20 +201,45 @@ def measure(artifact: Path, size_tool: Optional[str] = None) -> Footprint:
 
 
 def board_capacity(board: Optional[str],
-                  board_config: Optional[dict] = None
+                  board_config: Optional[dict] = None,
+                  on_warning: Optional[Callable[[str], None]] = None,
                   ) -> Tuple[Optional[int], Optional[int]]:
    """Flash and RAM capacity for a board, or (None, None) when unknown.
 
 
-   A project's own board YAML wins over the reference table: `memory.flash_size`
-   and `memory.ram_size` are what the hardware descriptions in `hardware/board/`
-   already use.
+   A project's own board YAML wins over the reference table. Two spellings are
+   read, because the tree writes both: `memory.flash_size`/`memory.ram_size`,
+   which the hardware descriptions in `hardware/board/` use, and
+   `memory.flash`/`memory.ram`, which `EosConfigGenerator.generate_board_yaml()`
+   emits and `ebuild/cli/commands.py` reads back. Reading only the first
+   spelling meant a generated board's real capacities were ignored and the
+   family reference was reported and enforced instead.
+
+   on_warning, when given, is called with a one-line diagnostic instead of
+   discarding a malformed `memory` value in silence.
    """
    reference = _REFERENCE_CAPACITY.get(board.lower()) if board else None
    if board_config:
-       memory = board_config.get("memory") or {}
-       flash = _as_bytes(memory.get("flash_size"))
-       ram = _as_bytes(memory.get("ram_size"))
+       # generate_board_yaml() nests everything under a top-level `board`
+       # key, while hardware/board/ descriptions are flat. Unwrap the
+       # wrapper when it is the one holding `memory`, so both shapes work.
+       inner = board_config.get("board")
+       if isinstance(inner, dict) and "memory" in inner and "memory" not in board_config:
+           board_config = inner
+       memory = board_config.get("memory")
+       if memory is not None and not isinstance(memory, dict):
+           # `memory: 512K` or a list: no sizes to read, so use the reference.
+           if on_warning is not None:
+               on_warning(
+                   f"board.yaml 'memory' is {type(memory).__name__}, not a "
+                   f"mapping of sizes; using the {board or 'reference'} "
+                   "reference capacity instead"
+               )
+           memory = {}
+       elif memory is None:
+           memory = {}
+       flash = _as_bytes(_first(memory, "flash_size", "flash"))
+       ram = _as_bytes(_first(memory, "ram_size", "ram"))
        if flash or ram:
            if flash is None and reference:
                flash = reference[0]
@@ -224,6 +249,15 @@ def board_capacity(board: Optional[str],
    if reference:
        return reference
    return None, None
+
+
+def _first(mapping: dict, *keys: str):
+    """The first key present with a non-None value."""
+    for key in keys:
+        value = mapping.get(key)
+        if value is not None:
+            return value
+    return None
 
 
 def _as_bytes(value) -> Optional[int]:

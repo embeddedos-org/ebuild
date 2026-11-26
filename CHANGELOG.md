@@ -29,6 +29,47 @@
   "multiple rules generate". `..` components now map to `__` (as CMake
   does) and a leading root or drive is dropped, keeping each object in its
   own target directory (`ebuild/build/ninja_backend.py`).
+- **Package URLs with a query string or fragment now fetch.** The cached
+  archive was named after the URL's last segment verbatim, so
+  `…/v1.0.tar.gz?raw=true` became `v1.0.tar.gz?raw=true`: extraction refused
+  it as an unsupported format, and on Windows the file could not be created
+  at all. The name now comes from the URL path only, falling back to the
+  query for the `/download?file=x.tar.gz` form, whose path names no
+  archive. Because the query no longer reaches the name, it is folded into
+  the cache key instead, so two URLs differing only after the `?` no longer
+  share one cached archive. A URL that does not parse, or that derives a
+  name like `..`, is now a `FetchError` rather than a `ValueError` or a
+  write outside the download directory (`ebuild/packages/fetcher.py`).
+- **Upper-case SHA-256 checksums in recipes now verify.** Recipe validation
+  accepts upper-case hex (the form PowerShell's `Get-FileHash` prints), but
+  the fetcher compared it against the lower-case digest, so a correct
+  archive failed with "Checksum mismatch" and was deleted on every build.
+  A digest is a number, not a string, so it is now canonicalised to
+  lower case as it enters `PackageRecipe`, and the two places that compare
+  a digest against a previously recorded one — the `ebuild.lock` pin check
+  and the build-cache `.built` marker — normalise too, so an existing
+  lockfile or marker does not read as a changed pin or force a needless
+  rebuild (`ebuild/packages/recipe.py`, `fetcher.py`, `resolver.py`,
+  `cache.py`).
+- **A rootfs boots with the hostname it was assembled with.** `rcS` ran a
+  literal `hostname eos`, so an image assembled as `eos-<board>` (as the
+  board build does) booted as `eos`, a name its own `/etc/hosts` does not
+  resolve. `rcS` now reads `/etc/hostname`, falling back to `eos` only when
+  that file is absent (`ebuild/system/rootfs.py`).
+- **A rootfs assembled on Windows now boots and logs in.** Rootfs text files
+  (`inittab`, `rcS`, `passwd`, `group`, `shadow`, `hostname`, `hosts`,
+  `resolv.conf`) were written with `Path.write_text`, which emits CRLF on
+  Windows: `rcS` began `#!/bin/sh\r` and every login shell read
+  `/bin/sh\r`. They are now always written with LF line endings and UTF-8
+  (`ebuild/system/rootfs.py`).
+- **`ebuild build -j N` no longer reports a package that failed as
+  "skipped (a dependency failed)".** The parallel scheduler remembered only
+  the first failed node, so any other package that also ran and failed was
+  passed to the skip callback as if it had never run. Every failed node is
+  now excluded from the skip report, and each one is reported through the new
+  `on_failure` callback -- only one exception can be re-raised, so without it
+  the second and later failures of a parallel build reached the user nowhere
+  (`ebuild/core/scheduler.py`, `ebuild/cli/commands.py`).
 - **Eagle nets that span sheets are parsed as one net.**
   `EagleParser` read each sheet's `<net>` on its own, so a schematic with
   `SDA` on two sheets came back as two `SDA` nets with half the pins each,
