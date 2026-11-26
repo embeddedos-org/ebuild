@@ -33,6 +33,7 @@ def run_graph(
     task: Callable[[str], T],
     jobs: int = 1,
     on_skip: Callable[[str, BaseException], None] | None = None,
+    on_failure: Callable[[str, BaseException], None] | None = None,
 ) -> Dict[str, T]:
     """Run *task* for every node in *graph*, honouring dependency order.
 
@@ -44,6 +45,10 @@ def run_graph(
             in ``topological_sort`` order.
         on_skip: Optional callback invoked as ``(node, cause)`` for each node
             that never ran because a dependency failed.
+        on_failure: Optional callback invoked as ``(node, exc)`` for each node
+            that ran and raised. Only one exception can be re-raised, so
+            without this the second and later failures of a parallel run are
+            not reported anywhere.
 
     Returns:
         Mapping of node name to whatever *task* returned. Nodes that did not
@@ -84,7 +89,10 @@ def run_graph(
     ready: List[str] = [n for n in order if not pending[n]]
     results: Dict[str, T] = {}
     failure: BaseException | None = None
-    failed_node: str | None = None
+    # Every node that ran and raised, with its exception. Not just the one
+    # whose error is re-raised: none of them were skipped, and only one of
+    # them can be raised, so the rest reach the caller through on_failure.
+    failed: Dict[str, BaseException] = {}
     lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -106,8 +114,9 @@ def run_graph(
                     value = fut.result()
                 except BaseException as exc:      # noqa: BLE001 - re-raised below
                     with lock:
+                        failed[node] = exc
                         if failure is None:
-                            failure, failed_node = exc, node
+                            failure = exc
                     continue
 
                 results[node] = value
@@ -126,15 +135,21 @@ def run_graph(
                 value = fut.result()
             except BaseException as exc:          # noqa: BLE001
                 with lock:
+                    failed[node] = exc
                     if failure is None:
-                        failure, failed_node = exc, node
+                        failure = exc
             else:
                 results[node] = value
 
     if failure is not None:
+        if on_failure is not None:
+            # In graph order, so a run reports the same way every time.
+            for node in order:
+                if node in failed:
+                    on_failure(node, failed[node])
         if on_skip is not None:
             for node in order:
-                if node not in results and node != failed_node:
+                if node not in results and node not in failed:
                     on_skip(node, failure)
         raise failure
 
