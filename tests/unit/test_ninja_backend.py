@@ -16,7 +16,7 @@ import pytest
 from ebuild.build import layout
 from ebuild.build.ninja_backend import NinjaBackend, escape_ninja_path
 from ebuild.build.toolchain import ResolvedToolchain
-from ebuild.core.config import ProjectConfig, TargetConfig
+from ebuild.core.config import ConfigError, ProjectConfig, TargetConfig
 
 
 def _toolchain():
@@ -907,3 +907,109 @@ def test_parent_relative_source_stays_in_its_target_object_dir(tmp_path, shared_
         assert target_dir in obj.parents, f"{name}: {obj} escapes {target_dir}"
         assert obj.name == "hal.c.o"
     assert objects["lib"] != objects["app"]
+
+
+def _ninja_for(tmp_path, targets):
+    """Generate build.ninja through the public interface and return it."""
+    config = ProjectConfig(
+        name="proj", version="1.0", source_dir=tmp_path, targets=targets,
+    )
+    build_dir = tmp_path / "_build"
+    NinjaBackend(config, build_dir, ResolvedToolchain()).generate()
+    return (build_dir / "build.ninja").read_text(encoding="utf-8")
+
+
+def _build_outputs(ninja_text):
+    """Every `build <out>: cc ...` output in the manifest, in order."""
+    outputs = []
+    for line in ninja_text.splitlines():
+        if line.startswith("build ") and ": cc " in line:
+            outputs.append(line[len("build "):].split(": cc ", 1)[0])
+    return outputs
+
+
+@pytest.mark.parametrize("shared_src", ["../common/hal.c", "../../vendor/hal.c"])
+def test_generated_manifest_keeps_objects_in_their_target_dir(tmp_path, shared_src):
+    """Regression (review of #201): the object-path rule was asserted by
+    calling the private helper, so a fault in how _write_ninja() used it
+    would not have been caught. TESTING.md: test through the public
+    interface. This generates the manifest and reads the rules back."""
+    ninja = _ninja_for(tmp_path, [
+        TargetConfig(name="lib", target_type="static_library",
+                     sources=[shared_src], defines=["BUILD_LIB=1"]),
+        TargetConfig(name="app", target_type="executable",
+                     sources=["src/main.c", shared_src]),
+    ])
+    outputs = _build_outputs(ninja)
+
+    # Distinct rules, so ninja has no "multiple rules generate" conflict.
+    assert len(outputs) == len(set(outputs)) == 3
+
+    lib_objs = [o for o in outputs if "/obj/lib/" in o.replace("\\", "/")]
+    app_objs = [o for o in outputs if "/obj/app/" in o.replace("\\", "/")]
+    assert len(lib_objs) == 1 and len(app_objs) == 2
+
+    # Nothing escaped its target directory, and no '..' survived.
+    for out in outputs:
+        assert ".." not in out.split("/obj/", 1)[1]
+    assert any(o.endswith("hal.c.o") for o in lib_objs)
+
+
+def test_an_absolute_source_stays_in_its_target_object_dir(tmp_path):
+    """Regression (review of #201): both parametrised cases were relative,
+    so `source.anchor` was false in each and the root-dropping branch was
+    never exercised. An absolute source must not discard the build dir."""
+    absolute_src = str(Path(tmp_path) / "vendor" / "hal.c")
+    ninja = _ninja_for(tmp_path, [
+        TargetConfig(name="lib", target_type="static_library", sources=[absolute_src]),
+        TargetConfig(name="app", target_type="executable",
+                     sources=["src/main.c", absolute_src]),
+    ])
+    outputs = [o.replace("\\", "/") for o in _build_outputs(ninja)]
+    build_dir = str(tmp_path / "_build").replace("\\", "/")
+
+    assert len(outputs) == len(set(outputs)) == 3
+    for out in outputs:
+        assert out.startswith(build_dir), f"{out} escapes {build_dir}"
+    assert any(o.startswith(f"{build_dir}/obj/lib/") and o.endswith("hal.c.o")
+               for o in outputs)
+    assert any(o.startswith(f"{build_dir}/obj/app/") and o.endswith("hal.c.o")
+               for o in outputs)
+
+
+@pytest.mark.parametrize("bad_src", ["", ".", "/"])
+def test_a_source_that_names_no_file_is_a_config_error(tmp_path, bad_src):
+    """Regression (review of #201): dropping the root or rewriting '..'
+    can leave no path components at all, and taking the last one was an
+    IndexError traceback out of backend generation."""
+    with pytest.raises(ConfigError, match="names no file"):
+        _ninja_for(tmp_path, [
+            TargetConfig(name="app", target_type="executable", sources=[bad_src]),
+        ])
+
+
+@pytest.mark.parametrize("pair", [
+    ("../common/hal.c", "__/common/hal.c"),
+    ("/common/hal.c", "common/hal.c"),
+])
+def test_two_sources_sharing_one_object_is_a_config_error(tmp_path, pair):
+    """Regression (review of #201): mapping sources into the target's
+    object directory is not injective, so two sources could claim one
+    object. Ninja then refuses the whole manifest with "multiple rules
+    generate <obj>", naming the object and not the two sources. Report the
+    real cause instead."""
+    with pytest.raises(ConfigError, match="would share one object file"):
+        _ninja_for(tmp_path, [
+            TargetConfig(name="app", target_type="executable", sources=list(pair)),
+        ])
+
+
+def test_the_same_source_listed_by_two_targets_is_still_allowed(tmp_path):
+    """The control: object paths are namespaced per target, so sharing a
+    source between targets is legitimate and must not trip the check."""
+    ninja = _ninja_for(tmp_path, [
+        TargetConfig(name="lib", target_type="static_library", sources=["hal.c"]),
+        TargetConfig(name="app", target_type="executable", sources=["hal.c"]),
+    ])
+    outputs = _build_outputs(ninja)
+    assert len(outputs) == len(set(outputs)) == 2
