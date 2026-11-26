@@ -22,6 +22,12 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A rootfs assembled on Windows now boots and logs in.** Rootfs text files
+  (`inittab`, `rcS`, `passwd`, `group`, `shadow`, `hostname`, `hosts`,
+  `resolv.conf`) were written with `Path.write_text`, which emits CRLF on
+  Windows: `rcS` began `#!/bin/sh\r` and every login shell read
+  `/bin/sh\r`. They are now always written with LF line endings and UTF-8
+  (`ebuild/system/rootfs.py`).
 - **`ebuild build -j N` no longer reports a package that failed as
   "skipped (a dependency failed)".** The parallel scheduler remembered only
   the first failed node, so any other package that also ran and failed was
