@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ebuild.packages.recipe import PackageRecipe
+from ebuild.packages.recipe import PackageRecipe, normalize_checksum
 
 
 class PackageCache:
@@ -74,7 +74,11 @@ class PackageCache:
             return (
                 data.get("name") == recipe.name
                 and data.get("version") == recipe.version
-                and data.get("checksum") == recipe.checksum
+                # A marker written before digests were canonicalised may
+                # hold upper case; the same digest is the same build, so it
+                # must not force a rebuild of a valid install tree.
+                and normalize_checksum(data.get("checksum") or "")
+                == normalize_checksum(recipe.checksum or "")
             )
         except (json.JSONDecodeError, OSError):
             return False
