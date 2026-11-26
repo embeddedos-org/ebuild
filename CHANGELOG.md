@@ -22,6 +22,26 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A rootfs assembled on Windows now boots and logs in.** Rootfs text files
+  (`inittab`, `rcS`, `passwd`, `group`, `shadow`, `hostname`, `hosts`,
+  `resolv.conf`) were written with `Path.write_text`, which emits CRLF on
+  Windows: `rcS` began `#!/bin/sh\r` and every login shell read
+  `/bin/sh\r`. They are now always written with LF line endings and UTF-8
+  (`ebuild/system/rootfs.py`).
+- **`ebuild build -j N` no longer reports a package that failed as
+  "skipped (a dependency failed)".** The parallel scheduler remembered only
+  the first failed node, so any other package that also ran and failed was
+  passed to the skip callback as if it had never run. Every failed node is
+  now excluded from the skip report, and each one is reported through the new
+  `on_failure` callback -- only one exception can be re-raised, so without it
+  the second and later failures of a parallel build reached the user nowhere
+  (`ebuild/core/scheduler.py`, `ebuild/cli/commands.py`).
+- **Eagle nets that span sheets are parsed as one net.**
+  `EagleParser` read each sheet's `<net>` on its own, so a schematic with
+  `SDA` on two sheets came back as two `SDA` nets with half the pins each,
+  and `get_nets_for_part()` could not show the MCU and a sensor on another
+  sheet as connected. Nets with the same name are now merged across sheets,
+  as Eagle connects them.
 - **Generated boot configs put SAM D flash at 0, not at STM32's 0x08000000.**
   `EosConfigGenerator.generate_boot_yaml()` wrote `flash_base: 0x08000000`
   for a SAMD51 profile, because `_flash_base_for()` had no SAM D entry and
