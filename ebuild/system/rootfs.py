@@ -18,7 +18,7 @@ class RootfsError(Exception):
     """Raised when rootfs assembly fails."""
 
 
-def _write_target_text(path: Path, content: str) -> None:
+def write_target_text(path: Path, content: str) -> None:
     """Write a text file for the Linux target, whatever the build host.
 
     ``Path.write_text`` translates ``\\n`` to the host separator, so on
@@ -136,7 +136,7 @@ class RootfsBuilder:
         inittab = self.rootfs_dir / "etc" / "inittab"
 
         if init_system == "busybox":
-            _write_target_text(
+            write_target_text(
                 inittab,
                 "::sysinit:/etc/init.d/rcS\n"
                 "::respawn:/sbin/getty -L 115200 ttyS0 vt100\n"
@@ -148,7 +148,7 @@ class RootfsBuilder:
 
         # Create rcS init script
         rcs = self.rootfs_dir / "etc" / "init.d" / "rcS"
-        _write_target_text(
+        write_target_text(
             rcs,
             "#!/bin/sh\n"
             "mount -t proc proc /proc\n"
@@ -173,7 +173,7 @@ class RootfsBuilder:
         # /etc/shadow (the designated hash store), never a clear-text
         # password - the CodeQL clear-text-storage alert is a false
         # positive here, suppressed with the justification below.
-        _write_target_text(path, content)  # codeql[py/clear-text-storage-sensitive-data]
+        write_target_text(path, content)  # codeql[py/clear-text-storage-sensitive-data]
 
     def configure_users(
         self,
@@ -260,13 +260,13 @@ class RootfsBuilder:
 
     def configure_network(self, hostname: str = "eos") -> None:
         """Create basic network configuration."""
-        _write_target_text(self.rootfs_dir / "etc" / "hostname", f"{hostname}\n")
-        _write_target_text(
+        write_target_text(self.rootfs_dir / "etc" / "hostname", f"{hostname}\n")
+        write_target_text(
             self.rootfs_dir / "etc" / "hosts",
             f"127.0.0.1\tlocalhost\n"
             f"127.0.1.1\t{hostname}\n"
         )
-        _write_target_text(
+        write_target_text(
             self.rootfs_dir / "etc" / "resolv.conf", "nameserver 8.8.8.8\n"
         )
 
