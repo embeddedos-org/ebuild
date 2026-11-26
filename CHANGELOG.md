@@ -22,6 +22,15 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **The `make` backend on Windows runs NMAKE in the project directory.**
+  It ran `nmake -C <source_dir>`, but NMAKE has no `-C`: it read it as `/C`
+  (suppress output) and the directory as a target name, against the
+  Makefile in the current directory. NMAKE now runs with the source
+  directory as its working directory. `ebuild clean` took the same path,
+  so it kept running `make -C` and left the artifacts in place on a host
+  with NMAKE and no GNU make; both now share one `_make_invocation()`
+  helper. The `kbuild` backend stays on GNU make on every host, since it
+  drives the kernel's own Makefiles (`ebuild/build/dispatch.py`).
 - **A source outside the project directory no longer breaks the Ninja
   build when two targets share it.** Object paths were `obj/<target>/` plus
   the source path verbatim, so `../common/hal.c` resolved to
