@@ -43,6 +43,29 @@ ebuild analyze my_design.kicad_sch
 - Looks up component part numbers in the 200+ component database
 - Auto-detects MCU from component values
 
+**Quoted strings are returned unescaped.** A value, property or net name
+comes back as the text KiCad shows, not as the raw file bytes: a part
+valued `10k "thin film"` is stored in the file as `"10k \"thin film\""` and
+is reported as `10k "thin film"`.
+
+The escapes are decoded exactly as KiCad's own lexer does
+(`DSNLEXER::NextTok`, non-specctra mode):
+
+| In the file | Reported as |
+| --- | --- |
+| `\"` `\\` | `"` `\` |
+| `\n` `\r` `\t` | newline, carriage return, tab |
+| `\a` `\b` `\f` `\v` | bell, backspace, form feed, vertical tab |
+| `\x41`, `\101` | `A` (1–2 hex digits, or 1–3 octal digits) |
+| `\q` and other unknown pairs | `\q` — the backslash is kept |
+
+The last row matters for Windows paths in fields such as `Datasheet`: a
+value written `C:\parts\manual.pdf` without doubled separators keeps its
+backslashes rather than being flattened to `C:partsmanual.pdf`. Note that
+`\r` and `\t` *are* real escapes, so `C:\parts\r0603.pdf` yields a
+carriage return — as it does in KiCad. Write such paths with doubled
+backslashes, which is what KiCad itself emits.
+
 ### 4. Eagle / Autodesk Schematic Files ✅ (XML Parsing)
 
 ```bash

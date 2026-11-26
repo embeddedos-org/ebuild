@@ -182,14 +182,85 @@ class SExprParser:
             self._pos += 1
 
 
-_ESCAPE = re.compile(r"\\(.)", re.DOTALL)
-_ESCAPED_CONTROL = {"n": "\n", "r": "\r"}
+#: Single-character escapes, as KiCad's DSNLEXER::NextTok() decodes them
+#: (common/dsnlexer.cpp, non-specctra mode).
+_SIMPLE_ESCAPES = {
+    '"': '"',
+    "\\": "\\",
+    "a": "\x07",
+    "b": "\x08",
+    "f": "\x0c",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "v": "\x0b",
+}
+
+_HEX_DIGITS = "0123456789abcdefABCDEF"
+_OCTAL_DIGITS = "01234567"
 
 
 def _unescape(raw: str) -> str:
-    """Undo KiCad's string escaping: ``\\"`` -> ``"``, ``\\\\`` -> ``\\``,
-    ``\\n``/``\\r`` -> newline/CR."""
-    return _ESCAPE.sub(lambda m: _ESCAPED_CONTROL.get(m.group(1), m.group(1)), raw)
+    """Undo KiCad's string escaping.
+
+    Follows KiCad's own lexer (``DSNLEXER::NextTok``, non-specctra mode)
+    rather than a general "drop the backslash" rule:
+
+    * ``\\"`` ``\\\\`` ``\\a`` ``\\b`` ``\\f`` ``\\n`` ``\\r`` ``\\t`` ``\\v``
+      decode to their usual characters.
+    * ``\\xHH`` decodes 1-2 hex digits; ``\\x`` with none following is a
+      literal ``x``, as KiCad's "goofed hex escape sequence" branch does.
+    * ``\\NNN`` decodes 1-3 octal digits.
+    * Anything else keeps its backslash. KiCad's ``default:`` branch falls
+      through to the octal reader and, finding no octal digit, emits ``\\``
+      and re-reads the character. This is what stops a Windows path in a
+      schematic field -- ``C:\\parts\\manual.pdf`` written without doubled
+      backslashes -- from being silently flattened to ``C:partsmanual.pdf``.
+    """
+    if "\\" not in raw:
+        return raw
+
+    out: List[str] = []
+    i = 0
+    end = len(raw)
+    while i < end:
+        char = raw[i]
+        if char != "\\":
+            out.append(char)
+            i += 1
+            continue
+
+        i += 1
+        if i >= end:
+            # Trailing backslash. KiCad reaches its unterminated-string
+            # path here; keep the character rather than drop it silently.
+            out.append("\\")
+            break
+
+        nxt = raw[i]
+        if nxt in _SIMPLE_ESCAPES:
+            out.append(_SIMPLE_ESCAPES[nxt])
+            i += 1
+            continue
+
+        if nxt == "x":
+            i += 1
+            digits = ""
+            while len(digits) < 2 and i < end and raw[i] in _HEX_DIGITS:
+                digits += raw[i]
+                i += 1
+            out.append(chr(int(digits, 16)) if digits else "x")
+            continue
+
+        digits = ""
+        while len(digits) < 3 and i < end and raw[i] in _OCTAL_DIGITS:
+            digits += raw[i]
+            i += 1
+        # No octal digit: emit the backslash and leave `i` on the character,
+        # so the next pass copies it verbatim. The pair is preserved.
+        out.append(chr(int(digits, 8)) if digits else "\\")
+
+    return "".join(out)
 
 
 def _find_nodes(tree: List, tag: str) -> List[List]:

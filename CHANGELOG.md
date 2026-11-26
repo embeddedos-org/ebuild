@@ -22,6 +22,16 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **KiCad quoted strings come back as the text KiCad shows.**
+  `SExprParser._parse_string` skipped over escapes while scanning but
+  returned the raw slice, so a part valued `10k "thin film"` was reported
+  as `10k \"thin film\"` and that text flowed into every component,
+  property and net name. Escapes are now decoded as KiCad's own lexer
+  decodes them (`DSNLEXER::NextTok`, non-specctra mode): `\"` `\\` `\n`
+  `\r` `\t` `\a` `\b` `\f` `\v`, hex `\xHH` and octal `\NNN`, with any
+  unknown pair keeping its backslash — so a `Datasheet` field reading
+  `C:\parts\manual.pdf` is no longer flattened to `C:partsmanual.pdf`
+  (`ebuild/eos_ai/kicad_parser.py`, `docs/ai-input-formats.md`).
 - **The `make` backend on Windows runs NMAKE in the project directory.**
   It ran `nmake -C <source_dir>`, but NMAKE has no `-C`: it read it as `/C`
   (suppress output) and the directory as a target name, against the
