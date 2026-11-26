@@ -919,12 +919,31 @@ def _ninja_for(tmp_path, targets):
     return (build_dir / "build.ninja").read_text(encoding="utf-8")
 
 
+def _unescape_ninja(text):
+    """Invert escape_ninja_path(), then normalise separators.
+
+    The manifest escapes `$`, ` ` and `:`, so a Windows output reads
+    `C$:/...`; comparing it against a plain path fails for a reason that
+    has nothing to do with what is being tested. `$` is restored last,
+    mirroring the order the escaper applies.
+    """
+    restored = text.replace("$:", ":").replace("$ ", " ").replace("$$", "$")
+    return restored.replace("\\", "/")
+
+
 def _build_outputs(ninja_text):
-    """Every `build <out>: cc ...` output in the manifest, in order."""
+    """Every `build <out>: cc ...` output in the manifest, in order.
+
+    Returned unescaped and with forward slashes, so the assertions read
+    the same on POSIX and Windows.
+    """
     outputs = []
     for line in ninja_text.splitlines():
         if line.startswith("build ") and ": cc " in line:
-            outputs.append(line[len("build "):].split(": cc ", 1)[0])
+            # Ninja escapes ':' as '$:', so the real separator is the
+            # first unescaped one -- split on the rule marker instead.
+            raw = line[len("build "):].split(": cc ", 1)[0]
+            outputs.append(_unescape_ninja(raw))
     return outputs
 
 
@@ -945,12 +964,13 @@ def test_generated_manifest_keeps_objects_in_their_target_dir(tmp_path, shared_s
     # Distinct rules, so ninja has no "multiple rules generate" conflict.
     assert len(outputs) == len(set(outputs)) == 3
 
-    lib_objs = [o for o in outputs if "/obj/lib/" in o.replace("\\", "/")]
-    app_objs = [o for o in outputs if "/obj/app/" in o.replace("\\", "/")]
+    lib_objs = [o for o in outputs if "/obj/lib/" in o]
+    app_objs = [o for o in outputs if "/obj/app/" in o]
     assert len(lib_objs) == 1 and len(app_objs) == 2
 
     # Nothing escaped its target directory, and no '..' survived.
     for out in outputs:
+        assert "/obj/" in out, out
         assert ".." not in out.split("/obj/", 1)[1]
     assert any(o.endswith("hal.c.o") for o in lib_objs)
 
@@ -965,7 +985,7 @@ def test_an_absolute_source_stays_in_its_target_object_dir(tmp_path):
         TargetConfig(name="app", target_type="executable",
                      sources=["src/main.c", absolute_src]),
     ])
-    outputs = [o.replace("\\", "/") for o in _build_outputs(ninja)]
+    outputs = _build_outputs(ninja)
     build_dir = str(tmp_path / "_build").replace("\\", "/")
 
     assert len(outputs) == len(set(outputs)) == 3
