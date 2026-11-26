@@ -12,7 +12,9 @@ every component, property and net name the analyzer reported.
 
 from pathlib import Path
 
-from ebuild.eos_ai.kicad_parser import KiCadParser, SExprParser
+import pytest
+
+from ebuild.eos_ai.kicad_parser import KiCadParser, SExprParser, _unescape
 
 _SCHEMATIC = r'''(kicad_sch (version 20231120) (generator "eeschema")
   (symbol (lib_id "Device:R") (at 100 50 0)
@@ -42,11 +44,6 @@ def test_plain_strings_are_unchanged() -> None:
     tree = SExprParser('(property "Value" "100nF" "")').parse()
 
     assert tree == ["property", "Value", "100nF", ""]
-
-
-import pytest
-
-from ebuild.eos_ai.kicad_parser import _unescape
 
 
 @pytest.mark.parametrize(
