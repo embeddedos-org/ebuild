@@ -155,8 +155,15 @@ class RootfsBuilder:
             "mount -t sysfs sysfs /sys\n"
             "mount -t devtmpfs devtmpfs /dev\n"
             # configure_network() writes the assembled hostname here; "eos"
-            # only if it is absent (install_init() used on its own).
-            "[ -s /etc/hostname ] && hostname -F /etc/hostname || hostname eos\n"
+            # only if it is absent (install_init() used on its own). A failed
+            # load of a present /etc/hostname stays an error rather than
+            # silently booting under the wrong name (QUALITY.md: never fail
+            # silently).
+            "if [ -s /etc/hostname ]; then\n"
+            "  hostname -F /etc/hostname\n"
+            "else\n"
+            "  hostname eos\n"
+            "fi\n"
             "echo 'EoS booted successfully'\n"
         )
         if os.name != "nt":
