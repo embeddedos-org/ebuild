@@ -109,6 +109,23 @@ def detect_backend(source_dir: Path) -> str:
     return "ninja"
 
 
+def _make_invocation(
+    source_dir: str, *extra_args: str
+) -> tuple[List[str], Optional[str]]:
+    """Command and cwd that run the host's make against *source_dir*.
+
+    NMAKE has no ``-C``: it would read it as ``/C`` ("suppress output")
+    and take the directory as a target name. It builds the Makefile in its
+    working directory, so the directory is passed as *cwd* instead.
+
+    build() and clean() both need this, and having each spell it out is
+    how clean() kept running ``make -C`` on Windows after build() stopped.
+    """
+    if sys.platform == "win32":
+        return ["nmake", *extra_args], source_dir
+    return ["make", "-C", source_dir, *extra_args], None
+
+
 def _run_or_log(
     cmd: List[str],
     dry_run: bool,
@@ -222,13 +239,8 @@ class BackendDispatcher:
             _run_or_log(cmd, dry_run)
 
         elif backend == "make":
-            if sys.platform == "win32":
-                # NMAKE has no -C (it would read it as /C, "suppress
-                # output", and the directory as a target); it uses the
-                # Makefile in its working directory.
-                _run_or_log(["nmake"], dry_run, cwd=str(self.source_dir))
-            else:
-                _run_or_log(["make", "-C", str(self.source_dir)], dry_run)
+            cmd, cwd = _make_invocation(str(self.source_dir))
+            _run_or_log(cmd, dry_run, cwd=cwd)
 
         elif backend == "meson":
             cmd = ["meson", "compile", "-C", str(self.build_dir)]
@@ -268,7 +280,13 @@ class BackendDispatcher:
                 dry_run,
                 check=False,
             )
-        elif backend in ("make", "kbuild"):
+        elif backend == "make":
+            cmd, cwd = _make_invocation(str(self.source_dir), "clean")
+            _run_or_log(cmd, dry_run, check=False, cwd=cwd)
+        elif backend == "kbuild":
+            # kbuild is GNU make specific (it drives the kernel's own
+            # Makefiles), so it stays on `make -C` on every host, exactly
+            # as build() does. Only the plain `make` backend switches.
             _run_or_log(
                 ["make", "-C", str(self.source_dir), "clean"],
                 dry_run,
