@@ -22,6 +22,17 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **Upper-case SHA-256 checksums in recipes now verify.** Recipe validation
+  accepts upper-case hex (the form PowerShell's `Get-FileHash` prints), but
+  the fetcher compared it against the lower-case digest, so a correct
+  archive failed with "Checksum mismatch" and was deleted on every build.
+  A digest is a number, not a string, so it is now canonicalised to
+  lower case as it enters `PackageRecipe`, and the two places that compare
+  a digest against a previously recorded one — the `ebuild.lock` pin check
+  and the build-cache `.built` marker — normalise too, so an existing
+  lockfile or marker does not read as a changed pin or force a needless
+  rebuild (`ebuild/packages/recipe.py`, `fetcher.py`, `resolver.py`,
+  `cache.py`).
 - **A rootfs boots with the hostname it was assembled with.** `rcS` ran a
   literal `hostname eos`, so an image assembled as `eos-<board>` (as the
   board build does) booted as `eos`, a name its own `/etc/hosts` does not
