@@ -1,6 +1,7 @@
 """ebuild init / sim / platforms: the getting-started guide's commands."""
 from __future__ import annotations
 
+import shlex
 import stat
 import sys
 import textwrap
@@ -15,9 +16,19 @@ from ebuild.cli.commands import cli
 
 
 def _fake_qemu(tmp_path: Path, body: str) -> str:
-    """A stand-in qemu: a Python script that prints like a guest would."""
+    """A stand-in qemu: a Python script that prints like a guest would.
+
+    Launched through a /bin/sh wrapper rather than a `#!{sys.executable}`
+    shebang, because a shebang cannot carry an interpreter path containing
+    spaces (e.g. a checkout under "My Projects/"), and the exec then fails
+    with ENOENT before the test exercises anything.
+    """
+    guest = tmp_path / "fake_guest.py"
+    guest.write_text(textwrap.dedent(body), encoding="utf-8")
     script = tmp_path / "fake-qemu"
-    script.write_text(f"#!{sys.executable}\n" + textwrap.dedent(body), encoding="utf-8")
+    script.write_text(
+        f'#!/bin/sh\nexec {shlex.quote(sys.executable)} {shlex.quote(str(guest))} "$@"\n',
+        encoding="utf-8")
     script.chmod(script.stat().st_mode | stat.S_IEXEC)
     return str(script)
 

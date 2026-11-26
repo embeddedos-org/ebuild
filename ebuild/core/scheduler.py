@@ -28,11 +28,53 @@ class SchedulerError(Exception):
     """Raised when the graph cannot be scheduled to completion."""
 
 
+def _report(
+    callback: Callable[[str], None] | None,
+    node: str,
+    problems: List[str],
+) -> None:
+    """Invoke a reporting callback without letting it hijack the failure.
+
+    ``on_skip`` and ``on_failure`` only report. If one raises, the caller
+    must still see the build's own exception, and the remaining nodes must
+    still be reported -- otherwise a bug in a logging callback hides which
+    package actually failed, and replaces it with a traceback from the
+    logger.
+
+    The callback's error is not swallowed silently: it is collected and
+    attached to the exception that is re-raised (see _attach_problems).
+    """
+    if callback is None:
+        return
+    try:
+        callback(node)
+    except Exception as exc:  # noqa: BLE001 - reported, never re-raised here
+        problems.append(f"{node}: {type(exc).__name__}: {exc}")
+
+
+def _attach_problems(exc: BaseException, problems: List[str]) -> None:
+    """Record reporting-callback failures on the exception being raised.
+
+    ``add_note`` is Python 3.11+; this package supports 3.8, so older
+    interpreters simply carry the original exception unchanged rather than
+    losing it to a note that cannot be attached.
+    """
+    if not problems:
+        return
+    add_note = getattr(exc, "add_note", None)
+    if add_note is None:
+        return
+    add_note(
+        "scheduler reporting callback failed for " + "; ".join(problems)
+    )
+
+
 def run_graph(
     graph: DependencyGraph,
     task: Callable[[str], T],
     jobs: int = 1,
     on_skip: Callable[[str, BaseException], None] | None = None,
+    on_failure: Callable[[str, BaseException], None] | None = None,
 ) -> Dict[str, T]:
     """Run *task* for every node in *graph*, honouring dependency order.
 
@@ -44,6 +86,10 @@ def run_graph(
             in ``topological_sort`` order.
         on_skip: Optional callback invoked as ``(node, cause)`` for each node
             that never ran because a dependency failed.
+        on_failure: Optional callback invoked as ``(node, exc)`` for each node
+            that ran and raised. Only one exception can be re-raised, so
+            without this the second and later failures of a parallel run are
+            not reported anywhere.
 
     Returns:
         Mapping of node name to whatever *task* returned. Nodes that did not
@@ -61,9 +107,15 @@ def run_graph(
             try:
                 sequential[node] = task(node)
             except BaseException as exc:          # noqa: BLE001 - re-raised
+                # Same contract as the parallel path: the node that ran and
+                # raised is reported through on_failure before the skips.
+                problems: List[str] = []
+                if on_failure is not None:
+                    _report(lambda n: on_failure(n, exc), node, problems)
                 if on_skip is not None:
                     for skipped in order[index + 1:]:
-                        on_skip(skipped, exc)
+                        _report(lambda n: on_skip(n, exc), skipped, problems)
+                _attach_problems(exc, problems)
                 raise
         return sequential
 
@@ -84,7 +136,10 @@ def run_graph(
     ready: List[str] = [n for n in order if not pending[n]]
     results: Dict[str, T] = {}
     failure: BaseException | None = None
-    failed_node: str | None = None
+    # Every node that ran and raised, with its exception. Not just the one
+    # whose error is re-raised: none of them were skipped, and only one of
+    # them can be raised, so the rest reach the caller through on_failure.
+    failed: Dict[str, BaseException] = {}
     lock = threading.Lock()
 
     with ThreadPoolExecutor(max_workers=jobs) as pool:
@@ -106,8 +161,9 @@ def run_graph(
                     value = fut.result()
                 except BaseException as exc:      # noqa: BLE001 - re-raised below
                     with lock:
+                        failed[node] = exc
                         if failure is None:
-                            failure, failed_node = exc, node
+                            failure = exc
                     continue
 
                 results[node] = value
@@ -126,16 +182,26 @@ def run_graph(
                 value = fut.result()
             except BaseException as exc:          # noqa: BLE001
                 with lock:
+                    failed[node] = exc
                     if failure is None:
-                        failure, failed_node = exc, node
+                        failure = exc
             else:
                 results[node] = value
 
     if failure is not None:
+        problems = []
+        if on_failure is not None:
+            # In graph order, so a run reports the same way every time.
+            for node in order:
+                if node in failed:
+                    _report(
+                        lambda n: on_failure(n, failed[n]), node, problems
+                    )
         if on_skip is not None:
             for node in order:
-                if node not in results and node != failed_node:
-                    on_skip(node, failure)
+                if node not in results and node not in failed:
+                    _report(lambda n: on_skip(n, failure), node, problems)
+        _attach_problems(failure, problems)
         raise failure
 
     if len(results) != len(order):

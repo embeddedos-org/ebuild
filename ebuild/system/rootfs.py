@@ -18,6 +18,49 @@ class RootfsError(Exception):
     """Raised when rootfs assembly fails."""
 
 
+#: Mode for a rootfs file every user must be able to read (passwd, hosts,
+#: inittab...). The image's modes describe the target, so they must not
+#: depend on the build host's umask.
+TARGET_FILE_MODE = 0o644
+#: Mode for a rootfs directory: traversable and readable by everyone.
+TARGET_DIR_MODE = 0o755
+#: Mode for a file only root may read. /etc/shadow holds password hashes.
+TARGET_PRIVATE_MODE = 0o600
+#: Mode for an executable (rcS, and anything under bin/ or sbin/).
+TARGET_EXEC_MODE = 0o755
+
+
+def set_target_mode(path: Path, mode: int) -> None:
+    """Give *path* an explicit target mode, where the host has modes.
+
+    What a rootfs file's permissions should be is a property of the image,
+    not of whoever built it. Left to ``open()`` and ``mkdir()`` the mode is
+    the host umask: under the usual 022 that happens to look right, but
+    under 077 the image ships /etc at 0700 and nothing but root can read a
+    config file or traverse a directory. Windows has no POSIX mode to set;
+    there the archive writer synthesises one from the target layout.
+    """
+    if os.name != "nt":
+        path.chmod(mode)
+
+
+def write_target_text(path: Path, content: str, mode: int = TARGET_FILE_MODE) -> None:
+    """Write a text file for the Linux target, whatever the build host.
+
+    ``Path.write_text`` translates ``\\n`` to the host separator, so on
+    Windows rcS got a ``#!/bin/sh\\r`` shebang and every passwd entry a
+    ``/bin/sh\\r`` shell. ``write_text(newline=...)`` needs Python 3.10;
+    this package supports 3.8, hence ``open``. UTF-8 rather than the host
+    locale for the same reason: the reader is the target, not the host.
+
+    *mode* is applied explicitly for the same reason, so the image does
+    not inherit the build host's umask.
+    """
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    set_target_mode(path, mode)
+
+
 FHS_DIRS = [
     "bin", "sbin", "usr/bin", "usr/sbin", "usr/lib",
     "etc", "etc/init.d", "etc/network",
@@ -111,7 +154,10 @@ class RootfsBuilder:
     def create_skeleton(self) -> Path:
         """Create the FHS directory skeleton."""
         for d in FHS_DIRS:
-            (self.rootfs_dir / d).mkdir(parents=True, exist_ok=True)
+            directory = self.rootfs_dir / d
+            directory.mkdir(parents=True, exist_ok=True)
+            set_target_mode(directory, TARGET_DIR_MODE)
+        set_target_mode(self.rootfs_dir, TARGET_DIR_MODE)
 
         # Create essential device nodes (as regular files for non-root)
         (self.rootfs_dir / "dev" / ".keep").touch()
@@ -123,7 +169,8 @@ class RootfsBuilder:
         inittab = self.rootfs_dir / "etc" / "inittab"
 
         if init_system == "busybox":
-            inittab.write_text(
+            write_target_text(
+                inittab,
                 "::sysinit:/etc/init.d/rcS\n"
                 "::respawn:/sbin/getty -L 115200 ttyS0 vt100\n"
                 "::ctrlaltdel:/sbin/reboot\n"
@@ -134,16 +181,25 @@ class RootfsBuilder:
 
         # Create rcS init script
         rcs = self.rootfs_dir / "etc" / "init.d" / "rcS"
-        rcs.write_text(
+        write_target_text(
+            rcs,
             "#!/bin/sh\n"
             "mount -t proc proc /proc\n"
             "mount -t sysfs sysfs /sys\n"
             "mount -t devtmpfs devtmpfs /dev\n"
-            "hostname eos\n"
+            # configure_network() writes the assembled hostname here; "eos"
+            # only if it is absent (install_init() used on its own). A failed
+            # load of a present /etc/hostname stays an error rather than
+            # silently booting under the wrong name (QUALITY.md: never fail
+            # silently).
+            "if [ -s /etc/hostname ]; then\n"
+            "  hostname -F /etc/hostname\n"
+            "else\n"
+            "  hostname eos\n"
+            "fi\n"
             "echo 'EoS booted successfully'\n"
         )
-        if os.name != "nt":
-            rcs.chmod(0o755)
+        set_target_mode(rcs, TARGET_EXEC_MODE)
 
     def _write_account_file(self, name: str, content: str) -> None:
         """Write one /etc account file (passwd, group, or shadow).
@@ -154,11 +210,15 @@ class RootfsBuilder:
         is not clear-text storage of a password.
         """
         path = self.rootfs_dir / "etc" / name
+        # /etc/shadow is the only one of these that must not be world
+        # readable: it holds the password hashes. passwd and group are
+        # read by every process that resolves a uid or gid.
+        mode = TARGET_PRIVATE_MODE if name == "shadow" else TARGET_FILE_MODE
         # Writes only validated crypt(3) hashes or "!" lock markers to
         # /etc/shadow (the designated hash store), never a clear-text
         # password - the CodeQL clear-text-storage alert is a false
         # positive here, suppressed with the justification below.
-        path.write_text(content)  # codeql[py/clear-text-storage-sensitive-data]
+        write_target_text(path, content, mode)  # codeql[py/clear-text-storage-sensitive-data]
 
     def configure_users(
         self,
@@ -245,12 +305,15 @@ class RootfsBuilder:
 
     def configure_network(self, hostname: str = "eos") -> None:
         """Create basic network configuration."""
-        (self.rootfs_dir / "etc" / "hostname").write_text(f"{hostname}\n")
-        (self.rootfs_dir / "etc" / "hosts").write_text(
+        write_target_text(self.rootfs_dir / "etc" / "hostname", f"{hostname}\n")
+        write_target_text(
+            self.rootfs_dir / "etc" / "hosts",
             f"127.0.0.1\tlocalhost\n"
             f"127.0.1.1\t{hostname}\n"
         )
-        (self.rootfs_dir / "etc" / "resolv.conf").write_text("nameserver 8.8.8.8\n")
+        write_target_text(
+            self.rootfs_dir / "etc" / "resolv.conf", "nameserver 8.8.8.8\n"
+        )
 
     def install_packages(self, package_dirs: List[Path]) -> None:
         """Install built packages into the rootfs."""

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import posixpath
 import tarfile
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,53 @@ from ebuild.cli.logger import Logger
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
+
+
+#: Directories in a Linux rootfs whose contents must be executable. A rootfs
+#: assembled on Windows has no POSIX mode for the archive to copy, so an image
+#: built there shipped /etc/init.d/rcS as 0644 and BusyBox could not run
+#: ``::sysinit:/etc/init.d/rcS`` -- the target did not boot.
+_TARGET_EXEC_DIRS = frozenset({
+    "bin", "sbin", "usr/bin", "usr/sbin", "usr/local/bin", "usr/local/sbin",
+    "etc/init.d", "etc/rc.d", "etc/network/if-up.d", "etc/network/if-down.d",
+})
+
+
+def _target_member(member: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Normalise one archive member for the Linux target.
+
+    The build host's owner and group describe the host, not the target, so
+    every member is owned by root.
+
+    The mode is synthesised from the target layout only on Windows, which has
+    no POSIX mode to copy. A POSIX host's mode is the one the rootfs was
+    built with, and is preserved exactly: replacing it stripped the execute
+    bit from executables outside the listed directories (an SDK tool under
+    /opt, a /init), the setuid and sticky bits, and the privacy of /etc/shadow.
+
+    Preserving the mode is only safe because RootfsBuilder now sets an
+    explicit mode on everything it creates (see rootfs.set_target_mode), so
+    what is preserved describes the target rather than the build host's
+    umask. Nothing is added here on POSIX: a file's mode in the image is the
+    mode it has in the rootfs.
+    """
+    member.uid = member.gid = 0
+    member.uname = member.gname = "root"
+    if member.issym() or member.islnk():
+        return member
+    if not IS_WINDOWS:
+        return member
+    if member.isdir():
+        member.mode = 0o755
+        return member
+    # arcname is ".", so names arrive as "./etc/init.d/rcS". Strip exactly
+    # that prefix: lstrip("./") strips *characters*, so "./.bin/data"
+    # became "bin/data" and a hidden directory matched the exec list.
+    parent = posixpath.dirname(member.name)
+    if parent.startswith("./"):
+        parent = parent[2:]
+    member.mode = 0o755 if parent in _TARGET_EXEC_DIRS else 0o644
+    return member
 
 
 class ImageError(Exception):
@@ -89,13 +137,17 @@ class ImageBuilder:
             raise ImageError(f"Format '{image_format}' not implemented")
 
     def _create_tar(self, rootfs_dir: Path, label: str) -> Path:
-        """Create tar.gz archive using Python tarfile (cross-platform)."""
+        """Create tar.gz archive using Python tarfile (cross-platform).
+
+        Members are normalised for the target rather than copied from the
+        build host: see _target_member.
+        """
         output = self.output_dir / f"{label}.tar.gz"
         if self.log:
             self.log.step(f"Creating tar image: {output}")
 
         with tarfile.open(str(output), "w:gz") as tar:
-            tar.add(str(rootfs_dir), arcname=".")
+            tar.add(str(rootfs_dir), arcname=".", filter=_target_member)
 
         return output
 

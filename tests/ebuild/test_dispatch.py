@@ -167,6 +167,85 @@ class TestCleanBackends:
         assert "clean" in cmd
 
 
+# ── BackendDispatcher — make backend on each host ───────────
+
+
+class TestMakeBuildCommand:
+    """NMAKE has no -C: options take '-' or '/' and are case-insensitive, so
+    `nmake -C <dir>` meant /C (suppress output) plus a target named <dir>,
+    run against the Makefile in the *current* directory. NMAKE reads the
+    Makefile in its working directory, so the source dir must be its cwd."""
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_windows_runs_nmake_in_the_source_dir(self, mock_sub, tmp_path, monkeypatch):
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "win32")
+        src = tmp_path / "src"
+        BackendDispatcher(src, tmp_path / "build").build("make")
+
+        mock_sub.run.assert_called_once()
+        cmd = mock_sub.run.call_args[0][0]
+        assert cmd == ["nmake"]
+        assert mock_sub.run.call_args.kwargs["cwd"] == str(src)
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_other_hosts_keep_make_dash_c(self, mock_sub, tmp_path, monkeypatch):
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "linux")
+        src = tmp_path / "src"
+        BackendDispatcher(src, tmp_path / "build").build("make")
+
+        # Exactly one: reading call_args alone would accept an extra,
+        # wrong invocation made before the expected one.
+        mock_sub.run.assert_called_once()
+        cmd = mock_sub.run.call_args[0][0]
+        assert cmd == ["make", "-C", str(src)]
+        assert mock_sub.run.call_args.kwargs.get("cwd") is None
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_windows_cleans_with_nmake_in_the_source_dir(
+        self, mock_sub, tmp_path, monkeypatch
+    ):
+        """Regression (review of #202): build() switched to NMAKE on
+        Windows but clean() still ran ``make -C <src> clean``, so on a host
+        with NMAKE and no GNU make the clean failed at process startup and
+        left the build artifacts in place."""
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "win32")
+        src = tmp_path / "src"
+        BackendDispatcher(src, tmp_path / "build").clean("make")
+
+        mock_sub.run.assert_called_once()
+        assert mock_sub.run.call_args[0][0] == ["nmake", "clean"]
+        assert mock_sub.run.call_args.kwargs["cwd"] == str(src)
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_other_hosts_clean_with_make_dash_c(
+        self, mock_sub, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "linux")
+        src = tmp_path / "src"
+        BackendDispatcher(src, tmp_path / "build").clean("make")
+
+        mock_sub.run.assert_called_once()
+        assert mock_sub.run.call_args[0][0] == ["make", "-C", str(src), "clean"]
+        assert mock_sub.run.call_args.kwargs.get("cwd") is None
+
+    @patch("ebuild.build.dispatch.subprocess")
+    def test_kbuild_stays_on_gnu_make_everywhere(
+        self, mock_sub, tmp_path, monkeypatch
+    ):
+        """kbuild drives the kernel's own GNU-make Makefiles, so it must
+        not be switched to NMAKE along with the plain `make` backend --
+        build() already keeps it on `make -C` on every host."""
+        monkeypatch.setattr("ebuild.build.dispatch.sys.platform", "win32")
+        src = tmp_path / "src"
+        dispatcher = BackendDispatcher(src, tmp_path / "build")
+
+        dispatcher.build("kbuild")
+        assert mock_sub.run.call_args[0][0] == ["make", "-C", str(src)]
+
+        dispatcher.clean("kbuild")
+        assert mock_sub.run.call_args[0][0] == ["make", "-C", str(src), "clean"]
+
+
 # ── BackendDispatcher — unknown-backend error contract ──────
 
 
