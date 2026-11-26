@@ -480,3 +480,23 @@ class TestGeneratedBoardShape:
     def test_on_warning_is_optional(self):
         assert board_capacity("stm32f4", {"memory": "512K"}) == \
             board_capacity("stm32f4")
+
+    def test_the_generated_board_wrapper_is_unwrapped(self):
+        """generate_board_yaml() nests everything under a top-level `board`.
+
+        Raised by the CodeRabbit review of #262: reading the right key names
+        was not enough, because _board_config() hands over the outer mapping
+        and `memory` lives one level down.
+        """
+        generated = {
+            "board": {
+                "name": "stm32f407", "mcu": "STM32F407", "family": "stm32f4",
+                "memory": {"flash": 333 * 1024, "ram": 11 * 1024},
+            }
+        }
+        assert board_capacity("stm32f4", generated) == (333 * 1024, 11 * 1024)
+        assert board_capacity("stm32f4", generated) != board_capacity("stm32f4")
+
+    def test_a_flat_description_is_untouched_by_the_unwrap(self):
+        flat = {"memory": {"flash_size": 4096}, "board": {"name": "x"}}
+        assert board_capacity(None, flat)[0] == 4096

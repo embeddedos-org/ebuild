@@ -220,6 +220,12 @@ def board_capacity(board: Optional[str],
    """
    reference = _REFERENCE_CAPACITY.get(board.lower()) if board else None
    if board_config:
+       # generate_board_yaml() nests everything under a top-level `board`
+       # key, while hardware/board/ descriptions are flat. Unwrap the
+       # wrapper when it is the one holding `memory`, so both shapes work.
+       inner = board_config.get("board")
+       if isinstance(inner, dict) and "memory" in inner and "memory" not in board_config:
+           board_config = inner
        memory = board_config.get("memory")
        if memory is not None and not isinstance(memory, dict):
            # `memory: 512K` or a list: no sizes to read, so use the reference.
