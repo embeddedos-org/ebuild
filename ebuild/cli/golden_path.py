@@ -27,6 +27,8 @@ import click
 import yaml
 
 from ebuild.cli.logger import Logger
+from ebuild.system.flash_image import FlashImageError
+from ebuild.system.flash_image import build_flash_image as _build_flash_image
 
 # The guide's short template names, and the ``ebuild new`` templates they mean.
 INIT_TEMPLATES: Dict[str, str] = {
@@ -119,6 +121,25 @@ def _load_sim_target(eos_root: Path, name: str) -> Dict:
     data = yaml.safe_load(spec.read_text(encoding="utf-8")) or {}
     if data.get("schema") != 1:
         raise SimError(f"{spec}: unsupported schema {data.get('schema')!r} (expected 1)")
+
+    # An `image` section and a `qemu.flash_arg` are the two halves of one
+    # flash boot: one says how to make the image, the other how to load
+    # it. With only one, sim would build an image nothing loads, or point
+    # QEMU at a flash file never made -- either way the target does not
+    # boot and nothing says why. Checked here, before any toolchain is
+    # required, so a malformed target does not first demand a compiler.
+    has_image = bool(data.get("image"))
+    has_flash_arg = bool((data.get("qemu") or {}).get("flash_arg"))
+    if has_image != has_flash_arg:
+        present, missing = (
+            ("image", "qemu.flash_arg") if has_image
+            else ("qemu.flash_arg", "image")
+        )
+        raise SimError(
+            f"{spec}: defines {present} but not {missing}. A target that "
+            f"boots from flash needs both: {missing} is what makes the "
+            f"image, or what loads it."
+        )
     return data
 
 
@@ -127,6 +148,22 @@ def _require_tool(name: str, hint: str) -> str:
     if not path:
         raise SimError(f"{name} not found on PATH. {hint}")
     return path
+
+
+def _require_any_tool(names: List[str], hint: str) -> str:
+    """The first of *names* on PATH.
+
+    esptool installs as ``esptool`` or ``esptool.py`` depending on how it
+    was packaged -- pip's console script is ``esptool`` on 5.x, while 4.x
+    and ESP-IDF's export script put ``esptool.py`` there. Looking for only
+    one of them stopped the simulation with "not found" on a machine where
+    the tool was installed and working.
+    """
+    for name in names:
+        path = shutil.which(name)
+        if path:
+            return path
+    raise SimError(f"{' or '.join(names)} not found on PATH. {hint}")
 
 
 def build_sim_image(eos_root: Path, spec: Dict, app: Dict[str, List[Path]],
@@ -158,41 +195,16 @@ def build_sim_image(eos_root: Path, spec: Dict, app: Dict[str, List[Path]],
 
 
 def build_flash_image(spec: Dict, elf: Path, esptool: str, log: Logger) -> Path:
-    """Turn *elf* into a whole-flash image for a target that boots from flash.
+    """Wire ebuild.system.flash_image into ``sim``'s error reporting.
 
-    For a sim.yaml with an ``image`` section (the ESP32): esptool's elf2image
-    makes the image the boot ROM loads, and it is placed at ``image.offset``
-    in an erased flash file of ``image.flash_size``, which QEMU then gets
-    through ``qemu.flash_arg``.
-
-    The esptool options use underscores: esptool 4.x (Ubuntu's package)
-    accepts only those, and 5.x still does. The flash file is written here
-    rather than by merge_bin, whose padding option differs between 4.x and
-    5.x; the bytes are the same.
+    The workflow itself lives in ``ebuild/system/`` (AGENTS.md: image and
+    firmware workflows belong there, CLI wiring here). Its error becomes a
+    SimError so the developer gets the message without a traceback.
     """
-    img = spec["image"]
-    app_bin = elf.with_suffix(".bin")
-    flash = elf.with_suffix(".flash.bin")
-    tool = shlex.split(esptool)
-    cmd = [*tool, "--chip", img["chip"], "elf2image",
-           "--flash_mode", img["flash_mode"], "--flash_freq", img["flash_freq"],
-           "--flash_size", img["flash_size"], "-o", str(app_bin), str(elf)]
-    log.debug(" ".join(cmd))
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise SimError(f"{' '.join(cmd[:4])} failed:\n{(result.stderr or result.stdout).strip()}")
-    sizes = {"1MB": 1, "2MB": 2, "4MB": 4, "8MB": 8, "16MB": 16}
-    if img["flash_size"] not in sizes:
-        raise SimError(f"image.flash_size {img['flash_size']!r} is not one of {', '.join(sizes)}")
-    image = bytearray(b"\xff" * (sizes[img["flash_size"]] << 20))
-    data = app_bin.read_bytes()
-    offset = int(str(img["offset"]), 0)
-    if offset + len(data) > len(image):
-        raise SimError(f"{app_bin} ({len(data)} bytes) does not fit in "
-                       f"{img['flash_size']} of flash at {offset:#x}")
-    image[offset:offset + len(data)] = data
-    flash.write_bytes(bytes(image))
-    return flash
+    try:
+        return _build_flash_image(spec, elf, esptool, log)
+    except FlashImageError as exc:
+        raise SimError(str(exc)) from exc
 
 
 def run_qemu(qemu: str, spec: Dict, elf: Path, timeout: float,
@@ -208,8 +220,17 @@ def run_qemu(qemu: str, spec: Dict, elf: Path, timeout: float,
 
     # A target that boots from flash (qemu.flash_arg) gets the flash image;
     # the others get the ELF as the kernel.
+    #
+    # The template is split into arguments *before* the path is inserted.
+    # Splitting afterwards let a project directory containing a space cut
+    # the -drive value in half, and one containing an apostrophe made
+    # shlex.split raise ValueError on an unbalanced quote.
     flash_arg = spec["qemu"].get("flash_arg")
-    load = shlex.split(flash_arg.format(flash=elf)) if flash_arg else ["-kernel", str(elf)]
+    load = (
+        [token.format(flash=str(elf)) for token in shlex.split(flash_arg)]
+        if flash_arg
+        else ["-kernel", str(elf)]
+    )
     cmd = [qemu, "-M", spec["qemu"]["machine"], *spec["qemu"].get("args", []), *load]
     pattern = re.compile(expect) if expect else None
     lines: List[str] = []
@@ -353,7 +374,11 @@ def register_commands(cli_group: click.Group) -> None:
         qemu = _require_tool(spec["qemu"]["binary"], qemu_hint)
         esptool = None
         if spec.get("image"):
-            esptool = _require_tool("esptool", "Install esptool (pip install esptool).")
+            esptool = _require_any_tool(
+                ["esptool", "esptool.py"],
+                "Install esptool (pip install esptool). ESP-IDF's export "
+                "script also puts esptool.py on PATH.",
+            )
         out_dir = (project_dir / build_dir).resolve()
         log.step(f"Building {board} application for {target} ({spec['qemu']['machine']})...")
         elf = build_sim_image(eos_root, spec, app, out_dir, cc, log)
