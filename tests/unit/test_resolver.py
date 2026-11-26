@@ -244,6 +244,32 @@ def test_the_lock_notices_a_recipe_whose_bytes_changed(tmp_path):
     assert versions_of(PackageResolver(registry).resolve([{"name": "zlib"}], lockfile=lock))["zlib"] == "1.3.0"
 
 
+def test_the_same_digest_in_another_case_is_not_a_changed_pin(tmp_path):
+    """A digest is a number, not a string.
+
+    Regression (review of #199): making the *fetcher* case-insensitive was
+    not enough. A lockfile written with a lower-case digest against a
+    recipe later edited to the same digest in upper case raised
+    ResolveError before anything was fetched, so resolution failed until
+    the lockfile was regenerated -- for a pin that had not changed.
+    """
+    registry = make_registry_with_checksums(tmp_path, {
+        "zlib.yaml": {"package": "zlib", "version": "1.3.0",
+                      "checksum": "sha256:" + "B" * 64},
+    })
+    lock = lock_with(tmp_path, {
+        "zlib": {"version": "1.3.0", "url": "https://example.invalid/zlib.tar.gz",
+                 "checksum": "sha256:" + "b" * 64, "build": "cmake"},
+    })
+    resolved = PackageResolver(registry).resolve([{"name": "zlib"}], lockfile=lock)
+    assert versions_of(resolved)["zlib"] == "1.3.0"
+
+    # The control: a genuinely different digest is still caught.
+    lock._entries["zlib"]["checksum"] = "sha256:" + "a" * 64
+    with pytest.raises(ResolveError, match="checksum"):
+        PackageResolver(registry).resolve([{"name": "zlib"}], lockfile=lock)
+
+
 def test_a_lock_entry_the_request_does_not_reach_is_ignored(registry):
     """Locked packages that nothing depends on any more are not resolved
     into the build; the caller rewrites the lock from what was."""

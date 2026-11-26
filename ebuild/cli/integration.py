@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import click
 
 from ebuild.cli.logger import Logger
-from ebuild.system.rootfs import RootfsBuilder
+from ebuild.system.rootfs import RootfsBuilder, write_target_text
 from ebuild import __version__
 
 
@@ -168,15 +168,17 @@ def _build_rootfs(build_dir: Path, libs: List[Path], trigger: str,
         shutil.copy2(str(lib), str(lib_dir / lib.name))
 
     # EoS release info
-    (rootfs / "etc" / "eos-release").write_text(
+    write_target_text(
+        rootfs / "etc" / "eos-release",
         f"EOS_VERSION=0.1.0\n"
         f"EOS_BUILD=ebuild-integration\n"
-        f"TRIGGER_REPO={trigger}\n"
+        f"TRIGGER_REPO={trigger}\n",
     )
 
     # QEMU test script
     test_script = rootfs / "etc" / "init.d" / "S99_qemu_test"
-    test_script.write_text(
+    write_target_text(
+        test_script,
         "#!/bin/sh\n"
         "echo '════ EoS QEMU Sanity Test ════'\n"
         "echo \"EoS booted successfully\"\n"
@@ -187,7 +189,7 @@ def _build_rootfs(build_dir: Path, libs: List[Path], trigger: str,
         "ls /usr/lib/lib*.a 2>/dev/null | head -20 || echo '(none)'\n"
         "echo 'TEST_PASSED=true'\n"
         "echo '════════════════════════════════'\n"
-        "poweroff -f 2>/dev/null || reboot -f\n"
+        "poweroff -f 2>/dev/null || reboot -f\n",
     )
     if os.name != "nt":
         test_script.chmod(0o755)
