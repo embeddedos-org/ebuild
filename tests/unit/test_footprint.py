@@ -437,3 +437,46 @@ class TestOutputFormatDispatch:
             self, tmp_path, monkeypatch):
         with pytest.raises(FootprintError, match="could not read a size line"):
             self._measure_with(tmp_path, monkeypatch, "size: bad file\n")
+
+
+class TestGeneratedBoardShape:
+    """EosConfigGenerator writes memory.flash/ram, not memory.flash_size.
+
+    Raised by the Sourcery review of #262: board_capacity() read only the
+    _size spelling, so a generated board.yaml's real capacities were ignored
+    and the family reference was reported and enforced in their place.
+    """
+
+    def test_generated_flash_and_ram_keys_are_read(self):
+        # Exactly what EosConfigGenerator.generate_board_yaml() emits.
+        cfg = {"memory": {"flash": 2 * 1024 * 1024, "ram": 512 * 1024}}
+        assert board_capacity("stm32f4", cfg) == (2 * 1024 * 1024, 512 * 1024)
+
+    def test_generated_shape_beats_the_family_reference(self):
+        reference = board_capacity("stm32f4")
+        cfg = {"memory": {"flash": 99 * 1024, "ram": 7 * 1024}}
+        assert board_capacity("stm32f4", cfg) == (99 * 1024, 7 * 1024)
+        assert board_capacity("stm32f4", cfg) != reference
+
+    def test_the_size_spelling_still_wins_when_both_are_present(self):
+        cfg = {"memory": {"flash_size": 1024, "flash": 2048}}
+        assert board_capacity(None, cfg)[0] == 1024
+
+    def test_a_malformed_memory_value_is_reported_not_swallowed(self):
+        warnings = []
+        cfg = {"memory": "512K"}
+        flash, ram = board_capacity("stm32f4", cfg, on_warning=warnings.append)
+        # Still falls back to the reference, as before.
+        assert (flash, ram) == board_capacity("stm32f4")
+        assert len(warnings) == 1
+        assert "not a mapping" in warnings[0]
+
+    def test_a_well_formed_memory_value_warns_about_nothing(self):
+        warnings = []
+        board_capacity("stm32f4", {"memory": {"flash": 1024}},
+                       on_warning=warnings.append)
+        assert warnings == []
+
+    def test_on_warning_is_optional(self):
+        assert board_capacity("stm32f4", {"memory": "512K"}) == \
+            board_capacity("stm32f4")
