@@ -29,8 +29,10 @@ import hashlib
 import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any, Dict, List, Optional, Tuple
+
+from ebuild.hashing import sha256_file
 
 __all__ = [
     "GATES",
@@ -78,14 +80,6 @@ class ReceiptVerdict:
 
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _bundle_digest(entries: List[Tuple[str, str]]) -> str:
@@ -164,7 +158,12 @@ def validate_receipts(
             reasons.append(f"bundle file entry is malformed: {entry!r}")
             continue
         rel = entry["path"]
-        if not isinstance(rel, str) or rel.startswith("/") or ".." in Path(rel).parts:
+        # Parsed as a Windows path on every host, which splits on both
+        # slash kinds and sees drive and UNC anchors: an absolute or drive
+        # path joined onto bundle_dir on Windows replaces it, and the
+        # verdict must not depend on which OS runs the verifier.
+        if (not isinstance(rel, str) or PureWindowsPath(rel).anchor
+                or ".." in PureWindowsPath(rel).parts):
             reasons.append(f"bundle file path {rel!r} escapes the bundle directory")
             continue
         if rel in seen_paths:
@@ -175,7 +174,7 @@ def validate_receipts(
         if not target.is_file():
             reasons.append(f"bundle file {rel!r} is missing from {bundle_dir}")
             continue
-        actual_digest = _sha256_file(target)
+        actual_digest = sha256_file(target)
         if actual_digest != entry["sha256"]:
             reasons.append(
                 f"bundle file {rel!r} digest mismatch: receipt declares "

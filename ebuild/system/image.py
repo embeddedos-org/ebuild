@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import posixpath
 import tarfile
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,36 @@ from ebuild.cli.logger import Logger
 
 IS_WINDOWS = sys.platform == "win32"
 IS_MACOS = sys.platform == "darwin"
+
+
+#: Directories in a Linux rootfs whose contents must be executable. A rootfs
+#: assembled on Windows has no POSIX mode for the archive to copy, so an image
+#: built there shipped /etc/init.d/rcS as 0644 and BusyBox could not run
+#: ``::sysinit:/etc/init.d/rcS`` -- the target did not boot.
+_TARGET_EXEC_DIRS = frozenset({
+    "bin", "sbin", "usr/bin", "usr/sbin", "usr/local/bin", "usr/local/sbin",
+    "etc/init.d", "etc/rc.d", "etc/network/if-up.d", "etc/network/if-down.d",
+})
+
+
+def _target_member(member: tarfile.TarInfo) -> tarfile.TarInfo:
+    """Normalise one archive member for the Linux target.
+
+    The build host's mode, owner and group describe the host, not the target,
+    and on Windows they do not exist at all. Setting them here makes the image
+    identical whichever host assembled it.
+    """
+    member.uid = member.gid = 0
+    member.uname = member.gname = "root"
+    if member.issym() or member.islnk():
+        return member
+    if member.isdir():
+        member.mode = 0o755
+        return member
+    # arcname is ".", so names arrive as "./etc/init.d/rcS".
+    parent = posixpath.dirname(member.name).lstrip("./")
+    member.mode = 0o755 if parent in _TARGET_EXEC_DIRS else 0o644
+    return member
 
 
 class ImageError(Exception):
@@ -89,13 +120,17 @@ class ImageBuilder:
             raise ImageError(f"Format '{image_format}' not implemented")
 
     def _create_tar(self, rootfs_dir: Path, label: str) -> Path:
-        """Create tar.gz archive using Python tarfile (cross-platform)."""
+        """Create tar.gz archive using Python tarfile (cross-platform).
+
+        Members are normalised for the target rather than copied from the
+        build host: see _target_member.
+        """
         output = self.output_dir / f"{label}.tar.gz"
         if self.log:
             self.log.step(f"Creating tar image: {output}")
 
         with tarfile.open(str(output), "w:gz") as tar:
-            tar.add(str(rootfs_dir), arcname=".")
+            tar.add(str(rootfs_dir), arcname=".", filter=_target_member)
 
         return output
 
@@ -163,7 +198,9 @@ class ImageBuilder:
         cmd = ["qemu-img", "create", "-f", "qcow2", str(output), f"{size_mb}M"]
         result = subprocess.run(cmd, capture_output=True)
         if result.returncode != 0:
-            raise ImageError(f"qemu-img failed: {result.stderr.decode()}")
+            raise ImageError(
+                f"qemu-img failed: {result.stderr.decode(errors='replace').strip()}"
+            )
 
         return output
 
@@ -223,6 +260,8 @@ class ImageBuilder:
                "-noappend", "-comp", "zstd"]
         result = subprocess.run(cmd, capture_output=True)
         if result.returncode != 0:
-            raise ImageError(f"mksquashfs failed: {result.stderr.decode()}")
+            raise ImageError(
+                f"mksquashfs failed: {result.stderr.decode(errors='replace').strip()}"
+            )
 
         return output

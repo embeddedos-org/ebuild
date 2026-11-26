@@ -22,6 +22,96 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **The `make` backend on Windows runs NMAKE in the project directory.**
+  It ran `nmake -C <source_dir>`, but NMAKE has no `-C`: it read it as `/C`
+  (suppress output) and the directory as a target name, against the
+  Makefile in the current directory. NMAKE now runs with the source
+  directory as its working directory. `ebuild clean` took the same path,
+  so it kept running `make -C` and left the artifacts in place on a host
+  with NMAKE and no GNU make; both now share one `_make_invocation()`
+  helper. The `kbuild` backend stays on GNU make on every host, since it
+  drives the kernel's own Makefiles (`ebuild/build/dispatch.py`).
+- **A source outside the project directory no longer breaks the Ninja
+  build when two targets share it.** Object paths were `obj/<target>/` plus
+  the source path verbatim, so `../common/hal.c` resolved to
+  `obj/common/hal.c.o` for every target and ninja refused the manifest with
+  "multiple rules generate". `..` components now map to `__` (as CMake
+  does) and a leading root or drive is dropped, keeping each object in its
+  own target directory. That mapping is deliberately readable rather than
+  injective, so two sources in one target can still land on the same
+  object; that is now a `ConfigError` naming both sources, instead of
+  ninja refusing the manifest and naming only the object. A source that
+  names no file at all (`""`, `"."`, `"/"`) is a `ConfigError` too, where
+  it used to be an `IndexError` traceback
+  (`ebuild/build/ninja_backend.py`).
+- **Package URLs with a query string or fragment now fetch.** The cached
+  archive was named after the URL's last segment verbatim, so
+  `…/v1.0.tar.gz?raw=true` became `v1.0.tar.gz?raw=true`: extraction refused
+  it as an unsupported format, and on Windows the file could not be created
+  at all. The name now comes from the URL path only, falling back to the
+  query for the `/download?file=x.tar.gz` form, whose path names no
+  archive. Because the query no longer reaches the name, it is folded into
+  the cache key instead, so two URLs differing only after the `?` no longer
+  share one cached archive. A URL that does not parse, or that derives a
+  name like `..`, is now a `FetchError` rather than a `ValueError` or a
+  write outside the download directory (`ebuild/packages/fetcher.py`).
+- **Upper-case SHA-256 checksums in recipes now verify.** Recipe validation
+  accepts upper-case hex (the form PowerShell's `Get-FileHash` prints), but
+  the fetcher compared it against the lower-case digest, so a correct
+  archive failed with "Checksum mismatch" and was deleted on every build.
+  A digest is a number, not a string, so it is now canonicalised to
+  lower case as it enters `PackageRecipe`, and the two places that compare
+  a digest against a previously recorded one — the `ebuild.lock` pin check
+  and the build-cache `.built` marker — normalise too, so an existing
+  lockfile or marker does not read as a changed pin or force a needless
+  rebuild (`ebuild/packages/recipe.py`, `fetcher.py`, `resolver.py`,
+  `cache.py`).
+- **A rootfs boots with the hostname it was assembled with.** `rcS` ran a
+  literal `hostname eos`, so an image assembled as `eos-<board>` (as the
+  board build does) booted as `eos`, a name its own `/etc/hosts` does not
+  resolve. `rcS` now reads `/etc/hostname`, falling back to `eos` only when
+  that file is absent (`ebuild/system/rootfs.py`).
+- **A rootfs assembled on Windows now boots and logs in.** Rootfs text files
+  (`inittab`, `rcS`, `passwd`, `group`, `shadow`, `hostname`, `hosts`,
+  `resolv.conf`) were written with `Path.write_text`, which emits CRLF on
+  Windows: `rcS` began `#!/bin/sh\r` and every login shell read
+  `/bin/sh\r`. They are now always written with LF line endings and UTF-8
+  (`ebuild/system/rootfs.py`).
+- **`ebuild build -j N` no longer reports a package that failed as
+  "skipped (a dependency failed)".** The parallel scheduler remembered only
+  the first failed node, so any other package that also ran and failed was
+  passed to the skip callback as if it had never run. Every failed node is
+  now excluded from the skip report, and each one is reported through the new
+  `on_failure` callback -- only one exception can be re-raised, so without it
+  the second and later failures of a parallel build reached the user nowhere
+  (`ebuild/core/scheduler.py`, `ebuild/cli/commands.py`).
+- **Eagle nets that span sheets are parsed as one net.**
+  `EagleParser` read each sheet's `<net>` on its own, so a schematic with
+  `SDA` on two sheets came back as two `SDA` nets with half the pins each,
+  and `get_nets_for_part()` could not show the MCU and a sensor on another
+  sheet as connected. Nets with the same name are now merged across sheets,
+  as Eagle connects them.
+- **Generated boot configs put SAM D flash at 0, not at STM32's 0x08000000.**
+  `EosConfigGenerator.generate_boot_yaml()` wrote `flash_base: 0x08000000`
+  for a SAMD51 profile, because `_flash_base_for()` had no SAM D entry and
+  fell back to the STM32 address. `EosBootIntegrator` carries that base into
+  `EBOOT_FLASH_BASE`, every `EBOOT_*_ADDR` and the `eboot_memory.ld` origins.
+  SAM D parts now get 0x00000000, as core/eboot's `board_samd51.h` has
+  (`ebuild/eos_ai/eos_config_generator.py`).
+- **The hardware analyzer reads "256KB SRAM" and "2MB SPI flash".** In
+  `EosHardwareAnalyzer.interpret_text()` the RAM pattern `(?:sr)?ram`
+  matched "ram" or "srram" but never "sram", so every SRAM size was read as
+  0, and the flash pattern needed "flash" right after the size, so "2MB SPI
+  flash" gave 0 and `generate_boot_yaml` fell back to 1 MB (TASKS.md T-007).
+  SRAM now matches, and words such as SPI, QSPI, NOR, internal or external
+  may stand between the size and "flash" or "RAM"
+  (`ebuild/eos_ai/eos_hw_analyzer.py`).
+- **`ebuild system --format qcow2|squashfs` reports the tool's error even
+  when it is not UTF-8.** A failed `qemu-img` or `mksquashfs` was reported
+  with a strict UTF-8 decode of its stderr, so non-UTF-8 output (such as a
+  rootfs file name) raised `UnicodeDecodeError` in place of `ImageError` and
+  hid the tool's message. Undecodable bytes are now replaced, as the ext4
+  path already does (`ebuild/system/image.py`).
 - **`ebuild system --format ext4` no longer reports success when `mkfs.ext4`
   fails.** The exit status of `mkfs.ext4` was never checked, so a failed
   format still printed "Image created" and left the zero-filled file in

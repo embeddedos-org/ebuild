@@ -18,13 +18,16 @@ from __future__ import annotations
 import hashlib
 import http.client
 import os
+import re
 import tarfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Optional
 
+from ebuild.hashing import sha256_file
 from ebuild.packages.index_sync import is_offline
 from ebuild.packages.recipe import PackageRecipe
 
@@ -175,13 +178,11 @@ class PackageFetcher:
         expected = checksum
         if expected.startswith("sha256:"):
             expected = expected[7:]
+        # PackageRecipe.validate() accepts either case; hexdigest() is
+        # lower-case, so compare in that case.
+        expected = expected.lower()
 
-        sha256 = hashlib.sha256()
-        with open(archive_path, "rb") as f:
-            for chunk in iter(lambda: f.read(8192), b""):
-                sha256.update(chunk)
-
-        actual = sha256.hexdigest()
+        actual = sha256_file(archive_path)
         if actual != expected:
             raise FetchError(
                 f"Checksum mismatch for {archive_path.name}:\n"
@@ -270,10 +271,66 @@ class PackageFetcher:
                 raise FetchError(f"Zip path traversal detected: {member}")
         zf.extractall(extract_to)
 
+    #: Suffixes _extract() can open. Longest-first so ".tar.gz" is not read
+    #: as ".gz".
+    ARCHIVE_SUFFIXES = (
+        ".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar.xz", ".txz", ".zip",
+    )
+
+    #: A name safe to join onto download_dir. Excludes "/", "\\", ".." and
+    #: the characters Windows rejects in a filename.
+    _SAFE_NAME_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
+
+    @classmethod
+    def _archive_suffix(cls, name: str) -> str:
+        """The supported archive suffix of *name*, or "" if it has none."""
+        lowered = name.lower()
+        for suffix in cls.ARCHIVE_SUFFIXES:
+            if lowered.endswith(suffix):
+                return suffix
+        return ""
+
+    @classmethod
+    def _safe_name(cls, name: str) -> str:
+        """*name* if it is usable as a single path component, else ""."""
+        if name in (".", "..") or not cls._SAFE_NAME_RE.match(name):
+            return ""
+        return name
+
     def _archive_filename(self, recipe: PackageRecipe) -> str:
-        """Derive archive filename from recipe URL."""
-        url_path = recipe.url.rstrip("/")
-        return url_path.split("/")[-1]
+        """Derive archive filename from recipe URL.
+
+        Only the URL path names the file: a ``?query`` or ``#fragment`` left
+        on hid the archive extension from _extract() and put '?' in a file
+        name, which Windows rejects. The download still uses the full URL.
+
+        A URL whose path names no archive but whose query does -- the
+        ``/download?file=foo.tar.gz`` form -- is named from the query, so
+        _extract() still sees a format it supports instead of rejecting
+        "download" as an unsupported one.
+
+        Returns "" when nothing usable can be derived, including when the
+        URL does not parse: urlsplit() raises ValueError on an unmatched
+        '[' in the authority, and that ran ahead of _download()'s handler
+        and inside is_downloaded(), which has none, so fetch() raised
+        ValueError instead of the FetchError it documents. _archive_path()
+        turns "" into None and the callers raise FetchError.
+        """
+        try:
+            parts = urllib.parse.urlsplit(recipe.url)
+        except ValueError:
+            return ""
+
+        name = self._safe_name(parts.path.rstrip("/").split("/")[-1])
+        if self._archive_suffix(name):
+            return name
+
+        for _key, value in urllib.parse.parse_qsl(parts.query):
+            candidate = self._safe_name(value.rstrip("/").split("/")[-1])
+            if self._archive_suffix(candidate):
+                return candidate
+
+        return name
 
     def _archive_path(self, recipe: PackageRecipe) -> Optional[Path]:
         """Cache path for *recipe*'s archive, namespaced by package slug.
@@ -286,12 +343,29 @@ class PackageFetcher:
         (name-version) keeps each package separate and matches the layout
         PackageCache already uses.
 
+        Two URLs that differ only after the '?' now reduce to the same
+        filename, so the query and fragment have to reach the cache key as
+        well: _download() short-circuits on existence, and without this the
+        archive fetched for one query variant would be served for the next,
+        failing its checksum instead of being downloaded. Only URLs that
+        carry a query or fragment get the extra level, so the cache layout
+        for every ordinary URL is unchanged.
+
         Returns None when no filename can be derived from the URL.
         """
         filename = self._archive_filename(recipe)
         if not filename:
             return None
-        return self.download_dir / recipe.slug / filename
+
+        parent = self.download_dir / recipe.slug
+        try:
+            parts = urllib.parse.urlsplit(recipe.url)
+        except ValueError:
+            return None
+        if parts.query or parts.fragment:
+            digest = hashlib.sha256(recipe.url.encode("utf-8")).hexdigest()
+            parent = parent / digest[:12]
+        return parent / filename
 
     def is_downloaded(self, recipe: PackageRecipe) -> bool:
         """Check if the archive is already downloaded."""

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from ebuild.build.layout import executable_output_path
+from ebuild.core.config import ConfigError
 
 
 @dataclass
@@ -166,8 +167,61 @@ class NinjaBackend:
         Example:
             >>> backend._object_path(target, "src/main.c")   # target.name == "app"
             PosixPath('_build/obj/app/src/main.c.o')
+
+        The object must stay inside ``obj/<target>/``. A ``..`` component
+        becomes ``__`` (as CMake names them) and a root or drive is dropped:
+        joined verbatim, ``../common/hal.c`` resolved to
+        ``obj/common/hal.c.o`` for every target listing it, and an absolute
+        source discarded the build directory altogether.
+
+        Raises:
+            ConfigError: if *src* names no file (``""``, ``"."``, ``"/"``).
+                Indexing the last component of an empty path was an
+                IndexError traceback out of backend generation.
         """
-        return self.build_dir / "obj" / target.name / (src + ".o")
+        source = Path(src)
+        parts = source.parts[1:] if source.anchor else source.parts
+        parts = tuple("__" if part == ".." else part for part in parts)
+        if not parts:
+            raise ConfigError(
+                f"Target '{target.name}' lists a source that names no file: "
+                f"{src!r}. Every source must be a path to a file."
+            )
+        return self.build_dir.joinpath("obj", target.name, *parts[:-1], parts[-1] + ".o")
+
+    def _target_object_paths(self, target) -> List[Path]:
+        """Object paths for *target*'s sources, in order.
+
+        _object_path() maps a source into ``obj/<target>/`` by dropping any
+        root and rewriting ``..`` as ``__``. That keeps every object inside
+        the target's directory, but it is deliberately not injective: it is
+        a readable, stable mirror of the source tree, and making it
+        collision-proof would require an escaping scheme that no longer
+        reads like the source path.
+
+        Two sources can therefore land on one object -- ``../common/hal.c``
+        and ``__/common/hal.c``, or ``/common/hal.c`` and ``common/hal.c``.
+        Left alone, ninja refuses the whole manifest with "multiple rules
+        generate ...", naming the object rather than the two sources that
+        produced it. This reports the real cause instead.
+        """
+        objects = [self._object_path(target, src) for src in target.sources]
+        counts = Counter(objects)
+        for obj, count in counts.items():
+            if count == 1:
+                continue
+            clashing = [
+                src for src, path in zip(target.sources, objects) if path == obj
+            ]
+            raise ConfigError(
+                f"Target '{target.name}' has sources that would share one "
+                f"object file {str(obj)!r}: {', '.join(repr(s) for s in clashing)}. "
+                f"Paths outside the source directory are mapped into the "
+                f"target's object directory ('..' becomes '__', a leading "
+                f"'/' is dropped), so these become the same path. Rename or "
+                f"relocate one of them."
+            )
+        return objects
 
     def _write_ninja(self) -> None:
         """Write the build.ninja file."""
@@ -230,8 +284,8 @@ class NinjaBackend:
             cflags_line = f"  cflags = {' '.join(cflags)}" if cflags else None
 
             obj_files = []
-            for src in target.sources:
-                obj = escape_ninja_path(self._object_path(target, src))
+            for src, obj_path in zip(target.sources, self._target_object_paths(target)):
+                obj = escape_ninja_path(obj_path)
                 obj_files.append(obj)
                 lines.append(
                     f"build {obj}: cc {escape_ninja_path(src)}"
@@ -317,11 +371,10 @@ class NinjaBackend:
             cflags = self._resolve_target_cflags(target)
 
             flags_str = f" {' '.join(cflags)}" if cflags else ""
-            for src in target.sources:
+            for src, obj in zip(target.sources, self._target_object_paths(target)):
                 # A source shared by two targets yields two entries, which the
                 # compilation database format allows. The -o keeps them
                 # distinguishable, and matches what ninja actually runs.
-                obj = self._object_path(target, src)
                 commands.append({
                     "directory": source_dir,
                     "command": f"{self.toolchain.cc}{flags_str} -c {src} -o {obj}",

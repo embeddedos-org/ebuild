@@ -49,6 +49,21 @@ SOURCE_REPOS = {
 }
 
 
+_ignore_build_outputs = shutil.ignore_patterns(
+    "*.o","*.obj","*.a","*.lib","*.exe",
+    "*.pyc","__pycache__",".git","build",
+    "*.cpio.gz","*.tar.gz","*.zip")
+
+
+def _ignore_source(dirpath, names):
+    """Skip build outputs, but keep a Python package named ``build``
+    (``ebuild/ebuild/build`` is source, not CMake output)."""
+    ignored = _ignore_build_outputs(dirpath, names)
+    if os.path.isfile(os.path.join(dirpath, "build", "__init__.py")):
+        ignored.discard("build")
+    return ignored
+
+
 def collect_source(workspace, out_src, target, info):
     collected = 0
     for repo, spec in SOURCE_REPOS.items():
@@ -67,10 +82,7 @@ def collect_source(workspace, out_src, target, info):
             if os.path.isdir(src_dir):
                 dst_dir = os.path.join(repo_out, dname)
                 shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True,
-                                ignore=shutil.ignore_patterns(
-                                    "*.o","*.obj","*.a","*.lib","*.exe",
-                                    "*.pyc","__pycache__",".git","build",
-                                    "*.cpio.gz","*.tar.gz","*.zip"))
+                                ignore=_ignore_source)
                 collected += 1
     product_cfg = os.path.join(out_src, "eos_product_config.h")
     with open(product_cfg, "w") as f:
@@ -155,7 +167,9 @@ def package_deliverable(target, version="0.1.0", build_dir="build",
                     shutil.copy2(fp, os.path.join(out,"eosuite","lib"))
                 elif fn.endswith(".h"):
                     shutil.copy2(fp, os.path.join(out,"eosuite","include"))
-                elif os.access(fp, os.X_OK) or fn in ("ebot","ebot.exe",
+                # st_mode, not os.access: X_OK is True for every file on
+                # Windows, whose stat derives the x bits from the extension.
+                elif os.stat(fp).st_mode & 0o111 or fn in ("ebot","ebot.exe",
                         "eos_integration_test","eos_integration_test.exe",
                         "eosuite","eosuite.exe"):
                     shutil.copy2(fp, os.path.join(out,"eosuite","bin"))
