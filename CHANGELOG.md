@@ -28,6 +28,14 @@
   Windows: `rcS` began `#!/bin/sh\r` and every login shell read
   `/bin/sh\r`. They are now always written with LF line endings and UTF-8
   (`ebuild/system/rootfs.py`).
+- **`ebuild build -j N` no longer reports a package that failed as
+  "skipped (a dependency failed)".** The parallel scheduler remembered only
+  the first failed node, so any other package that also ran and failed was
+  passed to the skip callback as if it had never run. Every failed node is
+  now excluded from the skip report, and each one is reported through the new
+  `on_failure` callback -- only one exception can be re-raised, so without it
+  the second and later failures of a parallel build reached the user nowhere
+  (`ebuild/core/scheduler.py`, `ebuild/cli/commands.py`).
 - **Eagle nets that span sheets are parsed as one net.**
   `EagleParser` read each sheet's `<net>` on its own, so a schematic with
   `SDA` on two sheets came back as two `SDA` nets with half the pins each,

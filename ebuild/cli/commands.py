@@ -238,10 +238,16 @@ def _install_packages(
         with log_lock:
             log.warning(f"  {name} — skipped (a dependency failed)")
 
+    def note_failed(name: str, exc: BaseException) -> None:
+        # Only one exception can be re-raised, so without this the second and
+        # later failures of a parallel build are reported nowhere.
+        with log_lock:
+            log.error(f"  {name} — failed: {exc}")
+
     if jobs > 1:
         log.debug(f"Building packages with up to {jobs} concurrent jobs")
 
-    run_graph(graph, build_one, jobs=jobs, on_skip=note_skipped)
+    run_graph(graph, build_one, jobs=jobs, on_skip=note_skipped, on_failure=note_failed)
 
     # Update lockfile
     lockfile.lock(resolved)
