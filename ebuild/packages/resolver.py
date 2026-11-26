@@ -13,7 +13,7 @@ from typing import Dict, List, Optional
 
 from ebuild.core.graph import CycleError, DependencyGraph
 from ebuild.packages.lockfile import Lockfile
-from ebuild.packages.recipe import PackageRecipe
+from ebuild.packages.recipe import PackageRecipe, normalize_checksum
 from ebuild.packages.registry import PackageRegistry
 
 
@@ -193,7 +193,15 @@ class PackageResolver:
         """
         for field, attr in Lockfile.CHECKED_FIELDS:
             locked_value = entry.get(field)
-            if locked_value and locked_value != getattr(recipe, attr):
+            recipe_value = getattr(recipe, attr)
+            if field == "checksum":
+                # The recipe's digest is already canonical; a lockfile
+                # written before that was true may still hold upper case.
+                # Same digest in another case is the same artifact, so it
+                # must not read as a changed pin.
+                locked_value = normalize_checksum(locked_value or "")
+                recipe_value = normalize_checksum(recipe_value or "")
+            if locked_value and locked_value != recipe_value:
                 raise ResolveError(
                     f"{Lockfile.FILENAME} pins '{name}' v{recipe.version} with "
                     f"{field} '{locked_value}', but the recipe for that version "

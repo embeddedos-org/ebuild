@@ -161,6 +161,13 @@ class TestBoardCapacity:
     def test_a_board_config_without_memory_falls_back(self):
         assert board_capacity("stm32f4", {"board_name": "x"})[0] == 1024 * 1024
 
+    @pytest.mark.parametrize("memory", ["512K", ["0x80000"], 4096])
+    def test_a_memory_section_that_is_not_a_mapping_falls_back(self, memory):
+        """`memory: 512K` in a hand-written board.yaml must not raise out of
+        a build that already linked; the footprint report is never fatal."""
+        assert board_capacity("stm32f4", {"memory": memory}) == (
+            1024 * 1024, 192 * 1024)
+
     def test_a_partial_override_fills_the_rest_from_the_reference_part(self):
        """A board YAML that only overrides RAM (say, because it was fitted
        with extra SRAM) should not lose the reference flash figure for the
@@ -430,3 +437,66 @@ class TestOutputFormatDispatch:
             self, tmp_path, monkeypatch):
         with pytest.raises(FootprintError, match="could not read a size line"):
             self._measure_with(tmp_path, monkeypatch, "size: bad file\n")
+
+
+class TestGeneratedBoardShape:
+    """EosConfigGenerator writes memory.flash/ram, not memory.flash_size.
+
+    Raised by the Sourcery review of #262: board_capacity() read only the
+    _size spelling, so a generated board.yaml's real capacities were ignored
+    and the family reference was reported and enforced in their place.
+    """
+
+    def test_generated_flash_and_ram_keys_are_read(self):
+        # Exactly what EosConfigGenerator.generate_board_yaml() emits.
+        cfg = {"memory": {"flash": 2 * 1024 * 1024, "ram": 512 * 1024}}
+        assert board_capacity("stm32f4", cfg) == (2 * 1024 * 1024, 512 * 1024)
+
+    def test_generated_shape_beats_the_family_reference(self):
+        reference = board_capacity("stm32f4")
+        cfg = {"memory": {"flash": 99 * 1024, "ram": 7 * 1024}}
+        assert board_capacity("stm32f4", cfg) == (99 * 1024, 7 * 1024)
+        assert board_capacity("stm32f4", cfg) != reference
+
+    def test_the_size_spelling_still_wins_when_both_are_present(self):
+        cfg = {"memory": {"flash_size": 1024, "flash": 2048}}
+        assert board_capacity(None, cfg)[0] == 1024
+
+    def test_a_malformed_memory_value_is_reported_not_swallowed(self):
+        warnings = []
+        cfg = {"memory": "512K"}
+        flash, ram = board_capacity("stm32f4", cfg, on_warning=warnings.append)
+        # Still falls back to the reference, as before.
+        assert (flash, ram) == board_capacity("stm32f4")
+        assert len(warnings) == 1
+        assert "not a mapping" in warnings[0]
+
+    def test_a_well_formed_memory_value_warns_about_nothing(self):
+        warnings = []
+        board_capacity("stm32f4", {"memory": {"flash": 1024}},
+                       on_warning=warnings.append)
+        assert warnings == []
+
+    def test_on_warning_is_optional(self):
+        assert board_capacity("stm32f4", {"memory": "512K"}) == \
+            board_capacity("stm32f4")
+
+    def test_the_generated_board_wrapper_is_unwrapped(self):
+        """generate_board_yaml() nests everything under a top-level `board`.
+
+        Raised by the CodeRabbit review of #262: reading the right key names
+        was not enough, because _board_config() hands over the outer mapping
+        and `memory` lives one level down.
+        """
+        generated = {
+            "board": {
+                "name": "stm32f407", "mcu": "STM32F407", "family": "stm32f4",
+                "memory": {"flash": 333 * 1024, "ram": 11 * 1024},
+            }
+        }
+        assert board_capacity("stm32f4", generated) == (333 * 1024, 11 * 1024)
+        assert board_capacity("stm32f4", generated) != board_capacity("stm32f4")
+
+    def test_a_flat_description_is_untouched_by_the_unwrap(self):
+        flat = {"memory": {"flash_size": 4096}, "board": {"name": "x"}}
+        assert board_capacity(None, flat)[0] == 4096

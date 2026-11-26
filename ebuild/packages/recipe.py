@@ -22,6 +22,18 @@ class RecipeError(Exception):
     """Raised when a package recipe is invalid or cannot be loaded."""
 
 
+def normalize_checksum(value: str) -> str:
+    """Canonical form of a SHA-256 digest: stripped and lower-case.
+
+    A digest is a number, not a string: ``AB..`` and ``ab..`` are the same
+    pin. ``hashlib.hexdigest()`` emits lower case, and digests are also
+    compared against values recorded elsewhere (the lockfile, a build-cache
+    marker), so every such comparison has to agree on one form. Normalising
+    here keeps that decision in one place instead of at each comparison.
+    """
+    return value.strip().lower()
+
+
 @dataclass
 class PackageRecipe:
     """Description of an external library package."""
@@ -40,6 +52,11 @@ class PackageRecipe:
     license: str = ""
 
     VALID_BUILD_SYSTEMS = ("cmake", "autoconf", "make", "meson", "custom")
+
+    def __post_init__(self) -> None:
+        # Canonicalise the pin as it enters the object, so the fetcher, the
+        # lockfile check and the build cache all compare the same bytes.
+        self.checksum = normalize_checksum(self.checksum)
 
     #: A bare SHA-256 digest, with or without the "sha256:" prefix.
     _SHA256_RE = re.compile(r"^(?:sha256:)?[0-9a-fA-F]{64}$")

@@ -238,6 +238,21 @@ def test_bare_checksum_without_sha256_prefix_is_accepted(tmp_path, fake_download
     assert marker_in(tmp_path / "src") == LITTLEFS_URL
 
 
+def test_uppercase_checksum_is_accepted(tmp_path, fake_download):
+    """Regression: PackageRecipe.validate() accepts upper-case hex, and
+    PowerShell's Get-FileHash prints digests that way, but the fetcher
+    compared against the lower-case hexdigest() and rejected the archive."""
+    fetcher = PackageFetcher(tmp_path / "dl")
+    digest = sha256_of(targz_bytes(LITTLEFS_URL)).upper()
+    recipe = make_recipe("littlefs", checksum="sha256:" + digest)
+    recipe.validate()
+
+    fetcher.fetch(recipe, tmp_path / "src")
+
+    assert marker_in(tmp_path / "src") == LITTLEFS_URL
+    assert fetcher.is_downloaded(recipe) is True
+
+
 def test_recipe_without_a_checksum_is_refused(tmp_path, fake_download):
     """A recipe with no checksum used to be fetched and extracted unverified.
 

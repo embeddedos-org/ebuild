@@ -176,6 +176,9 @@ class PackageFetcher:
         expected = checksum
         if expected.startswith("sha256:"):
             expected = expected[7:]
+        # PackageRecipe.validate() accepts either case; hexdigest() is
+        # lower-case, so compare in that case.
+        expected = expected.lower()
 
         actual = sha256_file(archive_path)
         if actual != expected:
