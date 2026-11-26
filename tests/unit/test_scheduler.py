@@ -231,6 +231,50 @@ class TestFailures:
 
         assert set(skipped) == {"app_x", "app_y"}
 
+    def test_every_node_that_failed_is_reported_not_just_the_raised_one(self):
+        # Only one exception can be re-raised. Sourcery's review of this PR
+        # caught that excluding the other failed nodes from on_skip, without
+        # reporting them anywhere else, loses them entirely: before, they were
+        # at least named, albeit mislabelled as skipped.
+        g = _graph([("app_x", "x"), ("app_y", "y")])
+        both_started = threading.Barrier(2, timeout=5)
+        failed = {}
+        skipped = []
+
+        def task(node):
+            if node in ("x", "y"):
+                both_started.wait()
+                raise RuntimeError(f"{node} failed")
+            return node
+
+        with pytest.raises(RuntimeError, match=r"(x|y) failed"):
+            run_graph(
+                g,
+                task,
+                jobs=2,
+                on_skip=lambda name, cause: skipped.append(name),
+                on_failure=lambda name, exc: failed.__setitem__(name, exc),
+            )
+
+        # Both ran and both failed, each with its own exception.
+        assert set(failed) == {"x", "y"}
+        assert str(failed["x"]) == "x failed"
+        assert str(failed["y"]) == "y failed"
+        # And neither is called skipped; only their dependents are.
+        assert set(skipped) == {"app_x", "app_y"}
+
+    def test_on_failure_is_optional(self):
+        # Callers that do not pass it keep working.
+        g = _graph([("app", "lib")])
+
+        def task(node):
+            if node == "lib":
+                raise RuntimeError("lib failed")
+            return node
+
+        with pytest.raises(RuntimeError, match="lib failed"):
+            run_graph(g, task, jobs=1)
+
     def test_first_failure_is_the_one_raised(self):
         g = DependencyGraph()
         g.add_node("x")
