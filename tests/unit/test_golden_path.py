@@ -1,7 +1,9 @@
 """ebuild init / sim / platforms: the getting-started guide's commands."""
 from __future__ import annotations
 
+import json
 import shlex
+import shutil
 import stat
 import sys
 import textwrap
@@ -106,10 +108,10 @@ class TestInit:
 
 class TestSimFailsClosed:
     def test_board_without_a_sim_target_is_an_error(self, tmp_path):
-        project = _project(tmp_path, board="esp32")
+        project = _project(tmp_path, board="imx8mp")
         r = _invoke_in(project, ["sim"])
         assert r.exit_code == 1
-        assert "no simulation target for board 'esp32'" in r.output
+        assert "no simulation target for board 'imx8mp'" in r.output
 
     def test_missing_sim_spec_in_eos_checkout_is_an_error(self, tmp_path, monkeypatch):
         project = _project(tmp_path)
@@ -177,6 +179,103 @@ def _invoke_in(project: Path, args):
         os.chdir(old)
 
 
+def test_esp32_maps_to_espressifs_qemu_and_keeps_the_arm_targets():
+    assert golden_path.SIM_TARGETS["esp32"] == "qemu_esp32"
+    # Adding the ESP32 removed no Cortex-M board.
+    for board in ("stm32f4", "stm32h7", "stm32l4", "nrf52", "nrf52840", "rp2040",
+                  "raspi-pico", "qemu_cortex_m3"):
+        assert golden_path.SIM_TARGETS[board] == "qemu_cortex_m3"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_flash_targets_boot_from_the_flash_image(tmp_path):
+    """qemu.flash_arg replaces -kernel: the guest gets the flash file."""
+    qemu = _fake_qemu(tmp_path, '''
+        import sys
+        print(" ".join(sys.argv[1:]))
+    ''')
+    spec = {"qemu": {"machine": "esp32", "args": ["-nographic"],
+                     "flash_arg": "-drive file={flash},if=mtd,format=raw"}}
+    flash = tmp_path / "firmware.flash.bin"
+    result = golden_path.run_qemu(qemu, spec, flash, 5, None, tmp_path / "log")
+    assert f"-M esp32 -nographic -drive file={flash},if=mtd,format=raw" in result["lines"][0]
+    assert "-kernel" not in result["lines"][0]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_flash_image_is_made_with_esptool(tmp_path):
+    """elf2image with options esptool 4.x and 5.x both accept, then the image
+    at its offset in erased flash of the flash size."""
+    calls = tmp_path / "calls"
+    esptool = _fake_qemu(tmp_path, f'''
+        import sys
+        open({str(calls)!r}, "a").write(" ".join(sys.argv[1:]) + "\\n")
+        open(sys.argv[sys.argv.index("-o") + 1], "wb").write(b"\\xe9IMAGE")
+    ''')
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "4MB", "offset": "0x1000"}}
+    elf = tmp_path / "firmware.elf"
+    out = golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
+    assert out == tmp_path / "firmware.flash.bin"
+    (elf2image,) = calls.read_text().splitlines()
+    assert elf2image.startswith("--chip esp32 elf2image --flash_mode dio --flash_freq 40m "
+                                "--flash_size 4MB")
+    assert elf2image.endswith(f"-o {tmp_path / 'firmware.bin'} {elf}")
+    flash = out.read_bytes()
+    assert len(flash) == 4 << 20
+    assert flash[0x1000:0x1006] == b"\xe9IMAGE"
+    assert set(flash[:0x1000]) == {0xFF} and set(flash[0x1006:]) == {0xFF}
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_flash_image_too_big_or_unknown_size_is_refused(tmp_path):
+    esptool = _fake_qemu(tmp_path, '''
+        import sys
+        open(sys.argv[sys.argv.index("-o") + 1], "wb").write(b"\\x00" * 4096)
+    ''')
+    elf = tmp_path / "firmware.elf"
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "1MB", "offset": hex((1 << 20) - 100)}}
+    with pytest.raises(golden_path.SimError, match="does not fit"):
+        golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
+    spec["image"].update(flash_size="3MB", offset="0x1000")
+    with pytest.raises(golden_path.SimError, match="is not one of"):
+        golden_path.build_flash_image(spec, elf, esptool, golden_path.Logger())
+
+
+def test_sim_on_esp32_runs_the_rtos_template(tmp_path):
+    """End to end: the unmodified rtos template, built for the ESP32 and run
+    on Espressif's QEMU.
+
+    Needs xtensa-esp32-elf-gcc, qemu-system-xtensa (Espressif's fork),
+    esptool and an eos checkout with sim/qemu_esp32 (EBUILD_EOS_PATH, or
+    ~/.ebuild/repos/eos). Skipped, with the reason, when any is missing.
+    """
+    import os
+    import shutil
+
+    for tool in ("xtensa-esp32-elf-gcc", "qemu-system-xtensa", "esptool"):
+        if not shutil.which(tool):
+            pytest.skip(f"{tool} not on PATH")
+    eos = Path(os.environ.get("EBUILD_EOS_PATH", Path.home() / ".ebuild" / "repos" / "eos"))
+    if not (eos / "sim" / "qemu_esp32" / "sim.yaml").is_file():
+        pytest.skip(f"{eos} has no sim/qemu_esp32 (eos predates the ESP32 port)")
+    r = _invoke_in(tmp_path, ["init", "demo", "--template", "rtos", "--target", "esp32"])
+    assert r.exit_code == 0, r.output
+    old = os.environ.get("EBUILD_EOS_PATH")
+    os.environ["EBUILD_EOS_PATH"] = str(eos)
+    try:
+        r = _invoke_in(tmp_path / "demo", ["sim", "--expect", r"\[consumer\] id=2",
+                                           "--timeout", "60"])
+    finally:
+        if old is None:
+            os.environ.pop("EBUILD_EOS_PATH", None)
+        else:
+            os.environ["EBUILD_EOS_PATH"] = old
+    assert r.exit_code == 0, r.output
+    assert "Starting kernel" in r.output
+
+
 def test_platforms_list_reads_eosim_registry():
     pytest.importorskip("eosim")
     r = CliRunner().invoke(cli, ["platforms", "list", "--format", "names"])
@@ -226,3 +325,175 @@ def test_sim_on_qemu_cortex_m33_runs_the_fpu_context_test(tmp_path):
             os.environ["EBUILD_EOS_PATH"] = old
     assert r.exit_code == 0, r.output
     assert "0 corrupted" in r.output
+
+
+# ── Review of #260: paths with spaces, mismatched specs, tool discovery ──
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_an_esptool_path_with_spaces_is_one_argument(tmp_path):
+    """Review of #260: the esptool path was shlex.split(), so an install
+    under "/opt/ESP Tools/bin" made "/opt/ESP" the executable (and POSIX
+    splitting ate the backslashes of a Windows path). _require_tool
+    returns a resolved path, not a command line."""
+    spaced = tmp_path / "ESP Tools" / "bin"
+    spaced.mkdir(parents=True)
+    calls = tmp_path / "calls"
+    esptool = _fake_qemu(tmp_path, f'''
+        import sys
+        open({str(calls)!r}, "a").write(" ".join(sys.argv[1:]) + "\\n")
+        open(sys.argv[sys.argv.index("-o") + 1], "wb").write(b"\\xe9IMG")
+    ''')
+    spaced_tool = spaced / "esptool"
+    shutil.copy(esptool, spaced_tool)
+    spaced_tool.chmod(spaced_tool.stat().st_mode | stat.S_IEXEC)
+
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "4MB", "offset": "0x1000"}}
+    out = golden_path.build_flash_image(
+        spec, tmp_path / "firmware.elf", str(spaced_tool), golden_path.Logger())
+
+    assert out.read_bytes()[0x1000:0x1004] == b"\xe9IMG"
+    assert calls.exists(), "esptool was never launched"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_a_project_path_with_spaces_stays_one_qemu_argument(tmp_path):
+    """Review of #260: flash_arg was formatted and *then* split, so a
+    directory containing a space cut the -drive value in half."""
+    qemu = _fake_qemu(tmp_path, '''
+        import json, sys
+        print(json.dumps(sys.argv[1:]))
+    ''')
+    spec = {"qemu": {"machine": "esp32", "args": [],
+                     "flash_arg": "-drive file={flash},if=mtd,format=raw"}}
+    spaced = tmp_path / "ESP Demo"
+    spaced.mkdir()
+    flash = spaced / "firmware.flash.bin"
+
+    result = golden_path.run_qemu(qemu, spec, flash, 5, None, tmp_path / "log")
+
+    argv = json.loads(result["lines"][0])
+    assert argv == ["-M", "esp32", "-drive", f"file={flash},if=mtd,format=raw"]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_an_apostrophe_in_the_path_does_not_raise(tmp_path):
+    """Review of #260: formatting before splitting also meant a directory
+    named e.g. "Jane's board" made shlex.split raise ValueError on an
+    unbalanced quote, before QEMU ever ran."""
+    qemu = _fake_qemu(tmp_path, '''
+        import json, sys
+        print(json.dumps(sys.argv[1:]))
+    ''')
+    spec = {"qemu": {"machine": "esp32", "args": [],
+                     "flash_arg": "-drive file={flash},if=mtd,format=raw"}}
+    quoted = tmp_path / "Jane's board"
+    quoted.mkdir()
+    flash = quoted / "firmware.flash.bin"
+
+    result = golden_path.run_qemu(qemu, spec, flash, 5, None, tmp_path / "log")
+
+    argv = json.loads(result["lines"][0])
+    assert argv[-1] == f"file={flash},if=mtd,format=raw"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_a_negative_flash_offset_is_refused(tmp_path):
+    """Review of #260: a negative offset passed the fit check, then
+    Python's negative slice assignment *grew* the bytearray and returned a
+    flash file bigger than the chip."""
+    esptool = _fake_qemu(tmp_path, '''
+        import sys
+        open(sys.argv[sys.argv.index("-o") + 1], "wb").write(b"\\x00" * 4096)
+    ''')
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "1MB", "offset": "-1"}}
+    with pytest.raises(golden_path.SimError, match="negative"):
+        golden_path.build_flash_image(
+            spec, tmp_path / "firmware.elf", esptool, golden_path.Logger())
+
+    # The control: an image that exactly fills the flash is still accepted.
+    spec["image"]["offset"] = hex((1 << 20) - 4096)
+    out = golden_path.build_flash_image(
+        spec, tmp_path / "firmware.elf", esptool, golden_path.Logger())
+    assert len(out.read_bytes()) == 1 << 20
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="shebang stand-in needs POSIX")
+def test_undecodable_esptool_output_still_gives_an_actionable_error(tmp_path):
+    """Review of #260: subprocess(text=True) decodes with the process
+    locale and raises UnicodeDecodeError, replacing the actionable
+    "esptool failed" with a traceback from the decoder."""
+    esptool = _fake_qemu(tmp_path, '''
+        import sys
+        sys.stderr.buffer.write(b"fatal: \\xff\\xfe not utf-8\\n")
+        sys.exit(2)
+    ''')
+    spec = {"image": {"chip": "esp32", "flash_mode": "dio", "flash_freq": "40m",
+                      "flash_size": "4MB", "offset": "0x1000"}}
+    with pytest.raises(golden_path.SimError, match="elf2image failed"):
+        golden_path.build_flash_image(
+            spec, tmp_path / "firmware.elf", esptool, golden_path.Logger())
+
+
+def test_esptool_is_found_under_either_name(tmp_path, monkeypatch):
+    """Review of #260: esptool installs as `esptool` (pip 5.x) or
+    `esptool.py` (4.x, ESP-IDF's export script). Looking for only one
+    stopped the sim on a machine where the tool was installed."""
+    found = {}
+
+    def fake_which(name):
+        return "/opt/esp/esptool.py" if name == "esptool.py" else None
+
+    monkeypatch.setattr(golden_path.shutil, "which", fake_which)
+    assert golden_path._require_any_tool(
+        ["esptool", "esptool.py"], "hint") == "/opt/esp/esptool.py"
+
+    monkeypatch.setattr(golden_path.shutil, "which", lambda name: None)
+    with pytest.raises(golden_path.SimError, match="esptool or esptool.py"):
+        golden_path._require_any_tool(["esptool", "esptool.py"], "hint")
+    assert found == {}
+
+
+@pytest.mark.parametrize("spec_yaml, missing", [
+    # An image section with no flash_arg: sim builds a flash image, then
+    # boots the ELF with -kernel and the image is never loaded.
+    ("""
+schema: 1
+qemu: {binary: qemu-system-xtensa, machine: esp32, args: []}
+cpu: esp32
+image: {chip: esp32, flash_mode: dio, flash_freq: 40m, flash_size: 4MB, offset: '0x1000'}
+""", "qemu.flash_arg"),
+    # A flash_arg with no image section: QEMU is pointed at a flash file
+    # that was never made.
+    ("""
+schema: 1
+qemu:
+  binary: qemu-system-xtensa
+  machine: esp32
+  args: []
+  flash_arg: "-drive file={flash},if=mtd,format=raw"
+cpu: esp32
+""", "image"),
+])
+def test_half_a_flash_boot_spec_is_refused(tmp_path, monkeypatch, spec_yaml, missing):
+    """Review of #260: `image` and `qemu.flash_arg` are the two halves of
+    one flash boot -- one makes the image, the other loads it. With only
+    one, the target silently does not boot. Caught before anything builds.
+    """
+    eos = tmp_path / "eos"
+    target = eos / "sim" / "qemu_esp32"
+    target.mkdir(parents=True)
+    (target / "sim.yaml").write_text(spec_yaml, encoding="utf-8")
+
+    r = _invoke_in(tmp_path, ["init", "demo", "--template", "rtos",
+                              "--target", "esp32"])
+    assert r.exit_code == 0, r.output
+    monkeypatch.setenv("EBUILD_EOS_PATH", str(eos))
+
+    r = _invoke_in(tmp_path / "demo", ["sim"])
+
+    assert r.exit_code != 0
+    assert missing in r.output, r.output
+    assert "needs both" in r.output, r.output

@@ -69,15 +69,31 @@ a host binary, not firmware, and not a blink.
 cd my-blink && ebuild sim
 ```
 
-Prerequisites, all three required: an eos checkout (`ebuild setup`,
-or `EBUILD_EOS_PATH` pointing at one), `arm-none-eabi-gcc`, and
-`qemu-system-arm`. `sim` compiles eos plus the project's first
+An eos checkout (`ebuild setup`, or `EBUILD_EOS_PATH` pointing at
+one) is always required. The toolchain depends on the target:
+
+| Target | Compiler | QEMU | Also needs |
+| --- | --- | --- | --- |
+| Arm Cortex-M boards | `arm-none-eabi-gcc`<br>(Ubuntu: `sudo apt install gcc-arm-none-eabi`) | `qemu-system-arm`<br>(Ubuntu: `sudo apt install qemu-system-arm`) | — |
+| `esp32` | `xtensa-esp32-elf-gcc`<br>(ESP-IDF's `install.sh`, or the crosstool-NG release) | `qemu-system-xtensa`, Espressif's fork<br>(`python tools/idf_tools.py install qemu-xtensa`) | `esptool` (`pip install esptool`); 4.x and 5.x both work, under either the `esptool` or `esptool.py` name |
+
+`sim` compiles eos plus the project's first
 executable target for a QEMU machine and runs it there. Arm
 Cortex-M boards (`stm32f4`, `stm32h7`, `stm32l4`, `nrf52`,
 `nrf52840`, `rp2040`, `raspi-pico`) run on QEMU's Cortex-M3 machine
 (`lm3s6965evb`) as a **stand-in, not a model of the board**: it
 proves kernel and application logic, not the board's peripherals
-or timing. `sim` returns success only if the guest produced output
+or timing.
+
+`esp32` is different: it runs on Espressif's QEMU `esp32` machine,
+which models the chip itself. The ELF is turned into a whole-flash
+image with esptool and booted from flash rather than passed with
+`-kernel`, so **the same image also runs on an ESP-WROOM-32 board**.
+It needs an eos checkout with the ESP32 port; an older one fails with
+`sim/qemu_esp32/sim.yaml not found. This eos checkout predates the
+qemu_esp32 simulation target.`
+
+`sim` returns success only if the guest produced output
 (or `--expect <regex>` matched); an image that prints nothing has
 not been shown to run. Missing prerequisites fail with a clean,
 actionable error (e.g. `no eos checkout found. Run ebuild setup…`),
