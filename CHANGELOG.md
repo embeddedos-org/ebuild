@@ -26,8 +26,13 @@
   archive was named after the URL's last segment verbatim, so
   `…/v1.0.tar.gz?raw=true` became `v1.0.tar.gz?raw=true`: extraction refused
   it as an unsupported format, and on Windows the file could not be created
-  at all. The name now comes from the URL path only
-  (`ebuild/packages/fetcher.py`).
+  at all. The name now comes from the URL path only, falling back to the
+  query for the `/download?file=x.tar.gz` form, whose path names no
+  archive. Because the query no longer reaches the name, it is folded into
+  the cache key instead, so two URLs differing only after the `?` no longer
+  share one cached archive. A URL that does not parse, or that derives a
+  name like `..`, is now a `FetchError` rather than a `ValueError` or a
+  write outside the download directory (`ebuild/packages/fetcher.py`).
 - **Upper-case SHA-256 checksums in recipes now verify.** Recipe validation
   accepts upper-case hex (the form PowerShell's `Get-FileHash` prints), but
   the fetcher compared it against the lower-case digest, so a correct

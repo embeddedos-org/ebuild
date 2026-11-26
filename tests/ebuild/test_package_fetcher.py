@@ -191,8 +191,78 @@ def test_query_string_is_not_part_of_the_archive_filename(tmp_path, fake_downloa
 
     fetcher.fetch(make_recipe("littlefs", url=url), tmp_path / "src")
 
-    assert (tmp_path / "dl" / "littlefs-2.9.3" / "v2.9.3.tar.gz").is_file()
+    # The file itself is named from the path alone. It sits under an extra
+    # level keyed on the full URL, because the query no longer reaches the
+    # name and two query variants would otherwise collide (see
+    # test_two_query_variants_do_not_share_one_cached_archive).
+    cached = list((tmp_path / "dl" / "littlefs-2.9.3").rglob("v2.9.3.tar.gz"))
+    assert len(cached) == 1, cached
+    assert "?" not in cached[0].name and "#" not in cached[0].name
     assert marker_in(tmp_path / "src") == url
+
+
+def test_two_query_variants_do_not_share_one_cached_archive(tmp_path, fake_download):
+    """Regression (review of #200): dropping the query from the filename
+    made two URLs that differ only after the '?' reduce to one cache file.
+    ``_download`` short-circuits on existence, so the archive fetched for
+    the first was served for the second and failed its checksum instead of
+    being downloaded."""
+    fetcher = PackageFetcher(tmp_path / "dl")
+    url_a = LITTLEFS_URL + "?variant=a"
+    url_b = LITTLEFS_URL + "?variant=b"
+
+    recipe_a = make_recipe("littlefs", url=url_a)
+    recipe_b = make_recipe("littlefs", url=url_b)
+
+    assert fetcher._archive_path(recipe_a) != fetcher._archive_path(recipe_b)
+
+    fetcher.fetch(recipe_a, tmp_path / "src-a")
+    fetcher.fetch(recipe_b, tmp_path / "src-b")
+
+    # Both were actually downloaded; neither was served the other's bytes.
+    assert fake_download == [url_a, url_b]
+    assert marker_in(tmp_path / "src-a") == url_a
+    assert marker_in(tmp_path / "src-b") == url_b
+
+
+def test_an_archive_named_only_by_the_query_is_still_extracted(tmp_path, fake_download):
+    """Regression (review of #200): for ``/download?file=x.tar.gz`` the
+    path's basename is ``download``, so taking the path alone left
+    _extract() rejecting a perfectly good tarball as an unsupported
+    format. The name is taken from the query when the path names no
+    archive."""
+    url = "https://example.org/download?file=littlefs-2.9.3.tar.gz"
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs", url=url)
+
+    assert fetcher._archive_path(recipe).name == "littlefs-2.9.3.tar.gz"
+
+    fetcher.fetch(recipe, tmp_path / "src")
+    assert marker_in(tmp_path / "src") == url
+
+
+def test_a_url_that_does_not_parse_is_a_FetchError(tmp_path, fake_download):
+    """Regression (review of #200): urlsplit() raises ValueError on an
+    unmatched '[' in the authority. That call runs ahead of _download()'s
+    handler and inside is_downloaded(), which has none, so fetch() raised
+    ValueError rather than the FetchError it documents."""
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs", url="https://[broken/archive.tar.gz")
+
+    assert fetcher.is_downloaded(recipe) is False
+
+    with pytest.raises(FetchError, match="Could not derive filename"):
+        fetcher.fetch(recipe, tmp_path / "src")
+
+
+def test_a_url_naming_a_parent_directory_is_a_FetchError(tmp_path, fake_download):
+    """A derived name is joined onto the download directory, so it must be
+    a single, ordinary path component."""
+    fetcher = PackageFetcher(tmp_path / "dl")
+    recipe = make_recipe("littlefs", url="https://example.org/archive/..")
+
+    with pytest.raises(FetchError, match="Could not derive filename"):
+        fetcher.fetch(recipe, tmp_path / "src")
 
 
 # ── Checksum handling ────────────────────────────────────────
