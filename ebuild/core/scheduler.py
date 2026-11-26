@@ -66,6 +66,10 @@ def run_graph(
             try:
                 sequential[node] = task(node)
             except BaseException as exc:          # noqa: BLE001 - re-raised
+                # Same contract as the parallel path: the node that ran and
+                # raised is reported through on_failure before the skips.
+                if on_failure is not None:
+                    on_failure(node, exc)
                 if on_skip is not None:
                     for skipped in order[index + 1:]:
                         on_skip(skipped, exc)

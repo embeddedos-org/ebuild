@@ -35,19 +35,29 @@ _TARGET_EXEC_DIRS = frozenset({
 def _target_member(member: tarfile.TarInfo) -> tarfile.TarInfo:
     """Normalise one archive member for the Linux target.
 
-    The build host's mode, owner and group describe the host, not the target,
-    and on Windows they do not exist at all. Setting them here makes the image
-    identical whichever host assembled it.
+    The build host's owner and group describe the host, not the target, so
+    every member is owned by root.
+
+    The mode is synthesised from the target layout only on Windows, which has
+    no POSIX mode to copy. A POSIX host's mode is the one the rootfs was
+    built with: replacing it there stripped the execute bit from executables
+    outside the listed directories (an SDK tool under /opt, a /init), the
+    setuid and sticky bits, and the privacy of a 0600 file. On POSIX the
+    listed directories only gain execute bits where a file is readable.
     """
     member.uid = member.gid = 0
     member.uname = member.gname = "root"
     if member.issym() or member.islnk():
         return member
+    # arcname is ".", so names arrive as "./etc/init.d/rcS".
+    parent = posixpath.dirname(member.name).lstrip("./")
+    if not IS_WINDOWS:
+        if member.isfile() and parent in _TARGET_EXEC_DIRS:
+            member.mode |= (member.mode & 0o444) >> 2
+        return member
     if member.isdir():
         member.mode = 0o755
         return member
-    # arcname is ".", so names arrive as "./etc/init.d/rcS".
-    parent = posixpath.dirname(member.name).lstrip("./")
     member.mode = 0o755 if parent in _TARGET_EXEC_DIRS else 0o644
     return member
 

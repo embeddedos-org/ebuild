@@ -263,6 +263,31 @@ class TestFailures:
         # And neither is called skipped; only their dependents are.
         assert set(skipped) == {"app_x", "app_y"}
 
+    def test_sequential_run_reports_failure(self):
+        # jobs=1 takes its own path; it must honour on_failure as -jN does,
+        # or a serial build never prints the failed package.
+        g = _graph([("app", "lib")])
+        failed = {}
+        skipped = []
+
+        def task(node):
+            if node == "lib":
+                raise RuntimeError("lib failed")
+            return node
+
+        with pytest.raises(RuntimeError, match="lib failed"):
+            run_graph(
+                g,
+                task,
+                jobs=1,
+                on_skip=lambda name, cause: skipped.append(name),
+                on_failure=lambda name, exc: failed.__setitem__(name, exc),
+            )
+
+        assert list(failed) == ["lib"]
+        assert str(failed["lib"]) == "lib failed"
+        assert skipped == ["app"]
+
     def test_on_failure_is_optional(self):
         # Callers that do not pass it keep working.
         g = _graph([("app", "lib")])

@@ -11,7 +11,10 @@ login shell. Reading the files back as text hides this, so these tests read
 raw bytes.
 """
 
+import os
 from pathlib import Path
+
+import pytest
 
 from ebuild.system.rootfs import RootfsBuilder
 
@@ -69,6 +72,54 @@ def test_tar_image_marks_target_executables_executable(tmp_path: Path) -> None:
     # Ownership describes the target, not whoever ran the build.
     assert (rcs.uid, rcs.gid, rcs.uname, rcs.gname) == (0, 0, "root", "root")
     # A plain config file stays non-executable.
+    assert members["etc/inittab"].mode == 0o644
+    assert members["etc"].mode == 0o755
+
+
+def _tar_members(tmp_path: Path, rootfs: Path) -> dict:
+    import tarfile
+
+    from ebuild.system.image import ImageBuilder
+
+    out = ImageBuilder(tmp_path / "out").create(rootfs, image_format="tar")
+    with tarfile.open(out) as tar:
+        return {m.name.lstrip("./"): m for m in tar.getmembers()}
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs a host with POSIX modes")
+def test_tar_image_keeps_posix_host_modes(tmp_path: Path) -> None:
+    """A POSIX host's mode is the target's and must survive the archive.
+
+    Forcing every file to 0644 stripped the execute bit from executables
+    outside the listed directories, and dropped setuid, sticky and 0600.
+    """
+    rootfs = RootfsBuilder(tmp_path / "build").assemble(init_system="busybox")
+    tool = rootfs / "opt" / "eos-sdk" / "bin" / "eos-tool"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("#!/bin/sh\n")
+    tool.chmod(0o755)
+    (rootfs / "etc" / "shadow").chmod(0o600)
+    (rootfs / "tmp").chmod(0o1777)
+
+    members = _tar_members(tmp_path, rootfs)
+
+    assert members["opt/eos-sdk/bin/eos-tool"].mode == 0o755
+    assert members["etc/shadow"].mode == 0o600
+    assert members["tmp"].mode == 0o1777
+
+
+def test_tar_image_synthesises_modes_on_windows(tmp_path: Path, monkeypatch) -> None:
+    """On Windows the host mode means nothing, so the layout decides it."""
+    from ebuild.system import image
+
+    monkeypatch.setattr(image, "IS_WINDOWS", True)
+    rootfs = RootfsBuilder(tmp_path / "build").assemble(init_system="busybox")
+    (rootfs / "etc" / "init.d" / "rcS").chmod(0o644)
+    (rootfs / "etc" / "inittab").chmod(0o755)
+
+    members = _tar_members(tmp_path, rootfs)
+
+    assert members["etc/init.d/rcS"].mode == 0o755
     assert members["etc/inittab"].mode == 0o644
     assert members["etc"].mode == 0o755
 
