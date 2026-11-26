@@ -18,6 +18,19 @@ class RootfsError(Exception):
     """Raised when rootfs assembly fails."""
 
 
+def write_target_text(path: Path, content: str) -> None:
+    """Write a text file for the Linux target, whatever the build host.
+
+    ``Path.write_text`` translates ``\\n`` to the host separator, so on
+    Windows rcS got a ``#!/bin/sh\\r`` shebang and every passwd entry a
+    ``/bin/sh\\r`` shell. ``write_text(newline=...)`` needs Python 3.10;
+    this package supports 3.8, hence ``open``. UTF-8 rather than the host
+    locale for the same reason: the reader is the target, not the host.
+    """
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+
+
 FHS_DIRS = [
     "bin", "sbin", "usr/bin", "usr/sbin", "usr/lib",
     "etc", "etc/init.d", "etc/network",
@@ -123,7 +136,8 @@ class RootfsBuilder:
         inittab = self.rootfs_dir / "etc" / "inittab"
 
         if init_system == "busybox":
-            inittab.write_text(
+            write_target_text(
+                inittab,
                 "::sysinit:/etc/init.d/rcS\n"
                 "::respawn:/sbin/getty -L 115200 ttyS0 vt100\n"
                 "::ctrlaltdel:/sbin/reboot\n"
@@ -134,12 +148,22 @@ class RootfsBuilder:
 
         # Create rcS init script
         rcs = self.rootfs_dir / "etc" / "init.d" / "rcS"
-        rcs.write_text(
+        write_target_text(
+            rcs,
             "#!/bin/sh\n"
             "mount -t proc proc /proc\n"
             "mount -t sysfs sysfs /sys\n"
             "mount -t devtmpfs devtmpfs /dev\n"
-            "hostname eos\n"
+            # configure_network() writes the assembled hostname here; "eos"
+            # only if it is absent (install_init() used on its own). A failed
+            # load of a present /etc/hostname stays an error rather than
+            # silently booting under the wrong name (QUALITY.md: never fail
+            # silently).
+            "if [ -s /etc/hostname ]; then\n"
+            "  hostname -F /etc/hostname\n"
+            "else\n"
+            "  hostname eos\n"
+            "fi\n"
             "echo 'EoS booted successfully'\n"
         )
         if os.name != "nt":
@@ -158,7 +182,7 @@ class RootfsBuilder:
         # /etc/shadow (the designated hash store), never a clear-text
         # password - the CodeQL clear-text-storage alert is a false
         # positive here, suppressed with the justification below.
-        path.write_text(content)  # codeql[py/clear-text-storage-sensitive-data]
+        write_target_text(path, content)  # codeql[py/clear-text-storage-sensitive-data]
 
     def configure_users(
         self,
@@ -245,12 +269,15 @@ class RootfsBuilder:
 
     def configure_network(self, hostname: str = "eos") -> None:
         """Create basic network configuration."""
-        (self.rootfs_dir / "etc" / "hostname").write_text(f"{hostname}\n")
-        (self.rootfs_dir / "etc" / "hosts").write_text(
+        write_target_text(self.rootfs_dir / "etc" / "hostname", f"{hostname}\n")
+        write_target_text(
+            self.rootfs_dir / "etc" / "hosts",
             f"127.0.0.1\tlocalhost\n"
             f"127.0.1.1\t{hostname}\n"
         )
-        (self.rootfs_dir / "etc" / "resolv.conf").write_text("nameserver 8.8.8.8\n")
+        write_target_text(
+            self.rootfs_dir / "etc" / "resolv.conf", "nameserver 8.8.8.8\n"
+        )
 
     def install_packages(self, package_dirs: List[Path]) -> None:
         """Install built packages into the rootfs."""
