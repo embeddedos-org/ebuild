@@ -22,6 +22,11 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A rootfs boots with the hostname it was assembled with.** `rcS` ran a
+  literal `hostname eos`, so an image assembled as `eos-<board>` (as the
+  board build does) booted as `eos`, a name its own `/etc/hosts` does not
+  resolve. `rcS` now reads `/etc/hostname`, falling back to `eos` only when
+  that file is absent (`ebuild/system/rootfs.py`).
 - **A rootfs assembled on Windows now boots and logs in.** Rootfs text files
   (`inittab`, `rcS`, `passwd`, `group`, `shadow`, `hostname`, `hosts`,
   `resolv.conf`) were written with `Path.write_text`, which emits CRLF on
