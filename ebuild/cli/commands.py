@@ -621,7 +621,9 @@ def _report_footprint(cfg: "ProjectConfig", build_path: Path, log: Logger) -> No
         return
 
     board = _selected_board(default="")
-    flash_cap, ram_cap = board_capacity(board or None, _board_config())
+    flash_cap, ram_cap = board_capacity(
+        board or None, _board_config(), on_warning=log.warning
+    )
     log.info("")
     for line in format_report(fp, flash_cap, ram_cap).splitlines():
         log.info(line)
