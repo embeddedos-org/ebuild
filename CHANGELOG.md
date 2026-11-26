@@ -22,6 +22,19 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **A source outside the project directory no longer breaks the Ninja
+  build when two targets share it.** Object paths were `obj/<target>/` plus
+  the source path verbatim, so `../common/hal.c` resolved to
+  `obj/common/hal.c.o` for every target and ninja refused the manifest with
+  "multiple rules generate". `..` components now map to `__` (as CMake
+  does) and a leading root or drive is dropped, keeping each object in its
+  own target directory. That mapping is deliberately readable rather than
+  injective, so two sources in one target can still land on the same
+  object; that is now a `ConfigError` naming both sources, instead of
+  ninja refusing the manifest and naming only the object. A source that
+  names no file at all (`""`, `"."`, `"/"`) is a `ConfigError` too, where
+  it used to be an `IndexError` traceback
+  (`ebuild/build/ninja_backend.py`).
 - **Package URLs with a query string or fragment now fetch.** The cached
   archive was named after the URL's last segment verbatim, so
   `…/v1.0.tar.gz?raw=true` became `v1.0.tar.gz?raw=true`: extraction refused
