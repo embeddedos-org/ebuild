@@ -22,6 +22,15 @@
   `cjson` (v1.7.18), `nanopb` (v0.4.9.1), `lvgl` (v9.2.2), `tinyusb` (v0.18.0), and `unity` (v2.6.1).
 
 ### Fixed
+- **`/etc/shadow` in a built image is no longer world-readable.** It was
+  written with plain `open()`, so its mode was the build host's umask
+  (normally 0644) and the image shipped root's password hash readable by
+  every process. Rootfs files now get an explicit target mode at the point
+  they are written — 0600 for `shadow`, 0644 for public config, 0755 for
+  directories and executables — so the image's permissions describe the
+  target rather than whoever built it. Under a restrictive umask such as
+  0077 the image previously came out with `/etc` at 0700 and unreadable
+  config files (`ebuild/system/rootfs.py`, `ebuild/system/image.py`).
 - **KiCad quoted strings come back as the text KiCad shows.**
   `SExprParser._parse_string` skipped over escapes while scanning but
   returned the raw slice, so a part valued `10k "thin film"` was reported

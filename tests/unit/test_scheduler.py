@@ -369,3 +369,68 @@ class TestDeterminism:
 
 def test_scheduler_error_is_exported():
     assert issubclass(SchedulerError, Exception)
+
+
+@pytest.mark.parametrize("jobs", [1, 4])
+def test_a_raising_on_failure_does_not_replace_the_build_failure(jobs):
+    """Review of #270: on_failure and on_skip only report.
+
+    If one raises, the caller must still see the build's own exception and
+    the remaining nodes must still be reported -- otherwise a bug in a
+    logging callback hides which package failed and substitutes a
+    traceback from the logger.
+    """
+    graph = DependencyGraph()
+    graph.add_node("a")
+    graph.add_node("b")
+    graph.add_edge("b", "a")
+
+    boom = RuntimeError("a failed")
+    skipped = []
+
+    def task(node):
+        if node == "a":
+            raise boom
+        return node
+
+    def bad_on_failure(node, exc):
+        raise ValueError("the logger itself is broken")
+
+    def on_skip(node, cause):
+        skipped.append(node)
+
+    with pytest.raises(RuntimeError) as caught:
+        run_graph(
+            graph, task, jobs=jobs,
+            on_failure=bad_on_failure, on_skip=on_skip,
+        )
+
+    # The build's exception, not the callback's.
+    assert caught.value is boom
+    # The skip report still happened.
+    assert skipped == ["b"]
+
+
+@pytest.mark.parametrize("jobs", [1, 4])
+def test_a_failing_callback_is_recorded_not_swallowed(jobs):
+    """It must not vanish either: a broken reporting callback is attached
+    to the exception that is re-raised (Python 3.11+ add_note)."""
+    graph = DependencyGraph()
+    graph.add_node("a")
+
+    boom = RuntimeError("a failed")
+
+    def task(node):
+        raise boom
+
+    def bad_on_failure(node, exc):
+        raise ValueError("the logger itself is broken")
+
+    with pytest.raises(RuntimeError) as caught:
+        run_graph(graph, task, jobs=jobs, on_failure=bad_on_failure)
+
+    notes = getattr(caught.value, "__notes__", None)
+    if hasattr(boom, "add_note"):  # 3.11+
+        assert notes, "callback failure was swallowed"
+        assert "the logger itself is broken" in " ".join(notes)
+        assert "a" in " ".join(notes)

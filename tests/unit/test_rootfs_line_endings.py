@@ -47,20 +47,23 @@ def test_rcs_shebang_and_passwd_shell_are_exact(tmp_path: Path) -> None:
 
 
 def test_tar_image_marks_target_executables_executable(tmp_path: Path) -> None:
-    """The archive, not the build host's filesystem, decides the mode.
+    """The image, not the build host's filesystem, decides the mode.
 
     Windows has no POSIX mode to copy, so a rootfs assembled there produced a
     tar whose /etc/init.d/rcS was 0644. BusyBox cannot run
     ``::sysinit:/etc/init.d/rcS`` without the execute bit, so the target did
     not boot. Raised by the Sourcery review of #223.
+
+    This asserts the POSIX side of that contract: rcS is executable because
+    RootfsBuilder gives it an explicit mode, not because the archive writer
+    repairs it afterwards. The Windows side, where the layout has to supply
+    the mode, is test_tar_image_synthesises_modes_on_windows.
     """
     import tarfile
 
     from ebuild.system.image import ImageBuilder
 
     rootfs = RootfsBuilder(tmp_path / "build").assemble(init_system="busybox")
-    # Simulate a host that cannot express the execute bit.
-    (rootfs / "etc" / "init.d" / "rcS").chmod(0o644)
 
     out = ImageBuilder(tmp_path / "out").create(rootfs, image_format="tar")
     with tarfile.open(out) as tar:
@@ -158,3 +161,83 @@ def test_integration_rootfs_files_are_not_written_with_write_text(
     assert "\u2550\u2550\u2550\u2550".encode("utf-8") in (
         rootfs / "etc/init.d/S99_qemu_test"
     ).read_bytes()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs a host with POSIX modes")
+def test_shadow_is_not_world_readable(tmp_path: Path) -> None:
+    """/etc/shadow holds password hashes and must be root-only.
+
+    Review of #270: _write_account_file created it with plain open(), so
+    its mode was the host umask -- normally 0644. Forcing every file to
+    0644 in the archive hid that; preserving POSIX modes would have
+    shipped world-readable password hashes instead. The mode is now set
+    explicitly at the source.
+    """
+    builder = RootfsBuilder(tmp_path / "build")
+    rootfs = builder.assemble(
+        init_system="busybox",
+        root_password_hash="$6$rounds=656000$abcdefgh$" + "x" * 43,
+    )
+
+    shadow = rootfs / "etc" / "shadow"
+    assert shadow.stat().st_mode & 0o777 == 0o600, oct(shadow.stat().st_mode)
+    # And it survives into the image.
+    members = _tar_members(tmp_path, rootfs)
+    assert members["etc/shadow"].mode == 0o600
+    assert members["etc/shadow"].mode & 0o077 == 0, "group/other can read hashes"
+    # passwd and group stay readable: every uid lookup needs them.
+    assert members["etc/passwd"].mode == 0o644
+    assert members["etc/group"].mode == 0o644
+
+
+@pytest.mark.skipif(os.name == "nt", reason="needs a host with POSIX modes")
+def test_image_modes_do_not_depend_on_the_build_hosts_umask(tmp_path: Path) -> None:
+    """Review of #270: preserving host modes made the image inherit the
+    umask. Under 0077 every directory became 0700 and every file 0600, so
+    after extraction no non-root process could traverse /etc or read a
+    config file. The rootfs sets explicit modes, so the image is the same
+    whatever umask built it.
+    """
+    old_umask = os.umask(0o077)
+    try:
+        rootfs = RootfsBuilder(tmp_path / "build").assemble(
+            init_system="busybox",
+            root_password_hash="$6$rounds=656000$abcdefgh$" + "x" * 43,
+        )
+        members = _tar_members(tmp_path, rootfs)
+    finally:
+        os.umask(old_umask)
+
+    assert members["etc"].mode == 0o755, "non-root cannot traverse /etc"
+    assert members["etc/passwd"].mode == 0o644, "non-root cannot read passwd"
+    assert members["etc/inittab"].mode == 0o644
+    assert members["etc/init.d/rcS"].mode == 0o755
+    # The one file that must stay private, stays private.
+    assert members["etc/shadow"].mode == 0o600
+
+
+def test_a_hidden_directory_does_not_match_the_exec_list(monkeypatch) -> None:
+    """Review of #270: the Windows path used lstrip("./"), which strips
+    *characters*, so "./.bin/data" became "bin/data" and a hidden
+    directory was treated as the target's /bin -- silently gaining
+    execute bits. Only the Windows path derives a mode from the name, so
+    that is the one under test.
+    """
+    import tarfile
+
+    from ebuild.system import image
+
+    monkeypatch.setattr(image, "IS_WINDOWS", True)
+    assert image._TARGET_EXEC_DIRS, "exec dirs list is empty; test is vacuous"
+
+    def member(name):
+        info = tarfile.TarInfo(name)
+        info.type = tarfile.REGTYPE
+        info.mode = 0o600
+        return info
+
+    # Real target executable directory: still gets 0755.
+    assert image._target_member(member("./bin/busybox")).mode == 0o755
+    # Hidden lookalikes: must not.
+    assert image._target_member(member("./.bin/data")).mode == 0o644
+    assert image._target_member(member("./..bin/data")).mode == 0o644

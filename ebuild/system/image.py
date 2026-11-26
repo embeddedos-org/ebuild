@@ -40,24 +40,31 @@ def _target_member(member: tarfile.TarInfo) -> tarfile.TarInfo:
 
     The mode is synthesised from the target layout only on Windows, which has
     no POSIX mode to copy. A POSIX host's mode is the one the rootfs was
-    built with: replacing it there stripped the execute bit from executables
-    outside the listed directories (an SDK tool under /opt, a /init), the
-    setuid and sticky bits, and the privacy of a 0600 file. On POSIX the
-    listed directories only gain execute bits where a file is readable.
+    built with, and is preserved exactly: replacing it stripped the execute
+    bit from executables outside the listed directories (an SDK tool under
+    /opt, a /init), the setuid and sticky bits, and the privacy of /etc/shadow.
+
+    Preserving the mode is only safe because RootfsBuilder now sets an
+    explicit mode on everything it creates (see rootfs.set_target_mode), so
+    what is preserved describes the target rather than the build host's
+    umask. Nothing is added here on POSIX: a file's mode in the image is the
+    mode it has in the rootfs.
     """
     member.uid = member.gid = 0
     member.uname = member.gname = "root"
     if member.issym() or member.islnk():
         return member
-    # arcname is ".", so names arrive as "./etc/init.d/rcS".
-    parent = posixpath.dirname(member.name).lstrip("./")
     if not IS_WINDOWS:
-        if member.isfile() and parent in _TARGET_EXEC_DIRS:
-            member.mode |= (member.mode & 0o444) >> 2
         return member
     if member.isdir():
         member.mode = 0o755
         return member
+    # arcname is ".", so names arrive as "./etc/init.d/rcS". Strip exactly
+    # that prefix: lstrip("./") strips *characters*, so "./.bin/data"
+    # became "bin/data" and a hidden directory matched the exec list.
+    parent = posixpath.dirname(member.name)
+    if parent.startswith("./"):
+        parent = parent[2:]
     member.mode = 0o755 if parent in _TARGET_EXEC_DIRS else 0o644
     return member
 
