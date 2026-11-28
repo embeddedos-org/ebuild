@@ -706,3 +706,10 @@ def test_mmu_class_rule_pinned():
     assert _info_from_profile(a11)["class"] == "sbc"
     assert _info_from_profile(a11)["triplet"] == "arm-linux-gnueabihf"
     assert _info_from_profile(ca9)["class"] == "sbc"
+
+
+def test_rp2040_eboot_board_matches_its_core():
+    """RP2040 is a Cortex-M0+; its EBOOT_BOARD entry must be a Cortex-M0+ board,
+    not samd51 (which is Cortex-M4F)."""
+    board = _resolve_eboot_board_dir("rp2040")
+    assert board == "cortex_m0plus", f"rp2040 -> {board}, expected cortex_m0plus"

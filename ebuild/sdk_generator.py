@@ -367,7 +367,7 @@ EBOOT_BOARD = {
     "stm32f4":    "stm32f4",
     "stm32h7":    "stm32h7",
     "nrf52":      "nrf52",
-    "rp2040":     "samd51",
+    "rp2040":     "cortex_m0plus",
     "raspi3":     "qemu_arm64",
     "raspi4":     "rpi4",
     "imx8m":      "imx8m",
